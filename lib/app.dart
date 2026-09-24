@@ -12,19 +12,20 @@ import 'models/ledger_models.dart';
 import 'theme/app_theme.dart';
 
 class OneEntryApp extends StatefulWidget {
-  const OneEntryApp({super.key});
+  const OneEntryApp({required this.controller, super.key});
+
+  final LedgerController controller;
 
   @override
   State<OneEntryApp> createState() => _OneEntryAppState();
 }
 
 class _OneEntryAppState extends State<OneEntryApp> {
-  final LedgerController _controller = LedgerController();
   ThemeMode _themeMode = ThemeMode.system;
 
   @override
   void dispose() {
-    _controller.dispose();
+    widget.controller.dispose();
     super.dispose();
   }
 
@@ -37,10 +38,10 @@ class _OneEntryAppState extends State<OneEntryApp> {
   Future<void> _addEntry() async {
     final LedgerEntry? result = await Navigator.of(context).push<LedgerEntry>(
       MaterialPageRoute<LedgerEntry>(
-        builder: (_) => EntrySheet(controller: _controller),
+        builder: (_) => EntrySheet(controller: widget.controller),
       ),
     );
-    if (result != null) _controller.addEntry(result);
+    if (result != null) await widget.controller.addEntry(result);
   }
 
   @override
@@ -52,20 +53,22 @@ class _OneEntryAppState extends State<OneEntryApp> {
       darkTheme: AppTheme.dark(),
       themeMode: _themeMode,
       home: HomePage(
-        controller: _controller,
+        controller: widget.controller,
         onAddEntry: _addEntry,
-        onOpenStatistics: () => _push(StatisticsPage(controller: _controller)),
+        onOpenStatistics: () =>
+            _push(StatisticsPage(controller: widget.controller)),
         onOpenSettings: () => _push(
           SettingsPage(
-            controller: _controller,
+            controller: widget.controller,
             themeMode: _themeMode,
             onThemeModeChanged: (ThemeMode value) =>
                 setState(() => _themeMode = value),
           ),
         ),
-        onOpenAccounts: () => _push(AccountsPage(controller: _controller)),
-        onOpenMembers: () => _push(MembersPage(controller: _controller)),
-        onOpenBudget: () => _push(BudgetPage(controller: _controller)),
+        onOpenAccounts: () =>
+            _push(AccountsPage(controller: widget.controller)),
+        onOpenMembers: () => _push(MembersPage(controller: widget.controller)),
+        onOpenBudget: () => _push(BudgetPage(controller: widget.controller)),
       ),
     );
   }

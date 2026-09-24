@@ -67,6 +67,7 @@ class _EntrySheetState extends State<EntrySheet> {
         toAccountId: _type == EntryType.transfer ? _toAccountId : null,
         memberIds: _members.toList(),
         recurring: _type != EntryType.transfer && _recurring,
+        recurringFrequency: _frequency,
       ),
     );
   }

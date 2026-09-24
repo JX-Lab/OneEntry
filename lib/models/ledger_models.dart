@@ -40,6 +40,7 @@ class LedgerEntry {
     this.toAccountId,
     this.memberIds = const <int>[],
     this.recurring = false,
+    this.recurringFrequency = 'month',
   });
 
   final int id;
@@ -52,4 +53,5 @@ class LedgerEntry {
   final int? toAccountId;
   final List<int> memberIds;
   final bool recurring;
+  final String recurringFrequency;
 }

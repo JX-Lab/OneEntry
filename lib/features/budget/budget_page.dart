@@ -24,7 +24,10 @@ class BudgetPage extends StatelessWidget {
         title: const Text('预算'),
         centerTitle: true,
         actions: <Widget>[
-          TextButton(onPressed: () {}, child: const Text('编辑')),
+          TextButton(
+            onPressed: () => _editBudget(context, now),
+            child: const Text('编辑'),
+          ),
         ],
       ),
       body: ListView(
@@ -92,6 +95,38 @@ class BudgetPage extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  Future<void> _editBudget(BuildContext context, DateTime month) async {
+    final TextEditingController input = TextEditingController(
+      text: controller.monthlyBudget.toStringAsFixed(2),
+    );
+    final double? result = await showDialog<double>(
+      context: context,
+      builder: (BuildContext context) => AlertDialog(
+        title: const Text('本月总预算'),
+        content: TextField(
+          controller: input,
+          autofocus: true,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          decoration: const InputDecoration(prefixText: '¥ '),
+        ),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () =>
+                Navigator.pop(context, double.tryParse(input.text)),
+            child: const Text('保存'),
+          ),
+        ],
+      ),
+    );
+    input.dispose();
+    if (result != null && result >= 0)
+      await controller.setMonthlyBudget(month, result);
   }
 }
 
