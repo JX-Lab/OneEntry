@@ -17,6 +17,18 @@ abstract final class AppTheme {
       colorScheme: colors,
       scaffoldBackgroundColor: const Color(0xFFF2F4F7),
       fontFamilyFallback: const <String>['PingFang SC', 'Microsoft YaHei'],
+      appBarTheme: const AppBarTheme(
+        centerTitle: true,
+        elevation: 0,
+        scrolledUnderElevation: 0,
+        backgroundColor: Colors.white,
+        foregroundColor: Color(0xFF1B1D21),
+      ),
+      cardTheme: CardThemeData(
+        elevation: 0,
+        color: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
         fillColor: const Color(0xFFF1F3F6),
@@ -40,6 +52,18 @@ abstract final class AppTheme {
       colorScheme: colors,
       scaffoldBackgroundColor: const Color(0xFF101318),
       fontFamilyFallback: const <String>['PingFang SC', 'Microsoft YaHei'],
+      appBarTheme: const AppBarTheme(
+        centerTitle: true,
+        elevation: 0,
+        scrolledUnderElevation: 0,
+        backgroundColor: Color(0xFF1A1F27),
+        foregroundColor: Color(0xFFE7ECF3),
+      ),
+      cardTheme: CardThemeData(
+        elevation: 0,
+        color: const Color(0xFF1A1F27),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
         fillColor: const Color(0xFF252B34),

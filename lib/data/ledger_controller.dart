@@ -77,6 +77,18 @@ class LedgerController extends ChangeNotifier {
     notifyListeners();
   }
 
+  void setAccountArchived(int id, bool archived) {
+    accounts.firstWhere((LedgerAccount account) => account.id == id).archived =
+        archived;
+    notifyListeners();
+  }
+
+  void setMemberArchived(int id, bool archived) {
+    members.firstWhere((LedgerMember member) => member.id == id).archived =
+        archived;
+    notifyListeners();
+  }
+
   void _seedPreviewData() {
     final DateTime now = DateTime.now();
     entries.addAll(<LedgerEntry>[

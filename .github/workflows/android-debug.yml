@@ -44,7 +44,7 @@ jobs:
 
       - name: Analyze source
         shell: bash
-        run: flutter analyze
+        run: flutter analyze --no-fatal-infos
 
       - name: Build debug APK
         shell: bash

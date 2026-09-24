@@ -79,174 +79,179 @@ class _EntrySheetState extends State<EntrySheet> {
     final List<LedgerMember> members = widget.controller.members
         .where((member) => !member.archived)
         .toList();
-    return Padding(
-      padding: EdgeInsets.only(
-        left: 16,
-        right: 16,
-        bottom: MediaQuery.viewInsetsOf(context).bottom + 18,
+    return Scaffold(
+      appBar: AppBar(
+        centerTitle: true,
+        title: const Text('记一笔'),
+        actions: <Widget>[
+          TextButton(onPressed: _save, child: const Text('保存')),
+        ],
       ),
-      child: SingleChildScrollView(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: <Widget>[
-            Row(
+      body: SafeArea(
+        child: Padding(
+          padding: EdgeInsets.only(
+            left: 16,
+            right: 16,
+            bottom: MediaQuery.viewInsetsOf(context).bottom + 18,
+          ),
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: <Widget>[
-                const Expanded(
-                  child: Text(
-                    '记一笔',
-                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
+                const SizedBox(height: 8),
+                SegmentedButton<EntryType>(
+                  segments: const <ButtonSegment<EntryType>>[
+                    ButtonSegment(value: EntryType.expense, label: Text('支出')),
+                    ButtonSegment(value: EntryType.income, label: Text('收入')),
+                    ButtonSegment(value: EntryType.transfer, label: Text('转账')),
+                  ],
+                  selected: <EntryType>{_type},
+                  onSelectionChanged: (Set<EntryType> value) => setState(() {
+                    _type = value.first;
+                    if (_type == EntryType.transfer) _recurring = false;
+                  }),
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: _amountController,
+                  autofocus: true,
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
+                  style: const TextStyle(
+                    fontSize: 30,
+                    fontWeight: FontWeight.w700,
+                  ),
+                  decoration: const InputDecoration(
+                    prefixText: '¥ ',
+                    labelText: '金额',
                   ),
                 ),
-                TextButton(onPressed: _save, child: const Text('保存')),
-              ],
-            ),
-            const SizedBox(height: 6),
-            SegmentedButton<EntryType>(
-              segments: const <ButtonSegment<EntryType>>[
-                ButtonSegment(value: EntryType.expense, label: Text('支出')),
-                ButtonSegment(value: EntryType.income, label: Text('收入')),
-                ButtonSegment(value: EntryType.transfer, label: Text('转账')),
-              ],
-              selected: <EntryType>{_type},
-              onSelectionChanged: (Set<EntryType> value) => setState(() {
-                _type = value.first;
-                if (_type == EntryType.transfer) _recurring = false;
-              }),
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: _amountController,
-              autofocus: true,
-              keyboardType: const TextInputType.numberWithOptions(
-                decimal: true,
-              ),
-              style: const TextStyle(fontSize: 30, fontWeight: FontWeight.w700),
-              decoration: const InputDecoration(
-                prefixText: '¥ ',
-                labelText: '金额',
-              ),
-            ),
-            const SizedBox(height: 12),
-            if (_type != EntryType.transfer)
-              DropdownButtonFormField<String>(
-                initialValue: _category,
-                decoration: const InputDecoration(labelText: '分类'),
-                items:
-                    const <String>[
-                          '餐饮',
-                          '交通',
-                          '购物',
-                          '居住',
-                          '娱乐',
-                          '医疗',
-                          '学习',
-                          '旅行',
-                          '工资',
-                        ]
+                const SizedBox(height: 12),
+                if (_type != EntryType.transfer)
+                  DropdownButtonFormField<String>(
+                    initialValue: _category,
+                    decoration: const InputDecoration(labelText: '分类'),
+                    items:
+                        const <String>[
+                              '餐饮',
+                              '交通',
+                              '购物',
+                              '居住',
+                              '娱乐',
+                              '医疗',
+                              '学习',
+                              '旅行',
+                              '工资',
+                            ]
+                            .map(
+                              (String value) => DropdownMenuItem<String>(
+                                value: value,
+                                child: Text(value),
+                              ),
+                            )
+                            .toList(),
+                    onChanged: (String? value) =>
+                        setState(() => _category = value ?? _category),
+                  ),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<int>(
+                  initialValue: _accountId,
+                  decoration: InputDecoration(
+                    labelText: _type == EntryType.transfer ? '转出账户' : '账户',
+                  ),
+                  items: accounts
+                      .map(
+                        (LedgerAccount account) => DropdownMenuItem<int>(
+                          value: account.id,
+                          child: Text(account.name),
+                        ),
+                      )
+                      .toList(),
+                  onChanged: (int? value) =>
+                      setState(() => _accountId = value ?? _accountId),
+                ),
+                if (_type == EntryType.transfer) ...<Widget>[
+                  const SizedBox(height: 12),
+                  DropdownButtonFormField<int>(
+                    initialValue: _toAccountId,
+                    decoration: const InputDecoration(labelText: '转入账户'),
+                    items: accounts
                         .map(
-                          (String value) => DropdownMenuItem<String>(
-                            value: value,
-                            child: Text(value),
+                          (LedgerAccount account) => DropdownMenuItem<int>(
+                            value: account.id,
+                            child: Text(account.name),
                           ),
                         )
                         .toList(),
-                onChanged: (String? value) =>
-                    setState(() => _category = value ?? _category),
-              ),
-            const SizedBox(height: 12),
-            DropdownButtonFormField<int>(
-              initialValue: _accountId,
-              decoration: InputDecoration(
-                labelText: _type == EntryType.transfer ? '转出账户' : '账户',
-              ),
-              items: accounts
-                  .map(
-                    (LedgerAccount account) => DropdownMenuItem<int>(
-                      value: account.id,
-                      child: Text(account.name),
-                    ),
-                  )
-                  .toList(),
-              onChanged: (int? value) =>
-                  setState(() => _accountId = value ?? _accountId),
-            ),
-            if (_type == EntryType.transfer) ...<Widget>[
-              const SizedBox(height: 12),
-              DropdownButtonFormField<int>(
-                initialValue: _toAccountId,
-                decoration: const InputDecoration(labelText: '转入账户'),
-                items: accounts
-                    .map(
-                      (LedgerAccount account) => DropdownMenuItem<int>(
-                        value: account.id,
-                        child: Text(account.name),
-                      ),
-                    )
-                    .toList(),
-                onChanged: (int? value) => setState(() => _toAccountId = value),
-              ),
-            ],
-            const SizedBox(height: 16),
-            Text(
-              _type == EntryType.transfer ? '操作者' : '成员',
-              style: Theme.of(context).textTheme.labelLarge,
-            ),
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 8,
-              children: members.map((LedgerMember member) {
-                return FilterChip(
-                  label: Text(member.name),
-                  selected: _members.contains(member.id),
-                  onSelected: (bool selected) => setState(
-                    () => selected
-                        ? _members.add(member.id)
-                        : _members.remove(member.id),
+                    onChanged: (int? value) =>
+                        setState(() => _toAccountId = value),
                   ),
-                );
-              }).toList(),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _noteController,
-              decoration: const InputDecoration(
-                labelText: '备注',
-                hintText: '写点什么…',
-              ),
-            ),
-            if (_type != EntryType.transfer) ...<Widget>[
-              const SizedBox(height: 8),
-              SwitchListTile(
-                contentPadding: EdgeInsets.zero,
-                title: const Text('设为周期账目'),
-                subtitle: const Text('到期时提醒手动确认记账'),
-                value: _recurring,
-                onChanged: (bool value) => setState(() => _recurring = value),
-              ),
-              if (_recurring)
-                DropdownButtonFormField<String>(
-                  initialValue: _frequency,
-                  decoration: const InputDecoration(labelText: '重复周期'),
-                  items:
-                      const <MapEntry<String, String>>[
-                            MapEntry('year', '每年'),
-                            MapEntry('month', '每月'),
-                            MapEntry('week', '每周'),
-                            MapEntry('day', '每天'),
-                          ]
-                          .map(
-                            (entry) => DropdownMenuItem<String>(
-                              value: entry.key,
-                              child: Text(entry.value),
-                            ),
-                          )
-                          .toList(),
-                  onChanged: (String? value) =>
-                      setState(() => _frequency = value ?? _frequency),
+                ],
+                const SizedBox(height: 16),
+                Text(
+                  _type == EntryType.transfer ? '操作者' : '成员',
+                  style: Theme.of(context).textTheme.labelLarge,
                 ),
-            ],
-            const SizedBox(height: 24),
-          ],
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  children: members.map((LedgerMember member) {
+                    return FilterChip(
+                      label: Text(member.name),
+                      selected: _members.contains(member.id),
+                      onSelected: (bool selected) => setState(
+                        () => selected
+                            ? _members.add(member.id)
+                            : _members.remove(member.id),
+                      ),
+                    );
+                  }).toList(),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _noteController,
+                  decoration: const InputDecoration(
+                    labelText: '备注',
+                    hintText: '写点什么…',
+                  ),
+                ),
+                if (_type != EntryType.transfer) ...<Widget>[
+                  const SizedBox(height: 8),
+                  SwitchListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('设为周期账目'),
+                    subtitle: const Text('到期时提醒手动确认记账'),
+                    value: _recurring,
+                    onChanged: (bool value) =>
+                        setState(() => _recurring = value),
+                  ),
+                  if (_recurring)
+                    DropdownButtonFormField<String>(
+                      initialValue: _frequency,
+                      decoration: const InputDecoration(labelText: '重复周期'),
+                      items:
+                          const <MapEntry<String, String>>[
+                                MapEntry('year', '每年'),
+                                MapEntry('month', '每月'),
+                                MapEntry('week', '每周'),
+                                MapEntry('day', '每天'),
+                              ]
+                              .map(
+                                (entry) => DropdownMenuItem<String>(
+                                  value: entry.key,
+                                  child: Text(entry.value),
+                                ),
+                              )
+                              .toList(),
+                      onChanged: (String? value) =>
+                          setState(() => _frequency = value ?? _frequency),
+                    ),
+                ],
+                const SizedBox(height: 24),
+              ],
+            ),
+          ),
         ),
       ),
     );
