@@ -4,9 +4,9 @@ Flutter Android 工程，应用包名为 `com.junxu.yibi`。
 
 当前 Flutter 界面正在按 HTML 原型逐页等效移植。首页整体结构、账户、成员、预算、统计、设置和记一笔页面已经建立；HTML 原型是最终 UI 与交互标准，不再将 Material 默认骨架视为设计稿。
 
-当前 Flutter 骨架中的演示账目暂存在内存，重启会恢复示例数据。正式 SQLite 数据库尚未接入，避免在无法执行完整 Android 构建测试时引入未经验证的存储依赖。
+SQLite 数据库与版本迁移已经接入：账户、成员、分类、账目、账目成员、预算、周期规则、导入批次和设置使用独立关系表；金额以整数分保存，转账、余额和多人分摊在事务中写入。
 
-尚未完成等效移植的部分包括 SQLite、完整导入导出、系统本地通知，以及部分二级编辑弹窗。当前 APK 应视为 UI 对齐预览，不是最终版本。
+尚未完成等效移植的部分包括完整导入导出、系统本地通知，以及部分二级编辑弹窗。当前 APK 仍应视为持续开发版本。
 
 ## 本地运行
 
@@ -21,13 +21,12 @@ flutter run
 
 工程包含 `.github/workflows/android-debug.yml`。推送到 `main` 后会自动构建，也可以在仓库的 `Actions → Build Android APK → Run workflow` 手动触发。
 
-成功后进入对应的 workflow run，在页面底部 `Artifacts` 下载 `OneEntry-debug-apk`。当前产物是可直接安装测试的 debug APK，保留 7 天。
+成功后可在 workflow run 的 `Artifacts` 下载 `OneEntry-debug-apk`，也可以在私有仓库 Releases 中下载对应的预发布 APK。
 
 工作流只使用 GitHub 官方 Actions，以及从 Flutter 官方仓库固定下载的 Flutter `3.41.4`。仓库必须先设置为 `Private`，再上传源代码。
 
 ## 下一阶段
 
-- SQLite 数据库与版本迁移
 - Android 本地通知
 - 系统文件选择器与 JSON / ZIP / XLSX 导入导出
 - 同旅迁移 ZIP 适配器

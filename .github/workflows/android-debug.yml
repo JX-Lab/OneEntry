@@ -7,7 +7,7 @@ on:
       - main
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build-debug-apk:
@@ -50,10 +50,19 @@ jobs:
         shell: bash
         run: flutter build apk --debug --no-pub
 
-      - name: Upload APK
+      - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: OneEntry-debug-apk
           path: build/app/outputs/flutter-apk/app-debug.apk
           if-no-files-found: error
           retention-days: 7
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: debug-build-${{ github.run_number }}
+          name: OneEntry Debug Build #${{ github.run_number }}
+          prerelease: true
+          generate_release_notes: false
+          files: build/app/outputs/flutter-apk/app-debug.apk
