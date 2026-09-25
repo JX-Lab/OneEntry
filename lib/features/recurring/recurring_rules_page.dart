@@ -177,8 +177,6 @@ class RecurringRulesPage extends StatelessWidget {
     );
     final String title = name.text.trim();
     final double value = double.tryParse(amount.text) ?? 0;
-    name.dispose();
-    amount.dispose();
     if (save != true || title.isEmpty || value <= 0) return;
     await controller.saveRecurringRule(
       RecurringRule(

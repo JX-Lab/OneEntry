@@ -84,64 +84,90 @@ class MembersPage extends StatelessWidget {
       text: member?.name ?? '',
     );
     int color = member?.colorValue ?? colors.first;
-    final bool? save = await showDialog<bool>(
+    final bool? save = await showModalBottomSheet<bool>(
       context: context,
+      isScrollControlled: true,
       builder: (BuildContext context) => StatefulBuilder(
-        builder: (BuildContext context, StateSetter setDialogState) =>
-            AlertDialog(
-              title: Text(member == null ? '新增成员' : '编辑成员'),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: <Widget>[
-                  TextField(
-                    controller: name,
-                    autofocus: true,
-                    decoration: const InputDecoration(labelText: '名称'),
+        builder: (BuildContext context, StateSetter setDialogState) => Padding(
+          padding: EdgeInsets.only(
+            bottom: MediaQuery.viewInsetsOf(context).bottom,
+          ),
+          child: SafeArea(
+            top: false,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                SizedBox(
+                  height: 52,
+                  child: Row(
+                    children: <Widget>[
+                      TextButton(
+                        onPressed: () => Navigator.pop(context, false),
+                        child: const Text('取消'),
+                      ),
+                      Expanded(
+                        child: Text(
+                          member == null ? '新增成员' : '编辑成员',
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(fontWeight: FontWeight.w700),
+                        ),
+                      ),
+                      TextButton(
+                        onPressed: () => Navigator.pop(context, true),
+                        child: const Text('保存'),
+                      ),
+                    ],
                   ),
-                  const SizedBox(height: 16),
-                  Wrap(
-                    spacing: 10,
-                    runSpacing: 10,
-                    children: colors
-                        .map(
-                          (value) => InkWell(
-                            onTap: () => setDialogState(() => color = value),
-                            borderRadius: BorderRadius.circular(99),
-                            child: Container(
-                              width: 32,
-                              height: 32,
-                              decoration: BoxDecoration(
-                                color: Color(value),
-                                shape: BoxShape.circle,
-                                border: Border.all(
-                                  color: color == value
-                                      ? Theme.of(context).colorScheme.onSurface
-                                      : Colors.transparent,
-                                  width: 2.5,
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 6, 16, 20),
+                  child: Column(
+                    children: <Widget>[
+                      TextField(
+                        controller: name,
+                        autofocus: true,
+                        decoration: const InputDecoration(labelText: '名称'),
+                      ),
+                      const SizedBox(height: 16),
+                      Wrap(
+                        spacing: 10,
+                        runSpacing: 10,
+                        children: colors
+                            .map(
+                              (int value) => InkWell(
+                                onTap: () =>
+                                    setDialogState(() => color = value),
+                                borderRadius: BorderRadius.circular(99),
+                                child: Container(
+                                  width: 32,
+                                  height: 32,
+                                  decoration: BoxDecoration(
+                                    color: Color(value),
+                                    shape: BoxShape.circle,
+                                    border: Border.all(
+                                      color: color == value
+                                          ? Theme.of(
+                                              context,
+                                            ).colorScheme.onSurface
+                                          : Colors.transparent,
+                                      width: 2.5,
+                                    ),
+                                  ),
                                 ),
                               ),
-                            ),
-                          ),
-                        )
-                        .toList(),
+                            )
+                            .toList(),
+                      ),
+                    ],
                   ),
-                ],
-              ),
-              actions: <Widget>[
-                TextButton(
-                  onPressed: () => Navigator.pop(context, false),
-                  child: const Text('取消'),
-                ),
-                FilledButton(
-                  onPressed: () => Navigator.pop(context, true),
-                  child: const Text('保存'),
                 ),
               ],
             ),
+          ),
+        ),
       ),
     );
     final String value = name.text.trim();
-    name.dispose();
     if (save != true || value.isEmpty) return;
     if (member == null) {
       await controller.addMember(value, color);
@@ -167,10 +193,8 @@ class _MemberTile extends StatelessWidget {
   Widget build(BuildContext context) => Dismissible(
     key: ValueKey('member-${member.id}-$archived'),
     direction: DismissDirection.endToStart,
-    confirmDismiss: (_) async {
-      onArchive();
-      return false;
-    },
+    confirmDismiss: (_) async => true,
+    onDismissed: (_) => onArchive(),
     background: Container(
       alignment: Alignment.centerRight,
       padding: const EdgeInsets.only(right: 22),

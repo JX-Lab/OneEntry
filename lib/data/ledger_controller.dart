@@ -162,6 +162,11 @@ class LedgerController extends ChangeNotifier {
     await initialize();
   }
 
+  Future<void> clearAllData() async {
+    await _repository.clearAllData();
+    await initialize();
+  }
+
   Future<void> setDailyReminder({
     required bool enabled,
     required int hour,

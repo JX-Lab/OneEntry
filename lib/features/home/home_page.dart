@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../data/ledger_controller.dart';
 import '../../models/ledger_models.dart';
 import '../../theme/app_theme.dart';
+import 'period_picker_sheet.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({
@@ -31,6 +32,7 @@ class HomePage extends StatefulWidget {
 class _HomePageState extends State<HomePage> {
   final TextEditingController _searchController = TextEditingController();
   late DateTime _month = DateTime(DateTime.now().year, DateTime.now().month);
+  bool _yearOnly = false;
   int? _day;
   bool _searching = false;
 
@@ -47,11 +49,12 @@ class _HomePageState extends State<HomePage> {
       animation: widget.controller,
       builder: (BuildContext context, Widget? child) {
         final String query = _searchController.text.trim().toLowerCase();
-        final List<LedgerEntry> periodEntries = widget.controller
-            .entriesForMonth(month)
+        final List<LedgerEntry> periodEntries = widget.controller.entries
             .where(
               (LedgerEntry entry) =>
-                  _day == null || entry.occurredAt.day == _day,
+                  entry.occurredAt.year == month.year &&
+                  (_yearOnly || entry.occurredAt.month == month.month) &&
+                  (_day == null || entry.occurredAt.day == _day),
             )
             .toList();
         final List<LedgerEntry> entries = periodEntries.where((
@@ -101,7 +104,9 @@ class _HomePageState extends State<HomePage> {
                         mainAxisSize: MainAxisSize.min,
                         children: <Widget>[
                           Text(
-                            _day == null
+                            _yearOnly
+                                ? '${month.year}年'
+                                : _day == null
                                 ? '${month.year}年${month.month}月'
                                 : '${month.year}年${month.month}月${_day}日',
                             style: const TextStyle(
@@ -139,6 +144,7 @@ class _HomePageState extends State<HomePage> {
                 expense: expense,
                 spent: expense,
                 budget: widget.controller.monthlyBudget,
+                showBudget: !_yearOnly,
                 onBudgetTap: widget.onOpenBudget,
               ),
               const SizedBox(height: 10),
@@ -223,49 +229,23 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<void> _openPeriodPicker() async {
-    final String? mode = await showModalBottomSheet<String>(
+    final PeriodSelection? selected = await showModalBottomSheet<PeriodSelection>(
       context: context,
-      builder: (BuildContext context) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: <Widget>[
-            ListTile(
-              title: const Text('本月'),
-              onTap: () => Navigator.pop(context, 'current'),
-            ),
-            ListTile(
-              title: const Text('选择月份'),
-              onTap: () => Navigator.pop(context, 'month'),
-            ),
-            ListTile(
-              title: const Text('选择具体日期'),
-              onTap: () => Navigator.pop(context, 'day'),
-            ),
-          ],
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (BuildContext context) => PeriodPickerSheet(
+        initial: (
+          year: _month.year,
+          month: _yearOnly ? null : _month.month,
+          day: _day,
         ),
       ),
     );
-    if (mode == null || !mounted) return;
-    if (mode == 'current') {
-      final DateTime now = DateTime.now();
-      setState(() {
-        _month = DateTime(now.year, now.month);
-        _day = null;
-      });
-      return;
-    }
-    final DateTime now = DateTime.now();
-    final DateTime initial = DateTime(_month.year, _month.month, _day ?? 1);
-    final DateTime? picked = await showDatePicker(
-      context: context,
-      initialDate: initial.isAfter(now) ? now : initial,
-      firstDate: DateTime(now.year - 20),
-      lastDate: now,
-    );
-    if (picked == null) return;
+    if (selected == null) return;
     setState(() {
-      _month = DateTime(picked.year, picked.month);
-      _day = mode == 'day' ? picked.day : null;
+      _month = DateTime(selected.year, selected.month ?? 1);
+      _yearOnly = selected.month == null;
+      _day = selected.month == null ? null : selected.day;
     });
   }
 
@@ -302,12 +282,14 @@ class _SummaryCard extends StatelessWidget {
     required this.expense,
     required this.spent,
     required this.budget,
+    required this.showBudget,
     required this.onBudgetTap,
   });
   final double income;
   final double expense;
   final double spent;
   final double budget;
+  final bool showBudget;
   final VoidCallback onBudgetTap;
 
   @override
@@ -344,6 +326,7 @@ class _SummaryCard extends StatelessWidget {
               ],
             ),
           ),
+          if (showBudget)
           Material(
             color: Theme.of(context).scaffoldBackgroundColor,
             child: InkWell(

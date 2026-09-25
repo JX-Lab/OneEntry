@@ -156,6 +156,18 @@ class _SettingsPageState extends State<SettingsPage> {
                     trailing: const Icon(Icons.chevron_right),
                     onTap: _importBackup,
                   ),
+                  ListTile(
+                    title: const Text(
+                      '清除全部数据',
+                      style: TextStyle(color: Color(0xFFFA5151)),
+                    ),
+                    subtitle: const Text('删除全部本地记账数据'),
+                    trailing: const Icon(
+                      Icons.chevron_right,
+                      color: Color(0xFFFA5151),
+                    ),
+                    onTap: _clearAllData,
+                  ),
                 ],
               ),
             ],
@@ -251,6 +263,42 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   Future<void> _importBackup() async {
+    final ImportSource? source = await showModalBottomSheet<ImportSource>(
+      context: context,
+      builder: (BuildContext context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            const ListTile(
+              title: Text(
+                '选择导入来源',
+                style: TextStyle(fontWeight: FontWeight.w700),
+              ),
+              subtitle: Text('通常直接选择自动识别'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.auto_awesome_outlined),
+              title: const Text('自动识别'),
+              subtitle: const Text('自动判断一笔备份或同旅迁移 ZIP'),
+              onTap: () => Navigator.pop(context, ImportSource.automatic),
+            ),
+            ListTile(
+              leading: const Icon(Icons.archive_outlined),
+              title: const Text('同旅'),
+              subtitle: const Text('迁移 ZIP；只读取账本与成员颜色'),
+              onTap: () => Navigator.pop(context, ImportSource.tonglv),
+            ),
+            ListTile(
+              leading: const Icon(Icons.account_balance_wallet_outlined),
+              title: const Text('一笔完整备份'),
+              subtitle: const Text('JSON / ZIP / XLSX，可完整覆盖恢复'),
+              onTap: () => Navigator.pop(context, ImportSource.oneEntry),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (source == null || !mounted) return;
     final bool? confirmed = await showDialog<bool>(
       context: context,
       builder: (BuildContext context) => AlertDialog(
@@ -274,6 +322,7 @@ class _SettingsPageState extends State<SettingsPage> {
     try {
       final String? message = await BackupService.importBackup(
         widget.controller,
+        source: source,
       );
       await NotificationService.scheduleDaily(
         enabled: widget.controller.dailyReminderEnabled,
@@ -292,6 +341,55 @@ class _SettingsPageState extends State<SettingsPage> {
           context,
         ).showSnackBar(SnackBar(content: Text('导入失败：$error')));
       }
+    }
+  }
+
+  Future<void> _clearAllData() async {
+    final bool? first = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext context) => AlertDialog(
+        title: const Text('清除全部数据？'),
+        content: const Text('全部账目、账户、成员、预算和周期规则将被永久删除。建议先导出 ZIP 备份。'),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('继续'),
+          ),
+        ],
+      ),
+    );
+    if (first != true || !mounted) return;
+    final bool? second = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext context) => AlertDialog(
+        title: const Text('再次确认'),
+        content: const Text('此操作无法撤销。确定永久清除全部本地数据？'),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: const Color(0xFFFA5151),
+            ),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('永久清除'),
+          ),
+        ],
+      ),
+    );
+    if (second != true) return;
+    await widget.controller.clearAllData();
+    await NotificationService.scheduleDaily(enabled: false, hour: 20, minute: 0);
+    if (mounted) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('全部数据已清除')));
     }
   }
 }

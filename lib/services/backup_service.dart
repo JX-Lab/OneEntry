@@ -9,6 +9,7 @@ import 'system_file_service.dart';
 import 'tonglv_importer.dart';
 
 enum ExportFormat { json, zip, xlsx }
+enum ImportSource { automatic, oneEntry, tonglv }
 
 class BackupService {
   BackupService._();
@@ -51,7 +52,10 @@ class BackupService {
     }
   }
 
-  static Future<String?> importBackup(LedgerController controller) async {
+  static Future<String?> importBackup(
+    LedgerController controller, {
+    ImportSource source = ImportSource.automatic,
+  }) async {
     final PickedDocument? document = await SystemFileService.open(
       mimeTypes: const <String>[
         'application/json',
@@ -62,11 +66,21 @@ class BackupService {
     if (document == null) return null;
     Uint8List jsonBytes;
     final String lower = document.name.toLowerCase();
+    final bool tonglv =
+        lower.endsWith('.zip') && TonglvImporter.looksLikeTonglv(document.bytes);
+    if (source == ImportSource.tonglv && !tonglv) {
+      throw const FormatException('所选文件不是同旅迁移 ZIP');
+    }
+    if (source == ImportSource.oneEntry && tonglv) {
+      throw const FormatException('这是同旅迁移 ZIP，请选择“同旅”来源');
+    }
     if (lower.endsWith('.json')) {
+      if (source == ImportSource.tonglv) {
+        throw const FormatException('同旅迁移文件应为 ZIP');
+      }
       jsonBytes = document.bytes;
     } else if (lower.endsWith('.zip') || lower.endsWith('.xlsx')) {
-      if (lower.endsWith('.zip') &&
-          TonglvImporter.looksLikeTonglv(document.bytes)) {
+      if (tonglv) {
         final TonglvImportBundle bundle = TonglvImporter.parse(document.bytes);
         final result = await controller.importTonglv(bundle);
         return '同旅导入 ${result.imported} 条，跳过重复 ${result.skipped} 条；新增成员 ${result.members}、账户 ${result.accounts}';

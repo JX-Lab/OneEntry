@@ -177,30 +177,57 @@ class BudgetPage extends StatelessWidget {
     final TextEditingController input = TextEditingController(
       text: current > 0 ? current.toStringAsFixed(2) : '',
     );
-    final double? result = await showDialog<double>(
+    final double? result = await showModalBottomSheet<double>(
       context: context,
-      builder: (BuildContext context) => AlertDialog(
-        title: Text(title),
-        content: TextField(
-          controller: input,
-          autofocus: true,
-          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          decoration: const InputDecoration(prefixText: '¥ '),
+      isScrollControlled: true,
+      builder: (BuildContext context) => Padding(
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.viewInsetsOf(context).bottom,
         ),
-        actions: <Widget>[
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('取消'),
+        child: SafeArea(
+          top: false,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              SizedBox(
+                height: 52,
+                child: Row(
+                  children: <Widget>[
+                    TextButton(
+                      onPressed: () => Navigator.pop(context),
+                      child: const Text('取消'),
+                    ),
+                    Expanded(
+                      child: Text(
+                        title,
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(fontWeight: FontWeight.w700),
+                      ),
+                    ),
+                    TextButton(
+                      onPressed: () =>
+                          Navigator.pop(context, double.tryParse(input.text)),
+                      child: const Text('保存'),
+                    ),
+                  ],
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 6, 16, 20),
+                child: TextField(
+                  controller: input,
+                  autofocus: true,
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
+                  decoration: const InputDecoration(prefixText: '¥ '),
+                ),
+              ),
+            ],
           ),
-          FilledButton(
-            onPressed: () =>
-                Navigator.pop(context, double.tryParse(input.text)),
-            child: const Text('保存'),
-          ),
-        ],
+        ),
       ),
     );
-    input.dispose();
     return result;
   }
 }

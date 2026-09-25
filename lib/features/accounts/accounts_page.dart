@@ -100,47 +100,52 @@ class AccountsPage extends StatelessWidget {
       text: account?.name ?? '',
     );
     final TextEditingController balance = TextEditingController();
-    final bool? save = await showDialog<bool>(
+    final bool? save = await showModalBottomSheet<bool>(
       context: context,
-      builder: (BuildContext context) => AlertDialog(
-        title: Text(account == null ? '新增账户' : '编辑账户'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: <Widget>[
-            TextField(
-              controller: name,
-              autofocus: true,
-              decoration: const InputDecoration(labelText: '名称'),
-            ),
-            if (account == null) ...<Widget>[
-              const SizedBox(height: 12),
-              TextField(
-                controller: balance,
-                keyboardType: const TextInputType.numberWithOptions(
-                  decimal: true,
-                  signed: true,
+      isScrollControlled: true,
+      builder: (BuildContext context) => Padding(
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.viewInsetsOf(context).bottom,
+        ),
+        child: SafeArea(
+          top: false,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              _SheetBar(
+                title: account == null ? '新增账户' : '编辑账户',
+                onSave: () => Navigator.pop(context, true),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 6, 16, 20),
+                child: Column(
+                  children: <Widget>[
+                    TextField(
+                      controller: name,
+                      autofocus: true,
+                      decoration: const InputDecoration(labelText: '名称'),
+                    ),
+                    if (account == null) ...<Widget>[
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: balance,
+                        keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true,
+                          signed: true,
+                        ),
+                        decoration: const InputDecoration(labelText: '初始余额'),
+                      ),
+                    ],
+                  ],
                 ),
-                decoration: const InputDecoration(labelText: '初始余额'),
               ),
             ],
-          ],
+          ),
         ),
-        actions: <Widget>[
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('保存'),
-          ),
-        ],
       ),
     );
     final String value = name.text.trim();
     final double opening = double.tryParse(balance.text) ?? 0;
-    name.dispose();
-    balance.dispose();
     if (save != true || value.isEmpty) return;
     if (account == null) {
       await controller.addAccount(value, opening);
@@ -148,6 +153,33 @@ class AccountsPage extends StatelessWidget {
       await controller.updateAccount(account.id, value);
     }
   }
+}
+
+class _SheetBar extends StatelessWidget {
+  const _SheetBar({required this.title, required this.onSave});
+  final String title;
+  final VoidCallback onSave;
+
+  @override
+  Widget build(BuildContext context) => SizedBox(
+    height: 52,
+    child: Row(
+      children: <Widget>[
+        TextButton(
+          onPressed: () => Navigator.pop(context, false),
+          child: const Text('取消'),
+        ),
+        Expanded(
+          child: Text(
+            title,
+            textAlign: TextAlign.center,
+            style: const TextStyle(fontWeight: FontWeight.w700),
+          ),
+        ),
+        TextButton(onPressed: onSave, child: const Text('保存')),
+      ],
+    ),
+  );
 }
 
 class _AccountTile extends StatelessWidget {
@@ -166,10 +198,8 @@ class _AccountTile extends StatelessWidget {
   Widget build(BuildContext context) => Dismissible(
     key: ValueKey('account-${account.id}-$archived'),
     direction: DismissDirection.endToStart,
-    confirmDismiss: (_) async {
-      onArchive();
-      return false;
-    },
+    confirmDismiss: (_) async => true,
+    onDismissed: (_) => onArchive(),
     background: Container(
       alignment: Alignment.centerRight,
       padding: const EdgeInsets.only(right: 22),

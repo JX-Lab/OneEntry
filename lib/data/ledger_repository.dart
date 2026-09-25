@@ -403,6 +403,70 @@ class LedgerRepository {
     );
   }
 
+  Future<void> clearAllData() async {
+    final Database db = await _appDatabase.database;
+    final int now = DateTime.now().millisecondsSinceEpoch;
+    await db.transaction((Transaction txn) async {
+      for (final String table in <String>[
+        'transaction_members',
+        'transactions',
+        'budgets',
+        'recurring_rules',
+        'import_jobs',
+        'categories',
+        'members',
+        'accounts',
+        'settings',
+      ]) {
+        await txn.delete(table);
+      }
+      await txn.insert('accounts', <String, Object?>{
+        'uuid': _uuid('account', now),
+        'name': '现金',
+        'type': 'cash',
+        'icon': 'cash',
+        'opening_balance_minor': 0,
+        'balance_minor': 0,
+        'sort_order': 0,
+        'created_at': now,
+        'updated_at': now,
+      });
+      await txn.insert('members', <String, Object?>{
+        'uuid': _uuid('member', now),
+        'name': '我',
+        'color_value': 0xFF2E7CF6,
+        'sort_order': 0,
+        'created_at': now,
+        'updated_at': now,
+      });
+      const List<String> defaults = <String>[
+        '餐饮',
+        '交通',
+        '购物',
+        '居住',
+        '娱乐',
+        '医疗',
+        '学习',
+        '旅行',
+        '红包',
+        '工资',
+        '理财',
+        '其他',
+      ];
+      for (int index = 0; index < defaults.length; index++) {
+        await txn.insert('categories', <String, Object?>{
+          'uuid': _uuid('category', now + index),
+          'name': defaults[index],
+          'type': defaults[index] == '工资' ? 'income' : 'both',
+          'icon': 'tag',
+          'sort_order': index,
+          'created_at': now,
+          'updated_at': now,
+        });
+      }
+    });
+  }
+
   Future<void> setDailyReminder({
     required bool enabled,
     required int hour,
