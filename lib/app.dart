@@ -21,6 +21,7 @@ class OneEntryApp extends StatefulWidget {
 }
 
 class _OneEntryAppState extends State<OneEntryApp> {
+  final GlobalKey<NavigatorState> _navigatorKey = GlobalKey<NavigatorState>();
   ThemeMode _themeMode = ThemeMode.system;
 
   @override
@@ -30,23 +31,25 @@ class _OneEntryAppState extends State<OneEntryApp> {
   }
 
   Future<void> _push(Widget page) async {
-    await Navigator.of(
-      context,
-    ).push(MaterialPageRoute<void>(builder: (_) => page));
+    await _navigatorKey.currentState!.push(
+      MaterialPageRoute<void>(builder: (_) => page),
+    );
   }
 
   Future<void> _addEntry() async {
-    final LedgerEntry? result = await Navigator.of(context).push<LedgerEntry>(
-      MaterialPageRoute<LedgerEntry>(
-        builder: (_) => EntrySheet(controller: widget.controller),
-      ),
-    );
+    final LedgerEntry? result = await _navigatorKey.currentState!
+        .push<LedgerEntry>(
+          MaterialPageRoute<LedgerEntry>(
+            builder: (_) => EntrySheet(controller: widget.controller),
+          ),
+        );
     if (result != null) await widget.controller.addEntry(result);
   }
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      navigatorKey: _navigatorKey,
       title: '一笔',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.light(),

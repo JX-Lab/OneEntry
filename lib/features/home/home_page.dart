@@ -30,6 +30,8 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> {
   final TextEditingController _searchController = TextEditingController();
+  late DateTime _month = DateTime(DateTime.now().year, DateTime.now().month);
+  int? _day;
   bool _searching = false;
 
   @override
@@ -40,13 +42,19 @@ class _HomePageState extends State<HomePage> {
 
   @override
   Widget build(BuildContext context) {
-    final DateTime month = DateTime(DateTime.now().year, DateTime.now().month);
+    final DateTime month = _month;
     return AnimatedBuilder(
       animation: widget.controller,
       builder: (BuildContext context, Widget? child) {
         final String query = _searchController.text.trim().toLowerCase();
-        final List<LedgerEntry>
-        entries = widget.controller.entriesForMonth(month).where((
+        final List<LedgerEntry> periodEntries = widget.controller
+            .entriesForMonth(month)
+            .where(
+              (LedgerEntry entry) =>
+                  _day == null || entry.occurredAt.day == _day,
+            )
+            .toList();
+        final List<LedgerEntry> entries = periodEntries.where((
           LedgerEntry entry,
         ) {
           if (query.isEmpty) return true;
@@ -62,8 +70,12 @@ class _HomePageState extends State<HomePage> {
               .toLowerCase()
               .contains(query);
         }).toList();
-        final double income = widget.controller.incomeForMonth(month);
-        final double expense = widget.controller.expenseForMonth(month);
+        final double income = periodEntries
+            .where((entry) => entry.type == EntryType.income)
+            .fold(0.0, (sum, entry) => sum + entry.amount);
+        final double expense = periodEntries
+            .where((entry) => entry.type == EntryType.expense)
+            .fold(0.0, (sum, entry) => sum + entry.amount);
         return Scaffold(
           appBar: AppBar(
             centerTitle: true,
@@ -77,11 +89,30 @@ class _HomePageState extends State<HomePage> {
                     ),
                     onChanged: (_) => setState(() {}),
                   )
-                : Text(
-                    '${month.year}年${month.month}月',
-                    style: const TextStyle(
-                      fontSize: 17,
-                      fontWeight: FontWeight.w600,
+                : InkWell(
+                    borderRadius: BorderRadius.circular(8),
+                    onTap: _openPeriodPicker,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 6,
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: <Widget>[
+                          Text(
+                            _day == null
+                                ? '${month.year}年${month.month}月'
+                                : '${month.year}年${month.month}月${_day}日',
+                            style: const TextStyle(
+                              fontSize: 17,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          const SizedBox(width: 4),
+                          const Icon(Icons.arrow_drop_down, size: 18),
+                        ],
+                      ),
                     ),
                   ),
             actions: <Widget>[
@@ -189,6 +220,53 @@ class _HomePageState extends State<HomePage> {
         );
       },
     );
+  }
+
+  Future<void> _openPeriodPicker() async {
+    final String? mode = await showModalBottomSheet<String>(
+      context: context,
+      builder: (BuildContext context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            ListTile(
+              title: const Text('本月'),
+              onTap: () => Navigator.pop(context, 'current'),
+            ),
+            ListTile(
+              title: const Text('选择月份'),
+              onTap: () => Navigator.pop(context, 'month'),
+            ),
+            ListTile(
+              title: const Text('选择具体日期'),
+              onTap: () => Navigator.pop(context, 'day'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (mode == null || !mounted) return;
+    if (mode == 'current') {
+      final DateTime now = DateTime.now();
+      setState(() {
+        _month = DateTime(now.year, now.month);
+        _day = null;
+      });
+      return;
+    }
+    final DateTime now = DateTime.now();
+    final DateTime initial = DateTime(_month.year, _month.month, _day ?? 1);
+    final DateTime? picked = await showDatePicker(
+      context: context,
+      initialDate: initial.isAfter(now) ? now : initial,
+      firstDate: DateTime(now.year - 20),
+      lastDate: now,
+    );
+    if (picked == null) return;
+    setState(() {
+      _month = DateTime(picked.year, picked.month);
+      _day = mode == 'day' ? picked.day : null;
+    });
   }
 
   List<Widget> _groupedEntries(List<LedgerEntry> entries) {
@@ -319,7 +397,11 @@ class _SummaryValue extends StatelessWidget {
       children: <Widget>[
         Text(
           label,
-          style: const TextStyle(color: Colors.white70, fontSize: 12),
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 16,
+            fontWeight: FontWeight.w800,
+          ),
         ),
         const SizedBox(height: 4),
         Text(
@@ -393,7 +475,7 @@ class _EntryTile extends StatelessWidget {
             transfer
                 ? Icons.swap_horiz
                 : expense
-                ? Icons.restaurant_outlined
+                ? _categoryIcon(entry.category)
                 : Icons.payments_outlined,
             size: 21,
           ),
@@ -437,3 +519,16 @@ class _EntryTile extends StatelessWidget {
     );
   }
 }
+
+IconData _categoryIcon(String category) => switch (category) {
+  '交通' => Icons.directions_car_outlined,
+  '购物' => Icons.shopping_bag_outlined,
+  '居住' => Icons.home_outlined,
+  '娱乐' => Icons.sports_esports_outlined,
+  '医疗' => Icons.medical_services_outlined,
+  '学习' => Icons.menu_book_outlined,
+  '旅行' => Icons.flight_outlined,
+  '红包' => Icons.card_giftcard_outlined,
+  '理财' => Icons.show_chart,
+  _ => Icons.restaurant_outlined,
+};
