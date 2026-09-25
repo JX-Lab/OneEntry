@@ -37,6 +37,13 @@ class LedgerController extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<Map<String, Object?>> exportBackup() => _repository.exportBackup();
+
+  Future<void> replaceFromBackup(Map<String, Object?> backup) async {
+    await _repository.replaceFromBackup(backup);
+    await initialize();
+  }
+
   List<LedgerEntry> entriesForMonth(DateTime month) {
     return entries
         .where(

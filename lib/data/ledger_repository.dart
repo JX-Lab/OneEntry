@@ -28,6 +28,18 @@ class LedgerRepository {
 
   final AppDatabase _appDatabase;
 
+  static const List<String> backupTables = <String>[
+    'accounts',
+    'members',
+    'categories',
+    'recurring_rules',
+    'transactions',
+    'transaction_members',
+    'budgets',
+    'settings',
+    'import_jobs',
+  ];
+
   Future<LedgerSnapshot> load() async {
     final Database db = await _appDatabase.database;
     final List<LedgerAccount> accounts = (await db.query(
@@ -226,6 +238,59 @@ class LedgerRepository {
       }, conflictAlgorithm: ConflictAlgorithm.replace);
     }
     await batch.commit(noResult: true);
+  }
+
+  Future<Map<String, Object?>> exportBackup() async {
+    final Database db = await _appDatabase.database;
+    final Map<String, Object?> tables = <String, Object?>{};
+    for (final String table in backupTables) {
+      tables[table] = await db.query(table);
+    }
+    return <String, Object?>{
+      'format': 'oneentry-backup',
+      'schemaVersion': AppDatabase.schemaVersion,
+      'exportedAt': DateTime.now().toUtc().toIso8601String(),
+      'tables': tables,
+    };
+  }
+
+  Future<void> replaceFromBackup(Map<String, Object?> backup) async {
+    if (backup['format'] != 'oneentry-backup') {
+      throw const FormatException('不是一笔的完整备份');
+    }
+    final int sourceVersion = (backup['schemaVersion'] as num?)?.toInt() ?? 0;
+    if (sourceVersion > AppDatabase.schemaVersion) {
+      throw FormatException(
+        '备份版本 $sourceVersion 高于当前数据库版本 ${AppDatabase.schemaVersion}',
+      );
+    }
+    final Map<String, Object?> tables = Map<String, Object?>.from(
+      backup['tables'] as Map,
+    );
+    final Database db = await _appDatabase.database;
+    await db.transaction((Transaction txn) async {
+      for (final String table in <String>[
+        'transaction_members',
+        'transactions',
+        'budgets',
+        'recurring_rules',
+        'import_jobs',
+        'categories',
+        'members',
+        'accounts',
+        'settings',
+      ]) {
+        await txn.delete(table);
+      }
+      for (final String table in backupTables) {
+        final List<Object?> rows = List<Object?>.from(
+          tables[table] as List? ?? const <Object?>[],
+        );
+        for (final Object? value in rows) {
+          await txn.insert(table, Map<String, Object?>.from(value as Map));
+        }
+      }
+    });
   }
 
   LedgerAccount _accountFromRow(Map<String, Object?> row) => LedgerAccount(
