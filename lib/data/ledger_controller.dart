@@ -13,6 +13,9 @@ class LedgerController extends ChangeNotifier {
   final List<LedgerEntry> entries = <LedgerEntry>[];
 
   double monthlyBudget = 0;
+  bool dailyReminderEnabled = false;
+  int dailyReminderHour = 20;
+  int dailyReminderMinute = 0;
   bool initialized = false;
 
   Future<void> initialize() async {
@@ -27,6 +30,9 @@ class LedgerController extends ChangeNotifier {
       ..clear()
       ..addAll(snapshot.entries);
     monthlyBudget = snapshot.monthlyBudget;
+    dailyReminderEnabled = snapshot.dailyReminderEnabled;
+    dailyReminderHour = snapshot.dailyReminderHour;
+    dailyReminderMinute = snapshot.dailyReminderMinute;
     initialized = true;
     notifyListeners();
   }
@@ -97,6 +103,22 @@ class LedgerController extends ChangeNotifier {
   Future<void> setMonthlyBudget(DateTime month, double amount) async {
     await _repository.setMonthlyBudget(month, amount);
     monthlyBudget = amount;
+    notifyListeners();
+  }
+
+  Future<void> setDailyReminder({
+    required bool enabled,
+    required int hour,
+    required int minute,
+  }) async {
+    await _repository.setDailyReminder(
+      enabled: enabled,
+      hour: hour,
+      minute: minute,
+    );
+    dailyReminderEnabled = enabled;
+    dailyReminderHour = hour;
+    dailyReminderMinute = minute;
     notifyListeners();
   }
 }

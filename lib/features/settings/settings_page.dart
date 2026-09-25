@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../data/ledger_controller.dart';
+import '../../services/notification_service.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({
@@ -20,7 +21,6 @@ class SettingsPage extends StatefulWidget {
 
 class _SettingsPageState extends State<SettingsPage> {
   bool _multi = true;
-  bool _dailyReminder = false;
   bool _highContrast = false;
   bool _readerHints = true;
   bool _haptics = true;
@@ -56,10 +56,17 @@ class _SettingsPageState extends State<SettingsPage> {
                   SwitchListTile(
                     title: const Text('提醒记账'),
                     subtitle: const Text('今天没有记账时提醒'),
-                    value: _dailyReminder,
-                    onChanged: (bool value) =>
-                        setState(() => _dailyReminder = value),
+                    value: widget.controller.dailyReminderEnabled,
+                    onChanged: _toggleDailyReminder,
                   ),
+                  if (widget.controller.dailyReminderEnabled)
+                    ListTile(
+                      title: const Text('每天提醒时间'),
+                      trailing: Text(
+                        '${widget.controller.dailyReminderHour.toString().padLeft(2, '0')}:${widget.controller.dailyReminderMinute.toString().padLeft(2, '0')}  ›',
+                      ),
+                      onTap: _pickReminderTime,
+                    ),
                   ListTile(
                     title: const Text('周期账目'),
                     trailing: Text(
@@ -144,6 +151,50 @@ class _SettingsPageState extends State<SettingsPage> {
         ),
       ],
     );
+  }
+
+  Future<void> _toggleDailyReminder(bool enabled) async {
+    if (enabled && !await NotificationService.requestPermission()) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('需要通知权限才能开启提醒')));
+      }
+      return;
+    }
+    await widget.controller.setDailyReminder(
+      enabled: enabled,
+      hour: widget.controller.dailyReminderHour,
+      minute: widget.controller.dailyReminderMinute,
+    );
+    await NotificationService.scheduleDaily(
+      enabled: enabled,
+      hour: widget.controller.dailyReminderHour,
+      minute: widget.controller.dailyReminderMinute,
+    );
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _pickReminderTime() async {
+    final TimeOfDay? selected = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay(
+        hour: widget.controller.dailyReminderHour,
+        minute: widget.controller.dailyReminderMinute,
+      ),
+    );
+    if (selected == null) return;
+    await widget.controller.setDailyReminder(
+      enabled: true,
+      hour: selected.hour,
+      minute: selected.minute,
+    );
+    await NotificationService.scheduleDaily(
+      enabled: true,
+      hour: selected.hour,
+      minute: selected.minute,
+    );
+    if (mounted) setState(() {});
   }
 }
 
