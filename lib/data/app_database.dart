@@ -16,7 +16,6 @@ class AppDatabase {
       version: schemaVersion,
       onConfigure: (Database db) async {
         await db.execute('PRAGMA foreign_keys = ON');
-        await db.execute('PRAGMA journal_mode = WAL');
       },
       onCreate: (Database db, int version) async {
         await _createVersion1(db);
