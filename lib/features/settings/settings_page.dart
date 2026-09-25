@@ -247,8 +247,10 @@ class _SettingsPageState extends State<SettingsPage> {
     final bool? confirmed = await showDialog<bool>(
       context: context,
       builder: (BuildContext context) => AlertDialog(
-        title: const Text('导入并覆盖当前数据？'),
-        content: const Text('导入前建议先导出 ZIP 备份。文件校验通过后，当前数据库会被完整替换。'),
+        title: const Text('导入数据？'),
+        content: const Text(
+          '导入前建议先导出 ZIP 备份。一笔完整备份会覆盖数据库；同旅迁移 ZIP 会追加账目并自动跳过重复记录。',
+        ),
         actions: <Widget>[
           TextButton(
             onPressed: () => Navigator.pop(context, false),

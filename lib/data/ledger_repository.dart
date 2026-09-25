@@ -1,6 +1,7 @@
 import 'package:sqflite/sqflite.dart';
 
 import '../models/ledger_models.dart';
+import '../services/tonglv_importer.dart';
 import 'app_database.dart';
 
 class LedgerSnapshot {
@@ -290,6 +291,163 @@ class LedgerRepository {
           await txn.insert(table, Map<String, Object?>.from(value as Map));
         }
       }
+    });
+  }
+
+  Future<({int imported, int skipped, int members, int accounts})> importTonglv(
+    TonglvImportBundle bundle,
+  ) async {
+    final Database db = await _appDatabase.database;
+    return db.transaction((Transaction txn) async {
+      final int now = DateTime.now().millisecondsSinceEpoch;
+      final Map<String, int> memberIds = <String, int>{};
+      int newMembers = 0;
+      for (final TonglvMember member in bundle.members) {
+        final List<Map<String, Object?>> rows = await txn.query(
+          'members',
+          columns: <String>['id'],
+          where: 'name = ?',
+          whereArgs: <Object?>[member.name],
+          limit: 1,
+        );
+        final int localId;
+        if (rows.isNotEmpty) {
+          localId = rows.first['id'] as int;
+          await txn.update(
+            'members',
+            <String, Object?>{
+              'color_value': member.colorValue,
+              'archived_at': member.archived ? now : null,
+              'updated_at': now,
+            },
+            where: 'id = ?',
+            whereArgs: <Object?>[localId],
+          );
+        } else {
+          localId = await txn.insert('members', <String, Object?>{
+            'uuid': 'tonglv-member-${member.sourceId}',
+            'name': member.name,
+            'color_value': member.colorValue,
+            'sort_order': memberIds.length,
+            'archived_at': member.archived ? now : null,
+            'created_at': now,
+            'updated_at': now,
+          });
+          newMembers++;
+        }
+        memberIds[member.sourceId] = localId;
+      }
+
+      final Map<String, int> accountIds = <String, int>{};
+      int newAccounts = 0;
+      for (final TonglvAccount account in bundle.accounts) {
+        final List<Map<String, Object?>> rows = await txn.query(
+          'accounts',
+          columns: <String>['id'],
+          where: 'name = ?',
+          whereArgs: <Object?>[account.name],
+          limit: 1,
+        );
+        final int localId;
+        if (rows.isNotEmpty) {
+          localId = rows.first['id'] as int;
+        } else {
+          localId = await txn.insert('accounts', <String, Object?>{
+            'uuid': 'tonglv-account-${account.sourceId}',
+            'name': account.name,
+            'type': 'wallet',
+            'icon': 'wallet',
+            'opening_balance_minor': 0,
+            'balance_minor': 0,
+            'sort_order': accountIds.length,
+            'created_at': now,
+            'updated_at': now,
+          });
+          newAccounts++;
+        }
+        accountIds[account.sourceId] = localId;
+      }
+      final int fallbackAccountId = accountIds.values.isNotEmpty
+          ? accountIds.values.first
+          : ((await txn.query(
+                  'accounts',
+                  columns: <String>['id'],
+                  where: 'archived_at IS NULL',
+                  orderBy: 'sort_order, id',
+                  limit: 1,
+                )).first['id']
+                as int);
+
+      int imported = 0;
+      int skipped = 0;
+      for (final TonglvEntry entry in bundle.entries) {
+        final int duplicate =
+            Sqflite.firstIntValue(
+              await txn.rawQuery(
+                'SELECT COUNT(*) FROM transactions WHERE source_app = ? AND source_row_key = ?',
+                <Object?>['tonglv', entry.sourceId],
+              ),
+            ) ??
+            0;
+        if (duplicate > 0) {
+          skipped++;
+          continue;
+        }
+        final int categoryId = await _categoryId(txn, entry.category, now);
+        final int accountId =
+            accountIds[entry.accountSourceId] ?? fallbackAccountId;
+        final String type = entry.amount < 0 ? 'expense' : 'income';
+        final int amountMinor = _minor(entry.amount.abs());
+        final int transactionId = await txn.insert(
+          'transactions',
+          <String, Object?>{
+            'uuid': 'tonglv-transaction-${entry.sourceId}',
+            'type': type,
+            'amount_minor': amountMinor,
+            'account_id': accountId,
+            'category_id': categoryId,
+            'occurred_at': entry.occurredAt.millisecondsSinceEpoch,
+            'local_date': _dateKey(entry.occurredAt),
+            'timezone': entry.occurredAt.timeZoneName,
+            'note': <String>[
+              entry.title,
+              entry.note,
+            ].where((value) => value.isNotEmpty).join(' · '),
+            'source_app': 'tonglv',
+            'source_row_key': entry.sourceId,
+            'created_at': now,
+            'updated_at': now,
+          },
+        );
+        final List<int> linkedMembers = entry.memberSourceIds
+            .map((sourceId) => memberIds[sourceId])
+            .whereType<int>()
+            .toList();
+        await _insertMembers(txn, transactionId, linkedMembers, amountMinor);
+        final int delta = type == 'expense' ? -amountMinor : amountMinor;
+        await txn.rawUpdate(
+          'UPDATE accounts SET balance_minor = balance_minor + ?, updated_at = ? WHERE id = ?',
+          <Object?>[delta, now, accountId],
+        );
+        imported++;
+      }
+      final String signature =
+          'v${bundle.backupVersion}-${bundle.entries.length}-${bundle.entries.isEmpty ? 'empty' : bundle.entries.first.sourceId}';
+      await txn.insert('import_jobs', <String, Object?>{
+        'uuid': _uuid('import', now),
+        'source_app': 'tonglv',
+        'file_name': '同旅迁移备份',
+        'file_hash': signature,
+        'status': 'complete',
+        'summary_json': '{"imported":$imported,"skipped":$skipped}',
+        'created_at': now,
+      }, conflictAlgorithm: ConflictAlgorithm.ignore);
+      return (
+        imported: imported,
+        skipped: skipped,
+        members: newMembers,
+        accounts: newAccounts,
+      );
     });
   }
 

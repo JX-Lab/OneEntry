@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 
 import '../models/ledger_models.dart';
+import '../services/tonglv_importer.dart';
 import 'ledger_repository.dart';
 
 class LedgerController extends ChangeNotifier {
@@ -42,6 +43,14 @@ class LedgerController extends ChangeNotifier {
   Future<void> replaceFromBackup(Map<String, Object?> backup) async {
     await _repository.replaceFromBackup(backup);
     await initialize();
+  }
+
+  Future<({int imported, int skipped, int members, int accounts})> importTonglv(
+    TonglvImportBundle bundle,
+  ) async {
+    final result = await _repository.importTonglv(bundle);
+    await initialize();
+    return result;
   }
 
   List<LedgerEntry> entriesForMonth(DateTime month) {

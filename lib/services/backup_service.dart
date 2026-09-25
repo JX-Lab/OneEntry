@@ -6,6 +6,7 @@ import 'package:archive/archive.dart';
 import '../data/ledger_controller.dart';
 import '../models/ledger_models.dart';
 import 'system_file_service.dart';
+import 'tonglv_importer.dart';
 
 enum ExportFormat { json, zip, xlsx }
 
@@ -64,6 +65,12 @@ class BackupService {
     if (lower.endsWith('.json')) {
       jsonBytes = document.bytes;
     } else if (lower.endsWith('.zip') || lower.endsWith('.xlsx')) {
+      if (lower.endsWith('.zip') &&
+          TonglvImporter.looksLikeTonglv(document.bytes)) {
+        final TonglvImportBundle bundle = TonglvImporter.parse(document.bytes);
+        final result = await controller.importTonglv(bundle);
+        return '同旅导入 ${result.imported} 条，跳过重复 ${result.skipped} 条；新增成员 ${result.members}、账户 ${result.accounts}';
+      }
       final Archive archive = ZipDecoder().decodeBytes(document.bytes);
       final String expected = lower.endsWith('.xlsx')
           ? 'oneentry/backup.json'
