@@ -275,6 +275,12 @@ class _SettingsPageState extends State<SettingsPage> {
       final String? message = await BackupService.importBackup(
         widget.controller,
       );
+      await NotificationService.scheduleDaily(
+        enabled: widget.controller.dailyReminderEnabled,
+        hour: widget.controller.dailyReminderHour,
+        minute: widget.controller.dailyReminderMinute,
+      );
+      await NotificationService.scheduleRecurringCheck();
       if (mounted && message != null) {
         ScaffoldMessenger.of(
           context,
