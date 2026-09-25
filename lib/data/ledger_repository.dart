@@ -13,6 +13,9 @@ class LedgerSnapshot {
     required this.dailyReminderEnabled,
     required this.dailyReminderHour,
     required this.dailyReminderMinute,
+    required this.categoryBudgets,
+    required this.recurringRules,
+    required this.categories,
   });
 
   final List<LedgerAccount> accounts;
@@ -22,6 +25,9 @@ class LedgerSnapshot {
   final bool dailyReminderEnabled;
   final int dailyReminderHour;
   final int dailyReminderMinute;
+  final Map<String, double> categoryBudgets;
+  final List<RecurringRule> recurringRules;
+  final List<String> categories;
 }
 
 class LedgerRepository {
@@ -92,6 +98,32 @@ class LedgerRepository {
       for (final Map<String, Object?> row in await db.query('settings'))
         row['key'] as String: row['value'] as String,
     };
+    final List<Map<String, Object?>> categoryBudgetRows = await db.rawQuery(
+      '''
+      SELECT c.name, b.amount_minor
+      FROM budgets b
+      JOIN categories c ON c.id = b.category_id
+      WHERE b.period = ?
+      ORDER BY c.sort_order, c.id
+      ''',
+      <Object?>[period],
+    );
+    final Map<String, double> categoryBudgets = <String, double>{
+      for (final Map<String, Object?> row in categoryBudgetRows)
+        row['name'] as String: (row['amount_minor'] as int) / 100,
+    };
+    final List<Map<String, Object?>> categoryRows = await db.query(
+      'categories',
+      columns: <String>['name'],
+      where: 'archived_at IS NULL',
+      orderBy: 'sort_order, id',
+    );
+    final List<Map<String, Object?>> ruleRows = await db.rawQuery('''
+      SELECT r.*, c.name AS category_name
+      FROM recurring_rules r
+      LEFT JOIN categories c ON c.id = r.category_id
+      ORDER BY r.enabled DESC, r.id DESC
+    ''');
     return LedgerSnapshot(
       accounts: accounts,
       members: members,
@@ -102,6 +134,9 @@ class LedgerRepository {
           int.tryParse(settings['daily_reminder_hour'] ?? '') ?? 20,
       dailyReminderMinute:
           int.tryParse(settings['daily_reminder_minute'] ?? '') ?? 0,
+      categoryBudgets: categoryBudgets,
+      recurringRules: ruleRows.map(_ruleFromRow).toList(),
+      categories: categoryRows.map((row) => row['name'] as String).toList(),
     );
   }
 
@@ -217,6 +252,155 @@ class LedgerRepository {
         });
       }
     });
+  }
+
+  Future<void> setCategoryBudget(
+    DateTime month,
+    String category,
+    double amount,
+  ) async {
+    final Database db = await _appDatabase.database;
+    final int now = DateTime.now().millisecondsSinceEpoch;
+    final int categoryId = await _categoryId(db, category, now);
+    final String period =
+        '${month.year}-${month.month.toString().padLeft(2, '0')}';
+    await db.transaction((Transaction txn) async {
+      await txn.delete(
+        'budgets',
+        where: 'period = ? AND category_id = ?',
+        whereArgs: <Object?>[period, categoryId],
+      );
+      if (amount > 0) {
+        await txn.insert('budgets', <String, Object?>{
+          'period': period,
+          'category_id': categoryId,
+          'amount_minor': _minor(amount),
+          'created_at': now,
+          'updated_at': now,
+        });
+      }
+    });
+  }
+
+  Future<void> addAccount({
+    required String name,
+    required double openingBalance,
+    String icon = 'wallet',
+  }) async {
+    final Database db = await _appDatabase.database;
+    final int now = DateTime.now().millisecondsSinceEpoch;
+    final int order =
+        Sqflite.firstIntValue(
+          await db.rawQuery(
+            'SELECT COALESCE(MAX(sort_order), -1) + 1 FROM accounts',
+          ),
+        ) ??
+        0;
+    await db.insert('accounts', <String, Object?>{
+      'uuid': _uuid('account', now),
+      'name': name,
+      'type': 'wallet',
+      'icon': icon,
+      'opening_balance_minor': _minor(openingBalance),
+      'balance_minor': _minor(openingBalance),
+      'sort_order': order,
+      'created_at': now,
+      'updated_at': now,
+    });
+  }
+
+  Future<void> updateAccount(int id, {required String name}) async {
+    final Database db = await _appDatabase.database;
+    await db.update(
+      'accounts',
+      <String, Object?>{
+        'name': name,
+        'updated_at': DateTime.now().millisecondsSinceEpoch,
+      },
+      where: 'id = ?',
+      whereArgs: <Object?>[id],
+    );
+  }
+
+  Future<void> addMember({
+    required String name,
+    required int colorValue,
+  }) async {
+    final Database db = await _appDatabase.database;
+    final int now = DateTime.now().millisecondsSinceEpoch;
+    final int order =
+        Sqflite.firstIntValue(
+          await db.rawQuery(
+            'SELECT COALESCE(MAX(sort_order), -1) + 1 FROM members',
+          ),
+        ) ??
+        0;
+    await db.insert('members', <String, Object?>{
+      'uuid': _uuid('member', now),
+      'name': name,
+      'color_value': colorValue,
+      'sort_order': order,
+      'created_at': now,
+      'updated_at': now,
+    });
+  }
+
+  Future<void> updateMember(
+    int id, {
+    required String name,
+    required int colorValue,
+  }) async {
+    final Database db = await _appDatabase.database;
+    await db.update(
+      'members',
+      <String, Object?>{
+        'name': name,
+        'color_value': colorValue,
+        'updated_at': DateTime.now().millisecondsSinceEpoch,
+      },
+      where: 'id = ?',
+      whereArgs: <Object?>[id],
+    );
+  }
+
+  Future<void> saveRecurringRule(RecurringRule rule) async {
+    final Database db = await _appDatabase.database;
+    final int now = DateTime.now().millisecondsSinceEpoch;
+    final int categoryId = await _categoryId(db, rule.category, now);
+    final Map<String, Object?> values = <String, Object?>{
+      'name': rule.name,
+      'type': rule.type.name,
+      'amount_minor': _minor(rule.amount),
+      'account_id': rule.accountId,
+      'category_id': categoryId,
+      'frequency': rule.frequency,
+      'anchor_date': _dateKey(rule.anchorDate),
+      'enabled': rule.enabled ? 1 : 0,
+      'updated_at': now,
+    };
+    if (rule.id == 0) {
+      await db.insert('recurring_rules', <String, Object?>{
+        ...values,
+        'uuid': _uuid('rule', now),
+        'created_at': now,
+      });
+    } else {
+      await db.update(
+        'recurring_rules',
+        values,
+        where: 'id = ?',
+        whereArgs: <Object?>[rule.id],
+      );
+    }
+  }
+
+  Future<void> deleteRecurringRule(int id) async {
+    final Database db = await _appDatabase.database;
+    await db.delete(
+      'recurring_rules',
+      where: 'id = ?',
+      whereArgs: <Object?>[id],
+    );
   }
 
   Future<void> setDailyReminder({
@@ -463,6 +647,18 @@ class LedgerRepository {
     name: row['name'] as String,
     colorValue: row['color_value'] as int,
     archived: row['archived_at'] != null,
+  );
+
+  RecurringRule _ruleFromRow(Map<String, Object?> row) => RecurringRule(
+    id: row['id'] as int,
+    name: row['name'] as String,
+    type: EntryType.values.byName(row['type'] as String),
+    amount: (row['amount_minor'] as int) / 100,
+    frequency: row['frequency'] as String,
+    anchorDate: DateTime.parse(row['anchor_date'] as String),
+    accountId: row['account_id'] as int,
+    category: (row['category_name'] as String?) ?? '其他',
+    enabled: (row['enabled'] as int) == 1,
   );
 
   LedgerEntry _entryFromRow(Map<String, Object?> row, List<int> memberIds) {

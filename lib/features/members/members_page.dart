@@ -7,23 +7,36 @@ import '../../theme/app_theme.dart';
 class MembersPage extends StatelessWidget {
   const MembersPage({required this.controller, super.key});
   final LedgerController controller;
+  static const List<int> colors = <int>[
+    0xFF2E7CF6,
+    0xFFF5A623,
+    0xFFEB4E6B,
+    0xFF18B681,
+    0xFF8E6BE0,
+    0xFF00B0D6,
+    0xFFE8652B,
+    0xFF5B6B7A,
+  ];
 
   @override
   Widget build(BuildContext context) => AnimatedBuilder(
     animation: controller,
     builder: (BuildContext context, Widget? child) {
-      final active = controller.members
-          .where((member) => !member.archived)
+      final List<LedgerMember> active = controller.members
+          .where((item) => !item.archived)
           .toList();
-      final archived = controller.members
-          .where((member) => member.archived)
+      final List<LedgerMember> archived = controller.members
+          .where((item) => item.archived)
           .toList();
       return Scaffold(
         appBar: AppBar(
           title: const Text('成员'),
           centerTitle: true,
           actions: <Widget>[
-            IconButton(onPressed: () {}, icon: const Icon(Icons.add)),
+            IconButton(
+              onPressed: () => _edit(context),
+              icon: const Icon(Icons.add),
+            ),
           ],
         ),
         body: ListView(
@@ -32,14 +45,15 @@ class MembersPage extends StatelessWidget {
             const Padding(
               padding: EdgeInsets.fromLTRB(4, 0, 4, 8),
               child: Text(
-                '归档后不会出现在新账目的成员选择中',
+                '点卡片编辑；归档后不出现在新账目的成员选择中',
                 style: TextStyle(fontSize: 12, color: Color(0xFF8A9099)),
               ),
             ),
             ...active.map(
-              (member) => _MemberTile(
-                member: member,
-                onArchive: () => controller.setMemberArchived(member.id, true),
+              (item) => _MemberTile(
+                member: item,
+                onTap: () => _edit(context, item),
+                onArchive: () => controller.setMemberArchived(item.id, true),
               ),
             ),
             if (archived.isNotEmpty) ...<Widget>[
@@ -51,11 +65,11 @@ class MembersPage extends StatelessWidget {
                 ),
               ),
               ...archived.map(
-                (member) => _MemberTile(
-                  member: member,
+                (item) => _MemberTile(
+                  member: item,
                   archived: true,
-                  onArchive: () =>
-                      controller.setMemberArchived(member.id, false),
+                  onTap: () => _edit(context, item),
+                  onArchive: () => controller.setMemberArchived(item.id, false),
                 ),
               ),
             ],
@@ -64,15 +78,88 @@ class MembersPage extends StatelessWidget {
       );
     },
   );
+
+  Future<void> _edit(BuildContext context, [LedgerMember? member]) async {
+    final TextEditingController name = TextEditingController(
+      text: member?.name ?? '',
+    );
+    int color = member?.colorValue ?? colors.first;
+    final bool? save = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext context) => StatefulBuilder(
+        builder: (BuildContext context, StateSetter setDialogState) =>
+            AlertDialog(
+              title: Text(member == null ? '新增成员' : '编辑成员'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  TextField(
+                    controller: name,
+                    autofocus: true,
+                    decoration: const InputDecoration(labelText: '名称'),
+                  ),
+                  const SizedBox(height: 16),
+                  Wrap(
+                    spacing: 10,
+                    runSpacing: 10,
+                    children: colors
+                        .map(
+                          (value) => InkWell(
+                            onTap: () => setDialogState(() => color = value),
+                            borderRadius: BorderRadius.circular(99),
+                            child: Container(
+                              width: 32,
+                              height: 32,
+                              decoration: BoxDecoration(
+                                color: Color(value),
+                                shape: BoxShape.circle,
+                                border: Border.all(
+                                  color: color == value
+                                      ? Theme.of(context).colorScheme.onSurface
+                                      : Colors.transparent,
+                                  width: 2.5,
+                                ),
+                              ),
+                            ),
+                          ),
+                        )
+                        .toList(),
+                  ),
+                ],
+              ),
+              actions: <Widget>[
+                TextButton(
+                  onPressed: () => Navigator.pop(context, false),
+                  child: const Text('取消'),
+                ),
+                FilledButton(
+                  onPressed: () => Navigator.pop(context, true),
+                  child: const Text('保存'),
+                ),
+              ],
+            ),
+      ),
+    );
+    final String value = name.text.trim();
+    name.dispose();
+    if (save != true || value.isEmpty) return;
+    if (member == null) {
+      await controller.addMember(value, color);
+    } else {
+      await controller.updateMember(member.id, value, color);
+    }
+  }
 }
 
 class _MemberTile extends StatelessWidget {
   const _MemberTile({
     required this.member,
+    required this.onTap,
     required this.onArchive,
     this.archived = false,
   });
   final LedgerMember member;
+  final VoidCallback onTap;
   final VoidCallback onArchive;
   final bool archived;
 
@@ -100,6 +187,7 @@ class _MemberTile extends StatelessWidget {
         borderRadius: BorderRadius.circular(14),
       ),
       child: ListTile(
+        onTap: onTap,
         leading: CircleAvatar(
           backgroundColor: Color(member.colorValue),
           child: Text(

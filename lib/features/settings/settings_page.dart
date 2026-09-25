@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../data/ledger_controller.dart';
+import '../recurring/recurring_rules_page.dart';
 import '../../services/backup_service.dart';
 import '../../services/notification_service.dart';
 
@@ -71,7 +72,13 @@ class _SettingsPageState extends State<SettingsPage> {
                   ListTile(
                     title: const Text('周期账目'),
                     trailing: Text(
-                      '${widget.controller.entries.where((entry) => entry.recurring).length} 笔  ›',
+                      '${widget.controller.recurringRules.length} 笔  ›',
+                    ),
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) =>
+                            RecurringRulesPage(controller: widget.controller),
+                      ),
                     ),
                   ),
                 ],

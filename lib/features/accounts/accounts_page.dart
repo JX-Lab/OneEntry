@@ -12,22 +12,22 @@ class AccountsPage extends StatelessWidget {
   Widget build(BuildContext context) => AnimatedBuilder(
     animation: controller,
     builder: (BuildContext context, Widget? child) {
-      final active = controller.accounts
-          .where((account) => !account.archived)
+      final List<LedgerAccount> active = controller.accounts
+          .where((item) => !item.archived)
           .toList();
-      final archived = controller.accounts
-          .where((account) => account.archived)
+      final List<LedgerAccount> archived = controller.accounts
+          .where((item) => item.archived)
           .toList();
-      final total = active.fold<double>(
-        0,
-        (sum, account) => sum + account.balance,
-      );
+      final double total = active.fold(0, (sum, item) => sum + item.balance);
       return Scaffold(
         appBar: AppBar(
           title: const Text('账户'),
           centerTitle: true,
           actions: <Widget>[
-            IconButton(onPressed: () {}, icon: const Icon(Icons.add)),
+            IconButton(
+              onPressed: () => _edit(context),
+              icon: const Icon(Icons.add),
+            ),
           ],
         ),
         body: ListView(
@@ -60,15 +60,15 @@ class AccountsPage extends StatelessWidget {
             const Padding(
               padding: EdgeInsets.fromLTRB(4, 14, 4, 8),
               child: Text(
-                '左滑归档会保留历史账目',
+                '点卡片编辑；左滑归档会保留历史账目',
                 style: TextStyle(fontSize: 12, color: Color(0xFF8A9099)),
               ),
             ),
             ...active.map(
-              (account) => _AccountTile(
-                account: account,
-                onArchive: () =>
-                    controller.setAccountArchived(account.id, true),
+              (item) => _AccountTile(
+                account: item,
+                onTap: () => _edit(context, item),
+                onArchive: () => controller.setAccountArchived(item.id, true),
               ),
             ),
             if (archived.isNotEmpty) ...<Widget>[
@@ -80,11 +80,12 @@ class AccountsPage extends StatelessWidget {
                 ),
               ),
               ...archived.map(
-                (account) => _AccountTile(
-                  account: account,
+                (item) => _AccountTile(
+                  account: item,
                   archived: true,
+                  onTap: () => _edit(context, item),
                   onArchive: () =>
-                      controller.setAccountArchived(account.id, false),
+                      controller.setAccountArchived(item.id, false),
                 ),
               ),
             ],
@@ -93,15 +94,71 @@ class AccountsPage extends StatelessWidget {
       );
     },
   );
+
+  Future<void> _edit(BuildContext context, [LedgerAccount? account]) async {
+    final TextEditingController name = TextEditingController(
+      text: account?.name ?? '',
+    );
+    final TextEditingController balance = TextEditingController();
+    final bool? save = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext context) => AlertDialog(
+        title: Text(account == null ? '新增账户' : '编辑账户'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            TextField(
+              controller: name,
+              autofocus: true,
+              decoration: const InputDecoration(labelText: '名称'),
+            ),
+            if (account == null) ...<Widget>[
+              const SizedBox(height: 12),
+              TextField(
+                controller: balance,
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                  signed: true,
+                ),
+                decoration: const InputDecoration(labelText: '初始余额'),
+              ),
+            ],
+          ],
+        ),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('保存'),
+          ),
+        ],
+      ),
+    );
+    final String value = name.text.trim();
+    final double opening = double.tryParse(balance.text) ?? 0;
+    name.dispose();
+    balance.dispose();
+    if (save != true || value.isEmpty) return;
+    if (account == null) {
+      await controller.addAccount(value, opening);
+    } else {
+      await controller.updateAccount(account.id, value);
+    }
+  }
 }
 
 class _AccountTile extends StatelessWidget {
   const _AccountTile({
     required this.account,
+    required this.onTap,
     required this.onArchive,
     this.archived = false,
   });
   final LedgerAccount account;
+  final VoidCallback onTap;
   final VoidCallback onArchive;
   final bool archived;
 
@@ -129,6 +186,7 @@ class _AccountTile extends StatelessWidget {
         borderRadius: BorderRadius.circular(14),
       ),
       child: ListTile(
+        onTap: onTap,
         leading: const CircleAvatar(
           child: Icon(Icons.account_balance_wallet_outlined),
         ),

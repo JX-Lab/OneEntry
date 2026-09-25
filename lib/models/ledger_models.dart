@@ -55,3 +55,27 @@ class LedgerEntry {
   final bool recurring;
   final String recurringFrequency;
 }
+
+class RecurringRule {
+  RecurringRule({
+    required this.id,
+    required this.name,
+    required this.type,
+    required this.amount,
+    required this.frequency,
+    required this.anchorDate,
+    required this.accountId,
+    required this.category,
+    required this.enabled,
+  });
+
+  final int id;
+  String name;
+  EntryType type;
+  double amount;
+  String frequency;
+  DateTime anchorDate;
+  int accountId;
+  String category;
+  bool enabled;
+}

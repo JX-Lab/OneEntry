@@ -12,6 +12,9 @@ class LedgerController extends ChangeNotifier {
   final List<LedgerAccount> accounts = <LedgerAccount>[];
   final List<LedgerMember> members = <LedgerMember>[];
   final List<LedgerEntry> entries = <LedgerEntry>[];
+  final List<RecurringRule> recurringRules = <RecurringRule>[];
+  final List<String> categories = <String>[];
+  final Map<String, double> categoryBudgets = <String, double>{};
 
   double monthlyBudget = 0;
   bool dailyReminderEnabled = false;
@@ -30,6 +33,15 @@ class LedgerController extends ChangeNotifier {
     entries
       ..clear()
       ..addAll(snapshot.entries);
+    recurringRules
+      ..clear()
+      ..addAll(snapshot.recurringRules);
+    categories
+      ..clear()
+      ..addAll(snapshot.categories);
+    categoryBudgets
+      ..clear()
+      ..addAll(snapshot.categoryBudgets);
     monthlyBudget = snapshot.monthlyBudget;
     dailyReminderEnabled = snapshot.dailyReminderEnabled;
     dailyReminderHour = snapshot.dailyReminderHour;
@@ -75,31 +87,8 @@ class LedgerController extends ChangeNotifier {
       .fold(0, (double sum, LedgerEntry entry) => sum + entry.amount);
 
   Future<void> addEntry(LedgerEntry draft) async {
-    final LedgerEntry saved = await _repository.addEntry(draft);
-    entries.add(saved);
-    if (saved.type == EntryType.transfer && saved.toAccountId != null) {
-      accounts
-          .firstWhere((LedgerAccount account) => account.id == saved.accountId)
-          .balance -= saved
-          .amount;
-      accounts
-              .firstWhere(
-                (LedgerAccount account) => account.id == saved.toAccountId,
-              )
-              .balance +=
-          saved.amount;
-    } else if (saved.type == EntryType.expense) {
-      accounts
-          .firstWhere((LedgerAccount account) => account.id == saved.accountId)
-          .balance -= saved
-          .amount;
-    } else {
-      accounts
-          .firstWhere((LedgerAccount account) => account.id == saved.accountId)
-          .balance += saved
-          .amount;
-    }
-    notifyListeners();
+    await _repository.addEntry(draft);
+    await initialize();
   }
 
   Future<void> setAccountArchived(int id, bool archived) async {
@@ -120,6 +109,57 @@ class LedgerController extends ChangeNotifier {
     await _repository.setMonthlyBudget(month, amount);
     monthlyBudget = amount;
     notifyListeners();
+  }
+
+  Future<bool> setCategoryBudget(
+    DateTime month,
+    String category,
+    double amount,
+  ) async {
+    final double existing = categoryBudgets[category] ?? 0;
+    final double nextTotal =
+        categoryBudgets.values.fold(0.0, (sum, value) => sum + value) -
+        existing +
+        amount;
+    if (nextTotal > monthlyBudget) return false;
+    await _repository.setCategoryBudget(month, category, amount);
+    if (amount <= 0) {
+      categoryBudgets.remove(category);
+    } else {
+      categoryBudgets[category] = amount;
+    }
+    notifyListeners();
+    return true;
+  }
+
+  Future<void> addAccount(String name, double openingBalance) async {
+    await _repository.addAccount(name: name, openingBalance: openingBalance);
+    await initialize();
+  }
+
+  Future<void> updateAccount(int id, String name) async {
+    await _repository.updateAccount(id, name: name);
+    await initialize();
+  }
+
+  Future<void> addMember(String name, int colorValue) async {
+    await _repository.addMember(name: name, colorValue: colorValue);
+    await initialize();
+  }
+
+  Future<void> updateMember(int id, String name, int colorValue) async {
+    await _repository.updateMember(id, name: name, colorValue: colorValue);
+    await initialize();
+  }
+
+  Future<void> saveRecurringRule(RecurringRule rule) async {
+    await _repository.saveRecurringRule(rule);
+    await initialize();
+  }
+
+  Future<void> deleteRecurringRule(int id) async {
+    await _repository.deleteRecurringRule(id);
+    await initialize();
   }
 
   Future<void> setDailyReminder({
