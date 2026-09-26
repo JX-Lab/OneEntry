@@ -59,16 +59,16 @@ class _EntrySheetState extends State<EntrySheet> {
   void _save() {
     final double? amount = double.tryParse(_amountController.text);
     if (amount == null || amount <= 0) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('请输入金额')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('请输入金额')));
       return;
     }
     if (_type == EntryType.transfer &&
         (_toAccountId == null || _toAccountId == _accountId)) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('请选择两个不同的账户')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('请选择两个不同的账户')));
       return;
     }
     Navigator.of(context).pop(
@@ -166,9 +166,8 @@ class _EntrySheetState extends State<EntrySheet> {
                   title: '转出账户',
                   value: account?.name ?? '请选择',
                   open: _fromAccountOpen,
-                  onHeaderTap: () => setState(
-                    () => _fromAccountOpen = !_fromAccountOpen,
-                  ),
+                  onHeaderTap: () =>
+                      setState(() => _fromAccountOpen = !_fromAccountOpen),
                   children: accounts
                       .map(
                         (LedgerAccount item) => _SelectorRow(
@@ -205,19 +204,15 @@ class _EntrySheetState extends State<EntrySheet> {
                 ),
               ],
               _SelectorCard(
-                title: _type == EntryType.transfer
-                    ? '操作者 · 可多选'
-                    : '成员 · 可多选',
+                title: _type == EntryType.transfer ? '操作者 · 可多选' : '成员 · 可多选',
                 value: _memberSummary(members),
                 open: _membersOpen,
-                onHeaderTap: () =>
-                    setState(() => _membersOpen = !_membersOpen),
+                onHeaderTap: () => setState(() => _membersOpen = !_membersOpen),
                 footer: _membersOpen
                     ? Align(
                         alignment: Alignment.centerRight,
                         child: FilledButton(
-                          onPressed: () =>
-                              setState(() => _membersOpen = false),
+                          onPressed: () => setState(() => _membersOpen = false),
                           style: FilledButton.styleFrom(
                             minimumSize: const Size(74, 34),
                             padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -250,7 +245,8 @@ class _EntrySheetState extends State<EntrySheet> {
                       title: member.name,
                       selected: _members.contains(member.id),
                       onTap: () => setState(() {
-                        if (!_members.add(member.id)) _members.remove(member.id);
+                        if (!_members.add(member.id))
+                          _members.remove(member.id);
                       }),
                     ),
                   ),
@@ -633,7 +629,10 @@ class _SelectorCard extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
             child: Row(
               children: <Widget>[
-                Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
+                Text(
+                  title,
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                ),
                 const Spacer(),
                 Flexible(
                   child: Text(

@@ -385,7 +385,11 @@ class _SettingsPageState extends State<SettingsPage> {
     );
     if (second != true) return;
     await widget.controller.clearAllData();
-    await NotificationService.scheduleDaily(enabled: false, hour: 20, minute: 0);
+    await NotificationService.scheduleDaily(
+      enabled: false,
+      hour: 20,
+      minute: 0,
+    );
     if (mounted) {
       ScaffoldMessenger.of(
         context,

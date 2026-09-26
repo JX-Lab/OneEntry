@@ -229,18 +229,19 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<void> _openPeriodPicker() async {
-    final PeriodSelection? selected = await showModalBottomSheet<PeriodSelection>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (BuildContext context) => PeriodPickerSheet(
-        initial: (
-          year: _month.year,
-          month: _yearOnly ? null : _month.month,
-          day: _day,
-        ),
-      ),
-    );
+    final PeriodSelection? selected =
+        await showModalBottomSheet<PeriodSelection>(
+          context: context,
+          isScrollControlled: true,
+          backgroundColor: Colors.transparent,
+          builder: (BuildContext context) => PeriodPickerSheet(
+            initial: (
+              year: _month.year,
+              month: _yearOnly ? null : _month.month,
+              day: _day,
+            ),
+          ),
+        );
     if (selected == null) return;
     setState(() {
       _month = DateTime(selected.year, selected.month ?? 1);
@@ -327,40 +328,40 @@ class _SummaryCard extends StatelessWidget {
             ),
           ),
           if (showBudget)
-          Material(
-            color: Theme.of(context).scaffoldBackgroundColor,
-            child: InkWell(
-              onTap: onBudgetTap,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 18,
-                  vertical: 9,
-                ),
-                child: Row(
-                  children: <Widget>[
-                    Text(
-                      '本月预算 ¥${budget.toStringAsFixed(2)}',
-                      style: const TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
+            Material(
+              color: Theme.of(context).scaffoldBackgroundColor,
+              child: InkWell(
+                onTap: onBudgetTap,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 18,
+                    vertical: 9,
+                  ),
+                  child: Row(
+                    children: <Widget>[
+                      Text(
+                        '本月预算 ¥${budget.toStringAsFixed(2)}',
+                        style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
-                    ),
-                    const Spacer(),
-                    Text(
-                      over
-                          ? '超支 ¥${(spent - budget).toStringAsFixed(2)}'
-                          : '剩余 ¥${(budget - spent).toStringAsFixed(2)}',
-                      style: TextStyle(
-                        fontSize: 13,
-                        color: over ? AppTheme.expense : null,
+                      const Spacer(),
+                      Text(
+                        over
+                            ? '超支 ¥${(spent - budget).toStringAsFixed(2)}'
+                            : '剩余 ¥${(budget - spent).toStringAsFixed(2)}',
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: over ? AppTheme.expense : null,
+                        ),
                       ),
-                    ),
-                    const Icon(Icons.chevron_right, size: 20),
-                  ],
+                      const Icon(Icons.chevron_right, size: 20),
+                    ],
+                  ),
                 ),
               ),
             ),
-          ),
         ],
       ),
     );

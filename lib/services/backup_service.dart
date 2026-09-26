@@ -9,6 +9,7 @@ import 'system_file_service.dart';
 import 'tonglv_importer.dart';
 
 enum ExportFormat { json, zip, xlsx }
+
 enum ImportSource { automatic, oneEntry, tonglv }
 
 class BackupService {
@@ -67,7 +68,8 @@ class BackupService {
     Uint8List jsonBytes;
     final String lower = document.name.toLowerCase();
     final bool tonglv =
-        lower.endsWith('.zip') && TonglvImporter.looksLikeTonglv(document.bytes);
+        lower.endsWith('.zip') &&
+        TonglvImporter.looksLikeTonglv(document.bytes);
     if (source == ImportSource.tonglv && !tonglv) {
       throw const FormatException('所选文件不是同旅迁移 ZIP');
     }
