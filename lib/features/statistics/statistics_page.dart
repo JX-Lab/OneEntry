@@ -163,7 +163,7 @@ class _StatisticsPageState extends State<StatisticsPage> {
               onTypeChanged: (EntryType value) =>
                   setState(() => _breakdown = value),
             ),
-            ..._sliceCards(categorySlices),
+            ..._sliceCards(categorySlices, entries, isMember: false),
             if (widget.controller.multiEnabled) ...<Widget>[
               const SizedBox(height: 12),
               _BreakdownCard(
@@ -173,7 +173,7 @@ class _StatisticsPageState extends State<StatisticsPage> {
                 onTypeChanged: (EntryType value) =>
                     setState(() => _breakdown = value),
               ),
-              ..._sliceCards(memberSlices),
+              ..._sliceCards(memberSlices, entries, isMember: true),
             ],
           ],
         ),
@@ -181,7 +181,11 @@ class _StatisticsPageState extends State<StatisticsPage> {
     },
   );
 
-  List<Widget> _sliceCards(List<_Slice> slices) {
+  List<Widget> _sliceCards(
+    List<_Slice> slices,
+    List<LedgerEntry> entries, {
+    required bool isMember,
+  }) {
     final double total = slices.fold(0, (sum, item) => sum + item.value);
     if (slices.isEmpty) {
       return <Widget>[const Card(child: ListTile(title: Text('该时间段暂无数据')))];
@@ -190,16 +194,90 @@ class _StatisticsPageState extends State<StatisticsPage> {
         .map(
           (item) => Card(
             child: ListTile(
+              onTap: () => _showSliceDetail(item, entries, isMember),
               leading: CircleAvatar(radius: 6, backgroundColor: item.color),
               title: Text(item.name),
               subtitle: Text(
                 '${total == 0 ? 0 : item.value / total * 100 ~/ 1}%',
               ),
               trailing: Text('¥${item.value.toStringAsFixed(2)}'),
+              leadingAndTrailingTextStyle: Theme.of(
+                context,
+              ).textTheme.bodyMedium,
             ),
           ),
         )
         .toList();
+  }
+
+  Future<void> _showSliceDetail(
+    _Slice slice,
+    List<LedgerEntry> entries,
+    bool isMember,
+  ) async {
+    int? memberId;
+    if (isMember) {
+      final List<LedgerMember> matches = widget.controller.members
+          .where((member) => member.name == slice.name)
+          .toList();
+      memberId = matches.isEmpty ? null : matches.first.id;
+    }
+    final List<LedgerEntry> matching = entries
+        .where(
+          (entry) =>
+              entry.type == _breakdown &&
+              (isMember
+                  ? memberId != null && entry.memberIds.contains(memberId)
+                  : entry.category == slice.name),
+        )
+        .toList();
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder: (BuildContext context) => FractionallySizedBox(
+        heightFactor: .72,
+        child: SafeArea(
+          top: false,
+          child: Column(
+            children: <Widget>[
+              ListTile(
+                title: Text(
+                  '${slice.name}明细',
+                  style: const TextStyle(fontWeight: FontWeight.w700),
+                ),
+                trailing: IconButton(
+                  onPressed: () => Navigator.pop(context),
+                  icon: const Icon(Icons.close),
+                ),
+              ),
+              const Divider(height: 1),
+              Expanded(
+                child: matching.isEmpty
+                    ? const Center(child: Text('暂无相关账目'))
+                    : ListView.builder(
+                        padding: const EdgeInsets.all(12),
+                        itemCount: matching.length,
+                        itemBuilder: (BuildContext context, int index) {
+                          final LedgerEntry entry = matching[index];
+                          return Card(
+                            child: ListTile(
+                              title: Text(entry.category),
+                              subtitle: Text(
+                                '${entry.occurredAt.year}年${entry.occurredAt.month}月${entry.occurredAt.day}日${entry.note.isEmpty ? '' : ' · ${entry.note}'}',
+                              ),
+                              trailing: Text(
+                                '${entry.type == EntryType.expense ? '-' : '+'}¥${entry.amount.toStringAsFixed(2)}',
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   List<LedgerEntry> _entries(({DateTime start, DateTime end}) range) => widget

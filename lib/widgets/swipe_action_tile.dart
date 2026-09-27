@@ -34,32 +34,7 @@ class _SwipeActionTileState extends State<SwipeActionTile> {
     borderRadius: BorderRadius.circular(widget.borderRadius),
     child: Stack(
       children: <Widget>[
-        Positioned.fill(
-          child: Align(
-            alignment: Alignment.centerRight,
-            child: SizedBox(
-              width: _actionWidth,
-              child: Material(
-                color: widget.actionColor,
-                child: InkWell(
-                  onTap: () {
-                    _close();
-                    widget.onAction();
-                  },
-                  child: Center(
-                    child: Text(
-                      widget.actionLabel,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ),
+        Positioned.fill(child: ColoredBox(color: widget.actionColor)),
         GestureDetector(
           behavior: HitTestBehavior.opaque,
           onHorizontalDragStart: (_) => _dragging = true,
@@ -85,6 +60,37 @@ class _SwipeActionTileState extends State<SwipeActionTile> {
             curve: Curves.easeOutCubic,
             transform: Matrix4.translationValues(_offset, 0, 0),
             child: widget.child,
+          ),
+        ),
+        Positioned(
+          top: 0,
+          right: 0,
+          bottom: 0,
+          width: _actionWidth,
+          child: IgnorePointer(
+            ignoring: _offset > -_actionWidth / 2,
+            child: AnimatedOpacity(
+              duration: const Duration(milliseconds: 120),
+              opacity: _offset <= -_actionWidth / 2 ? 1 : 0,
+              child: Material(
+                color: widget.actionColor,
+                child: InkWell(
+                  onTap: () {
+                    _close();
+                    widget.onAction();
+                  },
+                  child: Center(
+                    child: Text(
+                      widget.actionLabel,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
           ),
         ),
       ],

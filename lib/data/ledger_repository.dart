@@ -293,6 +293,23 @@ class LedgerRepository {
     );
   }
 
+  Future<void> reorderAccounts(List<int> ids) async {
+    final Database db = await _appDatabase.database;
+    final Batch batch = db.batch();
+    for (int index = 0; index < ids.length; index++) {
+      batch.update(
+        'accounts',
+        <String, Object?>{
+          'sort_order': index,
+          'updated_at': DateTime.now().millisecondsSinceEpoch,
+        },
+        where: 'id = ?',
+        whereArgs: <Object?>[ids[index]],
+      );
+    }
+    await batch.commit(noResult: true);
+  }
+
   Future<void> setMemberArchived(int id, bool archived) async {
     final Database db = await _appDatabase.database;
     await db.update(
@@ -304,6 +321,23 @@ class LedgerRepository {
       where: 'id = ?',
       whereArgs: <Object?>[id],
     );
+  }
+
+  Future<void> reorderMembers(List<int> ids) async {
+    final Database db = await _appDatabase.database;
+    final Batch batch = db.batch();
+    for (int index = 0; index < ids.length; index++) {
+      batch.update(
+        'members',
+        <String, Object?>{
+          'sort_order': index,
+          'updated_at': DateTime.now().millisecondsSinceEpoch,
+        },
+        where: 'id = ?',
+        whereArgs: <Object?>[ids[index]],
+      );
+    }
+    await batch.commit(noResult: true);
   }
 
   Future<void> setMonthlyBudget(DateTime month, double amount) async {

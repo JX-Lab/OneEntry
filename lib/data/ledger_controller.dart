@@ -122,11 +122,21 @@ class LedgerController extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> reorderAccounts(List<int> ids) async {
+    await _repository.reorderAccounts(ids);
+    await initialize();
+  }
+
   Future<void> setMemberArchived(int id, bool archived) async {
     await _repository.setMemberArchived(id, archived);
     members.firstWhere((LedgerMember member) => member.id == id).archived =
         archived;
     notifyListeners();
+  }
+
+  Future<void> reorderMembers(List<int> ids) async {
+    await _repository.reorderMembers(ids);
+    await initialize();
   }
 
   Future<void> setMonthlyBudget(DateTime month, double amount) async {

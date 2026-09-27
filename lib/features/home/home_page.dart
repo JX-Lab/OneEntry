@@ -510,6 +510,12 @@ class _EntryTile extends StatelessWidget {
     final LedgerAccount? account = matchingAccounts.isEmpty
         ? null
         : matchingAccounts.first;
+    final List<LedgerAccount> matchingToAccounts = controller.accounts
+        .where((LedgerAccount item) => item.id == entry.toAccountId)
+        .toList();
+    final LedgerAccount? toAccount = matchingToAccounts.isEmpty
+        ? null
+        : matchingToAccounts.first;
     final List<LedgerMember> members = controller.members
         .where((LedgerMember member) => entry.memberIds.contains(member.id))
         .toList();
@@ -532,52 +538,47 @@ class _EntryTile extends StatelessWidget {
               horizontal: 14,
               vertical: 3,
             ),
-            leading: SizedBox(
-              width: 44,
-              height: 44,
-              child: Stack(
-                clipBehavior: Clip.none,
-                children: <Widget>[
-                  Container(
-                    width: 40,
-                    height: 40,
-                    decoration: BoxDecoration(
-                      color: Theme.of(
-                        context,
-                      ).colorScheme.surfaceContainerHighest,
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Icon(
-                      transfer
-                          ? Icons.swap_horiz
-                          : adjustment
-                          ? Icons.account_balance_wallet_outlined
-                          : _entryCategoryIcon(controller, entry.category),
-                      size: 21,
-                    ),
-                  ),
-                  if (controller.multiEnabled)
-                    Positioned(
-                      left: -3,
-                      top: -3,
-                      child: _MemberBadge(members: members),
-                    ),
-                ],
+            leading: Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(
+                transfer
+                    ? Icons.swap_horiz
+                    : adjustment
+                    ? Icons.account_balance_wallet_outlined
+                    : _entryCategoryIcon(controller, entry.category),
+                size: 21,
               ),
             ),
-            title: Text(
-              adjustment
-                  ? '余额调整'
-                  : transfer
-                  ? '转账'
-                  : entry.category,
-              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+            title: Row(
+              children: <Widget>[
+                Expanded(
+                  child: Text(
+                    adjustment
+                        ? '余额调整'
+                        : transfer
+                        ? '转账'
+                        : entry.category,
+                    style: const TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+                if (controller.multiEnabled) _MemberBadge(members: members),
+              ],
             ),
-            subtitle: Text(
-              entry.note.isEmpty ? '无备注' : entry.note,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
+            subtitle: entry.note.isEmpty
+                ? null
+                : Text(
+                    entry.note,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
             trailing: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               crossAxisAlignment: CrossAxisAlignment.end,
@@ -600,7 +601,7 @@ class _EntryTile extends StatelessWidget {
                 ),
                 Text(
                   transfer
-                      ? '账户间转账'
+                      ? '${account?.name ?? ''} → ${toAccount?.name ?? ''}'
                       : account == null
                       ? ''
                       : '余额 ¥${account.balance.toStringAsFixed(2)}',

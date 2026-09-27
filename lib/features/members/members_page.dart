@@ -81,14 +81,85 @@ class _MembersPageState extends State<MembersPage> {
         body: ListView(
           padding: const EdgeInsets.fromLTRB(12, 8, 12, 32),
           children: <Widget>[
+            Container(
+              padding: const EdgeInsets.all(18),
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.surface,
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  const Text(
+                    '成员概况',
+                    style: TextStyle(color: Color(0xFF8A9099), fontSize: 12),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '${active.length} 人',
+                    style: const TextStyle(
+                      fontSize: 28,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  const Divider(height: 1),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: <Widget>[
+                      Expanded(
+                        child: _MemberCount(
+                          label: '总人数',
+                          value: widget.controller.members.length,
+                        ),
+                      ),
+                      Expanded(
+                        child: _MemberCount(
+                          label: '当前成员',
+                          value: active.length,
+                        ),
+                      ),
+                      Expanded(
+                        child: _MemberCount(
+                          label: '已归档',
+                          value: archived.length,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
             const Padding(
-              padding: EdgeInsets.fromLTRB(4, 0, 4, 8),
+              padding: EdgeInsets.fromLTRB(4, 14, 4, 8),
               child: Text(
                 '点卡片查看详情；左滑后点击“归档”',
                 style: TextStyle(fontSize: 12, color: Color(0xFF8A9099)),
               ),
             ),
-            ...active.map((item) => _tile(context, item)),
+            if (query.isEmpty)
+              ReorderableListView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                buildDefaultDragHandles: false,
+                itemCount: active.length,
+                itemBuilder: (BuildContext context, int index) =>
+                    ReorderableDelayedDragStartListener(
+                      key: ValueKey('reorder-member-${active[index].id}'),
+                      index: index,
+                      child: _tile(context, active[index]),
+                    ),
+                onReorder: (int oldIndex, int newIndex) {
+                  if (newIndex > oldIndex) newIndex--;
+                  final LedgerMember item = active.removeAt(oldIndex);
+                  active.insert(newIndex, item);
+                  widget.controller.reorderMembers(
+                    active.map((item) => item.id).toList(),
+                  );
+                },
+              )
+            else
+              ...active.map((item) => _tile(context, item)),
             if (archived.isNotEmpty) ...<Widget>[
               const Padding(
                 padding: EdgeInsets.fromLTRB(4, 16, 4, 8),
@@ -341,6 +412,22 @@ class _MembersPageState extends State<MembersPage> {
       '#${(value & 0xFFFFFF).toRadixString(16).padLeft(6, '0').toUpperCase()}';
 }
 
+class _MemberCount extends StatelessWidget {
+  const _MemberCount({required this.label, required this.value});
+  final String label;
+  final int value;
+
+  @override
+  Widget build(BuildContext context) => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: <Widget>[
+      Text(label, style: const TextStyle(color: Color(0xFF8A9099))),
+      const SizedBox(height: 3),
+      Text('$value', style: const TextStyle(fontWeight: FontWeight.w700)),
+    ],
+  );
+}
+
 class _ColorSlider extends StatelessWidget {
   const _ColorSlider({
     required this.label,
@@ -391,6 +478,19 @@ class _MemberDetailPage extends StatelessWidget {
       final List<LedgerEntry> entries = controller.entries
           .where((entry) => entry.memberIds.contains(memberId))
           .toList();
+      final double income = entries
+          .where((entry) => entry.type == EntryType.income)
+          .fold(0, (sum, entry) => sum + entry.amount);
+      final double expense = entries
+          .where((entry) => entry.type == EntryType.expense)
+          .fold(0, (sum, entry) => sum + entry.amount);
+      final Map<String, List<LedgerEntry>> months =
+          <String, List<LedgerEntry>>{};
+      for (final LedgerEntry entry in entries) {
+        final String key =
+            '${entry.occurredAt.year}年${entry.occurredAt.month}月';
+        months.putIfAbsent(key, () => <LedgerEntry>[]).add(entry);
+      }
       return Scaffold(
         appBar: AppBar(
           title: Text(member.name),
@@ -420,20 +520,58 @@ class _MemberDetailPage extends StatelessWidget {
               child: Padding(
                 padding: const EdgeInsets.all(18),
                 child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: <Widget>[
-                    CircleAvatar(
-                      radius: 30,
-                      backgroundColor: Color(member.colorValue),
-                      child: Text(
-                        member.name.substring(0, 1),
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 22,
+                    Row(
+                      children: <Widget>[
+                        CircleAvatar(
+                          radius: 24,
+                          backgroundColor: Color(member.colorValue),
+                          child: Text(
+                            member.name.substring(0, 1),
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 18,
+                            ),
+                          ),
                         ),
-                      ),
+                        const SizedBox(width: 12),
+                        Text(
+                          '${member.name}${member.archived ? ' · 已归档' : ''}',
+                          style: const TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ],
                     ),
-                    const SizedBox(height: 10),
-                    Text('${entries.length} 笔相关账目'),
+                    const SizedBox(height: 14),
+                    const Divider(height: 1),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: <Widget>[
+                        Expanded(
+                          child: _MemberMetric(
+                            label: '收入',
+                            value: income,
+                            color: AppTheme.income,
+                          ),
+                        ),
+                        Expanded(
+                          child: _MemberMetric(
+                            label: '支出',
+                            value: expense,
+                            color: AppTheme.expense,
+                          ),
+                        ),
+                        Expanded(
+                          child: _MemberMetric(
+                            label: '笔数',
+                            text: '${entries.length}',
+                          ),
+                        ),
+                      ],
+                    ),
                   ],
                 ),
               ),
@@ -445,12 +583,33 @@ class _MemberDetailPage extends StatelessWidget {
             if (entries.isEmpty)
               const Center(child: Text('还没有相关账目'))
             else
-              ...entries.map(
-                (entry) => Card(
-                  child: ListTile(
-                    title: Text(entry.category),
-                    subtitle: Text(entry.note),
-                    trailing: Text('¥${entry.amount.toStringAsFixed(2)}'),
+              ...months.entries.map(
+                (month) => Card(
+                  clipBehavior: Clip.antiAlias,
+                  child: ExpansionTile(
+                    initiallyExpanded: month.key == months.keys.first,
+                    title: Text(
+                      month.key,
+                      style: const TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                    subtitle: Text('${month.value.length} 笔'),
+                    children: month.value
+                        .map(
+                          (entry) => ListTile(
+                            title: Text(entry.category),
+                            subtitle: entry.note.isEmpty
+                                ? null
+                                : Text(entry.note),
+                            trailing: Text(
+                              '${entry.type == EntryType.expense
+                                  ? '-'
+                                  : entry.type == EntryType.income
+                                  ? '+'
+                                  : ''}¥${entry.amount.toStringAsFixed(2)}',
+                            ),
+                          ),
+                        )
+                        .toList(),
                   ),
                 ),
               ),
@@ -458,5 +617,26 @@ class _MemberDetailPage extends StatelessWidget {
         ),
       );
     },
+  );
+}
+
+class _MemberMetric extends StatelessWidget {
+  const _MemberMetric({required this.label, this.value, this.text, this.color});
+  final String label;
+  final double? value;
+  final String? text;
+  final Color? color;
+
+  @override
+  Widget build(BuildContext context) => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: <Widget>[
+      Text(label, style: const TextStyle(color: Color(0xFF8A9099))),
+      const SizedBox(height: 3),
+      Text(
+        text ?? '¥${value!.toStringAsFixed(2)}',
+        style: TextStyle(fontWeight: FontWeight.w700, color: color),
+      ),
+    ],
   );
 }

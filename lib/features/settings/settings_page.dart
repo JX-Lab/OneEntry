@@ -18,11 +18,12 @@ class SettingsPage extends StatefulWidget {
 
 class _SettingsPageState extends State<SettingsPage> {
   @override
-  Widget build(BuildContext context) {
-    return Scaffold(
+  Widget build(BuildContext context) => AnimatedBuilder(
+    animation: widget.controller,
+    builder: (BuildContext context, Widget? child) => Scaffold(
       body: CustomScrollView(
         slivers: <Widget>[
-          const SliverAppBar(title: Text('设置'), floating: true),
+          const SliverAppBar(title: Text('设置'), pinned: true, floating: false),
           SliverPadding(
             padding: const EdgeInsets.fromLTRB(12, 8, 12, 80),
             sliver: SliverList.list(
@@ -160,8 +161,8 @@ class _SettingsPageState extends State<SettingsPage> {
           ),
         ],
       ),
-    );
-  }
+    ),
+  );
 
   String _themeName() => switch (widget.controller.themeMode) {
     'light' => '日间',

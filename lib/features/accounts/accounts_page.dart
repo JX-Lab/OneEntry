@@ -105,7 +105,29 @@ class _AccountsPageState extends State<AccountsPage> {
                 style: TextStyle(fontSize: 12, color: Color(0xFF8A9099)),
               ),
             ),
-            ...active.map((item) => _tile(context, item)),
+            if (query.isEmpty)
+              ReorderableListView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                buildDefaultDragHandles: false,
+                itemCount: active.length,
+                itemBuilder: (BuildContext context, int index) =>
+                    ReorderableDelayedDragStartListener(
+                      key: ValueKey('reorder-account-${active[index].id}'),
+                      index: index,
+                      child: _tile(context, active[index]),
+                    ),
+                onReorder: (int oldIndex, int newIndex) {
+                  if (newIndex > oldIndex) newIndex--;
+                  final LedgerAccount item = active.removeAt(oldIndex);
+                  active.insert(newIndex, item);
+                  widget.controller.reorderAccounts(
+                    active.map((item) => item.id).toList(),
+                  );
+                },
+              )
+            else
+              ...active.map((item) => _tile(context, item)),
             if (archived.isNotEmpty) ...<Widget>[
               const Padding(
                 padding: EdgeInsets.fromLTRB(4, 16, 4, 8),
@@ -302,6 +324,19 @@ class _AccountDetailPage extends StatelessWidget {
                 entry.accountId == accountId || entry.toAccountId == accountId,
           )
           .toList();
+      final double income = entries
+          .where((entry) => entry.type == EntryType.income)
+          .fold(0, (sum, entry) => sum + entry.amount);
+      final double expense = entries
+          .where((entry) => entry.type == EntryType.expense)
+          .fold(0, (sum, entry) => sum + entry.amount);
+      final Map<String, List<LedgerEntry>> months =
+          <String, List<LedgerEntry>>{};
+      for (final LedgerEntry entry in entries) {
+        final String key =
+            '${entry.occurredAt.year}年${entry.occurredAt.month}月';
+        months.putIfAbsent(key, () => <LedgerEntry>[]).add(entry);
+      }
       return Scaffold(
         appBar: AppBar(
           title: Text(account.name),
@@ -331,15 +366,57 @@ class _AccountDetailPage extends StatelessWidget {
               child: Padding(
                 padding: const EdgeInsets.all(18),
                 child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: <Widget>[
-                    Icon(_accountIcon(account.icon), size: 32),
-                    const SizedBox(height: 10),
+                    Row(
+                      children: <Widget>[
+                        Icon(_accountIcon(account.icon), size: 28),
+                        const SizedBox(width: 10),
+                        Text(
+                          '${account.name}${account.archived ? ' · 已归档' : ''}',
+                          style: const TextStyle(fontWeight: FontWeight.w700),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 14),
+                    const Text(
+                      '账户余额',
+                      style: TextStyle(color: Color(0xFF8A9099)),
+                    ),
+                    const SizedBox(height: 3),
                     Text(
                       '¥${account.balance.toStringAsFixed(2)}',
                       style: const TextStyle(
                         fontSize: 28,
                         fontWeight: FontWeight.w700,
                       ),
+                    ),
+                    const SizedBox(height: 14),
+                    const Divider(height: 1),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: <Widget>[
+                        Expanded(
+                          child: _AccountMetric(
+                            label: '流入',
+                            value: income,
+                            color: AppTheme.income,
+                          ),
+                        ),
+                        Expanded(
+                          child: _AccountMetric(
+                            label: '流出',
+                            value: expense,
+                            color: AppTheme.expense,
+                          ),
+                        ),
+                        Expanded(
+                          child: _AccountMetric(
+                            label: '笔数',
+                            text: '${entries.length}',
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),
@@ -352,20 +429,39 @@ class _AccountDetailPage extends StatelessWidget {
             if (entries.isEmpty)
               const Center(child: Text('还没有相关账目'))
             else
-              ...entries.map(
-                (entry) => Card(
-                  child: ListTile(
+              ...months.entries.map(
+                (month) => Card(
+                  clipBehavior: Clip.antiAlias,
+                  child: ExpansionTile(
+                    initiallyExpanded: month.key == months.keys.first,
                     title: Text(
-                      entry.type == EntryType.adjustment
-                          ? '余额调整'
-                          : entry.category,
+                      month.key,
+                      style: const TextStyle(fontWeight: FontWeight.w700),
                     ),
-                    subtitle: Text(entry.note),
-                    trailing: Text(
-                      entry.type == EntryType.adjustment
-                          ? '${entry.adjustmentDelta >= 0 ? '+' : '-'}¥${entry.adjustmentDelta.abs().toStringAsFixed(2)}'
-                          : '¥${entry.amount.toStringAsFixed(2)}',
-                    ),
+                    subtitle: Text('${month.value.length} 笔'),
+                    children: month.value
+                        .map(
+                          (entry) => ListTile(
+                            title: Text(
+                              entry.type == EntryType.adjustment
+                                  ? '余额调整'
+                                  : entry.category,
+                            ),
+                            subtitle: entry.note.isEmpty
+                                ? null
+                                : Text(entry.note),
+                            trailing: Text(
+                              entry.type == EntryType.adjustment
+                                  ? '${entry.adjustmentDelta >= 0 ? '+' : '-'}¥${entry.adjustmentDelta.abs().toStringAsFixed(2)}'
+                                  : '${entry.type == EntryType.expense
+                                        ? '-'
+                                        : entry.type == EntryType.income
+                                        ? '+'
+                                        : ''}¥${entry.amount.toStringAsFixed(2)}',
+                            ),
+                          ),
+                        )
+                        .toList(),
                   ),
                 ),
               ),
@@ -373,6 +469,32 @@ class _AccountDetailPage extends StatelessWidget {
         ),
       );
     },
+  );
+}
+
+class _AccountMetric extends StatelessWidget {
+  const _AccountMetric({
+    required this.label,
+    this.value,
+    this.text,
+    this.color,
+  });
+  final String label;
+  final double? value;
+  final String? text;
+  final Color? color;
+
+  @override
+  Widget build(BuildContext context) => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: <Widget>[
+      Text(label, style: const TextStyle(color: Color(0xFF8A9099))),
+      const SizedBox(height: 3),
+      Text(
+        text ?? '¥${value!.toStringAsFixed(2)}',
+        style: TextStyle(fontWeight: FontWeight.w700, color: color),
+      ),
+    ],
   );
 }
 
