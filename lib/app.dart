@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart';
+import 'package:flutter/services.dart';
 
 import 'data/ledger_controller.dart';
 import 'features/accounts/accounts_page.dart';
@@ -22,7 +24,6 @@ class OneEntryApp extends StatefulWidget {
 
 class _OneEntryAppState extends State<OneEntryApp> {
   final GlobalKey<NavigatorState> _navigatorKey = GlobalKey<NavigatorState>();
-  ThemeMode _themeMode = ThemeMode.system;
 
   @override
   void dispose() {
@@ -43,35 +44,78 @@ class _OneEntryAppState extends State<OneEntryApp> {
             builder: (_) => EntrySheet(controller: widget.controller),
           ),
         );
-    if (result != null) await widget.controller.addEntry(result);
+    if (result != null) {
+      await widget.controller.addEntry(result);
+      await _feedback('记账成功');
+    }
+  }
+
+  Future<void> _editEntry(LedgerEntry entry) async {
+    if (entry.type == EntryType.adjustment) return;
+    final LedgerEntry? result = await _navigatorKey.currentState!
+        .push<LedgerEntry>(
+          MaterialPageRoute<LedgerEntry>(
+            builder: (_) =>
+                EntrySheet(controller: widget.controller, initial: entry),
+          ),
+        );
+    if (result != null) {
+      await widget.controller.updateEntry(entry, result);
+      await _feedback('账目已保存');
+    }
+  }
+
+  Future<void> _feedback(String message) async {
+    if (widget.controller.haptics) await HapticFeedback.lightImpact();
+    final BuildContext? context = _navigatorKey.currentContext;
+    if (widget.controller.readerHints && context != null && context.mounted) {
+      SemanticsService.sendAnnouncement(
+        View.of(context),
+        message,
+        TextDirection.ltr,
+      );
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      navigatorKey: _navigatorKey,
-      title: '一笔',
-      debugShowCheckedModeBanner: false,
-      theme: AppTheme.light(),
-      darkTheme: AppTheme.dark(),
-      themeMode: _themeMode,
-      home: HomePage(
-        controller: widget.controller,
-        onAddEntry: _addEntry,
-        onOpenStatistics: () =>
-            _push(StatisticsPage(controller: widget.controller)),
-        onOpenSettings: () => _push(
-          SettingsPage(
-            controller: widget.controller,
-            themeMode: _themeMode,
-            onThemeModeChanged: (ThemeMode value) =>
-                setState(() => _themeMode = value),
-          ),
+    return AnimatedBuilder(
+      animation: widget.controller,
+      builder: (BuildContext context, Widget? child) => MaterialApp(
+        navigatorKey: _navigatorKey,
+        title: '一笔',
+        debugShowCheckedModeBanner: false,
+        theme: AppTheme.light(highContrast: widget.controller.highContrast),
+        darkTheme: AppTheme.dark(highContrast: widget.controller.highContrast),
+        themeMode: switch (widget.controller.themeMode) {
+          'light' => ThemeMode.light,
+          'dark' => ThemeMode.dark,
+          _ => ThemeMode.system,
+        },
+        builder: (BuildContext context, Widget? child) {
+          final MediaQueryData media = MediaQuery.of(context);
+          return MediaQuery(
+            data: media.copyWith(
+              textScaler: TextScaler.linear(widget.controller.textScale),
+            ),
+            child: child!,
+          );
+        },
+        home: HomePage(
+          controller: widget.controller,
+          onAddEntry: _addEntry,
+          onEditEntry: _editEntry,
+          onDeleteEntry: widget.controller.deleteEntry,
+          onOpenStatistics: () =>
+              _push(StatisticsPage(controller: widget.controller)),
+          onOpenSettings: () =>
+              _push(SettingsPage(controller: widget.controller)),
+          onOpenAccounts: () =>
+              _push(AccountsPage(controller: widget.controller)),
+          onOpenMembers: () =>
+              _push(MembersPage(controller: widget.controller)),
+          onOpenBudget: () => _push(BudgetPage(controller: widget.controller)),
         ),
-        onOpenAccounts: () =>
-            _push(AccountsPage(controller: widget.controller)),
-        onOpenMembers: () => _push(MembersPage(controller: widget.controller)),
-        onOpenBudget: () => _push(BudgetPage(controller: widget.controller)),
       ),
     );
   }

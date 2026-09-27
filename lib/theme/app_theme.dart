@@ -6,7 +6,7 @@ abstract final class AppTheme {
   static const Color expense = Color(0xFFFA5151);
   static const Color income = Color(0xFF2E7CF6);
 
-  static ThemeData light() {
+  static ThemeData light({bool highContrast = false}) {
     final ColorScheme colors = ColorScheme.fromSeed(
       seedColor: green,
       brightness: Brightness.light,
@@ -15,7 +15,9 @@ abstract final class AppTheme {
     return ThemeData(
       useMaterial3: true,
       colorScheme: colors,
-      scaffoldBackgroundColor: const Color(0xFFF2F4F7),
+      scaffoldBackgroundColor: highContrast
+          ? const Color(0xFFE9EDF2)
+          : const Color(0xFFF2F4F7),
       fontFamilyFallback: const <String>['PingFang SC', 'Microsoft YaHei'],
       appBarTheme: const AppBarTheme(
         centerTitle: true,
@@ -41,7 +43,7 @@ abstract final class AppTheme {
     );
   }
 
-  static ThemeData dark() {
+  static ThemeData dark({bool highContrast = false}) {
     final ColorScheme colors = ColorScheme.fromSeed(
       seedColor: green,
       brightness: Brightness.dark,
@@ -50,7 +52,9 @@ abstract final class AppTheme {
     return ThemeData(
       useMaterial3: true,
       colorScheme: colors,
-      scaffoldBackgroundColor: const Color(0xFF101318),
+      scaffoldBackgroundColor: highContrast
+          ? const Color(0xFF050607)
+          : const Color(0xFF101318),
       fontFamilyFallback: const <String>['PingFang SC', 'Microsoft YaHei'],
       appBarTheme: const AppBarTheme(
         centerTitle: true,

@@ -50,10 +50,6 @@ class RecurringRulesPage extends StatelessWidget {
   );
 
   Future<void> _edit(BuildContext context, [RecurringRule? rule]) async {
-    final List<LedgerAccount> accounts = controller.accounts
-        .where((item) => !item.archived)
-        .toList();
-    if (accounts.isEmpty) return;
     final TextEditingController name = TextEditingController(
       text: rule?.name ?? '',
     );
@@ -62,117 +58,138 @@ class RecurringRulesPage extends StatelessWidget {
     );
     EntryType type = rule?.type ?? EntryType.expense;
     String frequency = rule?.frequency ?? 'month';
-    int accountId = rule?.accountId ?? accounts.first.id;
     String category =
         rule?.category ??
-        (controller.categories.isEmpty ? '其他' : controller.categories.first);
-    final bool? save = await showDialog<bool>(
+        (controller.categoriesFor(type).isEmpty
+            ? '其他'
+            : controller.categoriesFor(type).first.name);
+    final bool? save = await showModalBottomSheet<bool>(
       context: context,
+      isScrollControlled: true,
       builder: (BuildContext context) => StatefulBuilder(
-        builder: (BuildContext context, StateSetter setDialogState) =>
-            AlertDialog(
-              title: Text(rule == null ? '新增周期账目' : '编辑周期账目'),
-              content: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: <Widget>[
-                    TextField(
-                      controller: name,
-                      autofocus: true,
-                      decoration: const InputDecoration(labelText: '名称'),
-                    ),
-                    const SizedBox(height: 12),
-                    TextField(
-                      controller: amount,
-                      keyboardType: const TextInputType.numberWithOptions(
-                        decimal: true,
-                      ),
-                      decoration: const InputDecoration(
-                        labelText: '金额',
-                        prefixText: '¥ ',
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    SegmentedButton<EntryType>(
-                      segments: const <ButtonSegment<EntryType>>[
-                        ButtonSegment(
-                          value: EntryType.expense,
-                          label: Text('支出'),
+        builder: (BuildContext context, StateSetter setDialogState) => Padding(
+          padding: EdgeInsets.only(
+            bottom: MediaQuery.viewInsetsOf(context).bottom,
+          ),
+          child: SafeArea(
+            top: false,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  SizedBox(
+                    height: 52,
+                    child: Row(
+                      children: <Widget>[
+                        TextButton(
+                          onPressed: () => Navigator.pop(context, false),
+                          child: const Text('取消'),
                         ),
-                        ButtonSegment(
-                          value: EntryType.income,
-                          label: Text('收入'),
+                        Expanded(
+                          child: Text(
+                            rule == null ? '新增周期账目' : '编辑周期账目',
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(fontWeight: FontWeight.w700),
+                          ),
+                        ),
+                        TextButton(
+                          onPressed: () => Navigator.pop(context, true),
+                          child: const Text('保存'),
                         ),
                       ],
-                      selected: <EntryType>{type},
-                      onSelectionChanged: (value) =>
-                          setDialogState(() => type = value.first),
                     ),
-                    const SizedBox(height: 12),
-                    DropdownButtonFormField<String>(
-                      initialValue: frequency,
-                      decoration: const InputDecoration(labelText: '周期'),
-                      items:
-                          const <MapEntry<String, String>>[
-                                MapEntry('day', '每天'),
-                                MapEntry('week', '每周'),
-                                MapEntry('month', '每月'),
-                                MapEntry('year', '每年'),
-                              ]
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 4, 16, 22),
+                    child: Column(
+                      children: <Widget>[
+                        TextField(
+                          controller: name,
+                          autofocus: true,
+                          decoration: const InputDecoration(labelText: '名称'),
+                        ),
+                        const SizedBox(height: 12),
+                        TextField(
+                          controller: amount,
+                          keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true,
+                          ),
+                          decoration: const InputDecoration(
+                            labelText: '金额',
+                            prefixText: '¥ ',
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        SegmentedButton<EntryType>(
+                          segments: const <ButtonSegment<EntryType>>[
+                            ButtonSegment(
+                              value: EntryType.expense,
+                              label: Text('支出'),
+                            ),
+                            ButtonSegment(
+                              value: EntryType.income,
+                              label: Text('收入'),
+                            ),
+                          ],
+                          selected: <EntryType>{type},
+                          onSelectionChanged: (value) => setDialogState(() {
+                            type = value.first;
+                            final available = controller.categoriesFor(type);
+                            if (!available.any(
+                                  (item) => item.name == category,
+                                ) &&
+                                available.isNotEmpty) {
+                              category = available.first.name;
+                            }
+                          }),
+                        ),
+                        const SizedBox(height: 12),
+                        DropdownButtonFormField<String>(
+                          initialValue: frequency,
+                          decoration: const InputDecoration(labelText: '周期'),
+                          items:
+                              const <MapEntry<String, String>>[
+                                    MapEntry('day', '每天'),
+                                    MapEntry('week', '每周'),
+                                    MapEntry('month', '每月'),
+                                    MapEntry('year', '每年'),
+                                  ]
+                                  .map(
+                                    (item) => DropdownMenuItem(
+                                      value: item.key,
+                                      child: Text(item.value),
+                                    ),
+                                  )
+                                  .toList(),
+                          onChanged: (value) => setDialogState(
+                            () => frequency = value ?? frequency,
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        DropdownButtonFormField<String>(
+                          initialValue: category,
+                          decoration: const InputDecoration(labelText: '分类'),
+                          items: controller
+                              .categoriesFor(type)
                               .map(
                                 (item) => DropdownMenuItem(
-                                  value: item.key,
-                                  child: Text(item.value),
+                                  value: item.name,
+                                  child: Text(item.name),
                                 ),
                               )
                               .toList(),
-                      onChanged: (value) =>
-                          setDialogState(() => frequency = value ?? frequency),
+                          onChanged: (value) => setDialogState(
+                            () => category = value ?? category,
+                          ),
+                        ),
+                      ],
                     ),
-                    const SizedBox(height: 12),
-                    DropdownButtonFormField<int>(
-                      initialValue: accountId,
-                      decoration: const InputDecoration(labelText: '账户'),
-                      items: accounts
-                          .map(
-                            (item) => DropdownMenuItem(
-                              value: item.id,
-                              child: Text(item.name),
-                            ),
-                          )
-                          .toList(),
-                      onChanged: (value) =>
-                          setDialogState(() => accountId = value ?? accountId),
-                    ),
-                    const SizedBox(height: 12),
-                    DropdownButtonFormField<String>(
-                      initialValue: category,
-                      decoration: const InputDecoration(labelText: '分类'),
-                      items: controller.categories
-                          .map(
-                            (item) => DropdownMenuItem(
-                              value: item,
-                              child: Text(item),
-                            ),
-                          )
-                          .toList(),
-                      onChanged: (value) =>
-                          setDialogState(() => category = value ?? category),
-                    ),
-                  ],
-                ),
+                  ),
+                ],
               ),
-              actions: <Widget>[
-                TextButton(
-                  onPressed: () => Navigator.pop(context, false),
-                  child: const Text('取消'),
-                ),
-                FilledButton(
-                  onPressed: () => Navigator.pop(context, true),
-                  child: const Text('保存'),
-                ),
-              ],
             ),
+          ),
+        ),
       ),
     );
     final String title = name.text.trim();
@@ -186,7 +203,7 @@ class RecurringRulesPage extends StatelessWidget {
         amount: value,
         frequency: frequency,
         anchorDate: rule?.anchorDate ?? DateTime.now(),
-        accountId: accountId,
+        accountId: null,
         category: category,
         enabled: rule?.enabled ?? true,
       ),

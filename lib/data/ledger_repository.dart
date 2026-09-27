@@ -16,6 +16,13 @@ class LedgerSnapshot {
     required this.categoryBudgets,
     required this.recurringRules,
     required this.categories,
+    required this.multiEnabled,
+    required this.splitMode,
+    required this.themeMode,
+    required this.textScale,
+    required this.highContrast,
+    required this.readerHints,
+    required this.haptics,
   });
 
   final List<LedgerAccount> accounts;
@@ -27,7 +34,14 @@ class LedgerSnapshot {
   final int dailyReminderMinute;
   final Map<String, double> categoryBudgets;
   final List<RecurringRule> recurringRules;
-  final List<String> categories;
+  final List<LedgerCategory> categories;
+  final bool multiEnabled;
+  final String splitMode;
+  final String themeMode;
+  final double textScale;
+  final bool highContrast;
+  final bool readerHints;
+  final bool haptics;
 }
 
 class LedgerRepository {
@@ -114,7 +128,7 @@ class LedgerRepository {
     };
     final List<Map<String, Object?>> categoryRows = await db.query(
       'categories',
-      columns: <String>['name'],
+      columns: <String>['uuid', 'name', 'type', 'icon'],
       where: 'archived_at IS NULL',
       orderBy: 'sort_order, id',
     );
@@ -136,7 +150,14 @@ class LedgerRepository {
           int.tryParse(settings['daily_reminder_minute'] ?? '') ?? 0,
       categoryBudgets: categoryBudgets,
       recurringRules: ruleRows.map(_ruleFromRow).toList(),
-      categories: categoryRows.map((row) => row['name'] as String).toList(),
+      categories: categoryRows.map(_categoryFromRow).toList(),
+      multiEnabled: settings['multi_enabled'] != '0',
+      splitMode: settings['split_mode'] ?? 'equal',
+      themeMode: settings['theme_mode'] ?? 'system',
+      textScale: double.tryParse(settings['text_scale'] ?? '') ?? 1,
+      highContrast: settings['high_contrast'] == '1',
+      readerHints: settings['reader_hints'] != '0',
+      haptics: settings['haptics'] != '0',
     );
   }
 
@@ -146,7 +167,7 @@ class LedgerRepository {
     return db.transaction((Transaction txn) async {
       final int? categoryId = draft.type == EntryType.transfer
           ? null
-          : await _categoryId(txn, draft.category, now);
+          : await _categoryId(txn, draft.category, now, type: draft.type);
       int? recurringRuleId;
       if (draft.recurring && draft.type != EntryType.transfer) {
         recurringRuleId = await txn.insert('recurring_rules', <String, Object?>{
@@ -154,7 +175,7 @@ class LedgerRepository {
           'name': draft.note.isEmpty ? draft.category : draft.note,
           'type': draft.type.name,
           'amount_minor': _minor(draft.amount),
-          'account_id': draft.accountId,
+          'account_id': null,
           'category_id': categoryId,
           'frequency': draft.recurringFrequency,
           'anchor_date': _dateKey(draft.occurredAt),
@@ -201,6 +222,60 @@ class LedgerRepository {
         memberIds: List<int>.from(draft.memberIds),
         recurring: draft.recurring,
         recurringFrequency: draft.recurringFrequency,
+      );
+    });
+  }
+
+  Future<void> updateEntry(LedgerEntry previous, LedgerEntry next) async {
+    final Database db = await _appDatabase.database;
+    final int now = DateTime.now().millisecondsSinceEpoch;
+    await db.transaction((Transaction txn) async {
+      await _applyBalance(txn, previous, -1);
+      final int? categoryId = next.type == EntryType.transfer
+          ? null
+          : await _categoryId(txn, next.category, now, type: next.type);
+      await txn.update(
+        'transactions',
+        <String, Object?>{
+          'type': next.type.name,
+          'amount_minor': _minor(next.amount),
+          'account_id': next.accountId,
+          'to_account_id': next.type == EntryType.transfer
+              ? next.toAccountId
+              : null,
+          'category_id': categoryId,
+          'occurred_at': next.occurredAt.millisecondsSinceEpoch,
+          'local_date': _dateKey(next.occurredAt),
+          'timezone': next.occurredAt.timeZoneName,
+          'note': next.note,
+          'updated_at': now,
+        },
+        where: 'id = ?',
+        whereArgs: <Object?>[previous.id],
+      );
+      await txn.delete(
+        'transaction_members',
+        where: 'transaction_id = ?',
+        whereArgs: <Object?>[previous.id],
+      );
+      await _insertMembers(
+        txn,
+        previous.id,
+        next.memberIds,
+        _minor(next.amount),
+      );
+      await _applyBalance(txn, next, 1);
+    });
+  }
+
+  Future<void> deleteEntry(LedgerEntry entry) async {
+    final Database db = await _appDatabase.database;
+    await db.transaction((Transaction txn) async {
+      await _applyBalance(txn, entry, -1);
+      await txn.delete(
+        'transactions',
+        where: 'id = ?',
+        whereArgs: <Object?>[entry.id],
       );
     });
   }
@@ -309,16 +384,91 @@ class LedgerRepository {
     });
   }
 
-  Future<void> updateAccount(int id, {required String name}) async {
+  Future<void> updateAccount(
+    int id, {
+    required String name,
+    required String icon,
+    required double balance,
+  }) async {
+    final Database db = await _appDatabase.database;
+    final int now = DateTime.now().millisecondsSinceEpoch;
+    await db.transaction((Transaction txn) async {
+      final List<Map<String, Object?>> rows = await txn.query(
+        'accounts',
+        columns: <String>['balance_minor'],
+        where: 'id = ?',
+        whereArgs: <Object?>[id],
+        limit: 1,
+      );
+      if (rows.isEmpty) return;
+      final int oldMinor = rows.first['balance_minor'] as int;
+      final int nextMinor = _minor(balance);
+      await txn.update(
+        'accounts',
+        <String, Object?>{
+          'name': name,
+          'icon': icon,
+          'balance_minor': nextMinor,
+          'updated_at': now,
+        },
+        where: 'id = ?',
+        whereArgs: <Object?>[id],
+      );
+      final int delta = nextMinor - oldMinor;
+      if (delta != 0) {
+        await txn.insert('transactions', <String, Object?>{
+          'uuid': _uuid('adjustment', now),
+          'type': EntryType.adjustment.name,
+          'amount_minor': delta.abs(),
+          'adjustment_delta_minor': delta,
+          'account_id': id,
+          'occurred_at': now,
+          'local_date': _dateKey(DateTime.now()),
+          'timezone': DateTime.now().timeZoneName,
+          'note':
+              '$name账户余额由 ¥${(oldMinor / 100).toStringAsFixed(2)} 变更为 ¥${balance.toStringAsFixed(2)}',
+          'created_at': now,
+          'updated_at': now,
+        });
+      }
+    });
+  }
+
+  Future<void> addCategory({
+    required String name,
+    required EntryType type,
+    required String icon,
+  }) async {
+    final Database db = await _appDatabase.database;
+    final int now = DateTime.now().millisecondsSinceEpoch;
+    final int order =
+        Sqflite.firstIntValue(
+          await db.rawQuery(
+            'SELECT COALESCE(MAX(sort_order), -1) + 1 FROM categories',
+          ),
+        ) ??
+        0;
+    await db.insert('categories', <String, Object?>{
+      'uuid': _uuid('custom-category', now),
+      'name': name,
+      'type': type.name,
+      'icon': icon,
+      'sort_order': order,
+      'created_at': now,
+      'updated_at': now,
+    });
+  }
+
+  Future<void> archiveCategory(String name) async {
     final Database db = await _appDatabase.database;
     await db.update(
-      'accounts',
+      'categories',
       <String, Object?>{
-        'name': name,
+        'archived_at': DateTime.now().millisecondsSinceEpoch,
         'updated_at': DateTime.now().millisecondsSinceEpoch,
       },
-      where: 'id = ?',
-      whereArgs: <Object?>[id],
+      where: 'name = ?',
+      whereArgs: <Object?>[name],
     );
   }
 
@@ -366,7 +516,12 @@ class LedgerRepository {
   Future<void> saveRecurringRule(RecurringRule rule) async {
     final Database db = await _appDatabase.database;
     final int now = DateTime.now().millisecondsSinceEpoch;
-    final int categoryId = await _categoryId(db, rule.category, now);
+    final int categoryId = await _categoryId(
+      db,
+      rule.category,
+      now,
+      type: rule.type,
+    );
     final Map<String, Object?> values = <String, Object?>{
       'name': rule.name,
       'type': rule.type.name,
@@ -439,26 +594,27 @@ class LedgerRepository {
         'created_at': now,
         'updated_at': now,
       });
-      const List<String> defaults = <String>[
-        '餐饮',
-        '交通',
-        '购物',
-        '居住',
-        '娱乐',
-        '医疗',
-        '学习',
-        '旅行',
-        '红包',
-        '工资',
-        '理财',
-        '其他',
-      ];
+      const List<(String, String, String)> defaults =
+          <(String, String, String)>[
+            ('餐饮', 'expense', 'restaurant'),
+            ('交通', 'expense', 'car'),
+            ('购物', 'expense', 'shopping'),
+            ('居住', 'expense', 'home'),
+            ('娱乐', 'expense', 'game'),
+            ('医疗', 'expense', 'medical'),
+            ('学习', 'expense', 'book'),
+            ('旅行', 'expense', 'flight'),
+            ('红包', 'income', 'gift'),
+            ('工资', 'income', 'salary'),
+            ('理财', 'income', 'chart'),
+            ('其他', 'expense', 'tag'),
+          ];
       for (int index = 0; index < defaults.length; index++) {
         await txn.insert('categories', <String, Object?>{
-          'uuid': _uuid('category', now + index),
-          'name': defaults[index],
-          'type': defaults[index] == '工资' ? 'income' : 'both',
-          'icon': 'tag',
+          'uuid': 'default-category-${index + 1}-$now',
+          'name': defaults[index].$1,
+          'type': defaults[index].$2,
+          'icon': defaults[index].$3,
           'sort_order': index,
           'created_at': now,
           'updated_at': now,
@@ -487,6 +643,15 @@ class LedgerRepository {
       }, conflictAlgorithm: ConflictAlgorithm.replace);
     }
     await batch.commit(noResult: true);
+  }
+
+  Future<void> setPreference(String key, String value) async {
+    final Database db = await _appDatabase.database;
+    await db.insert('settings', <String, Object?>{
+      'key': key,
+      'value': value,
+      'updated_at': DateTime.now().millisecondsSinceEpoch,
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
   }
 
   Future<Map<String, Object?>> exportBackup() async {
@@ -703,8 +868,27 @@ class LedgerRepository {
     id: row['id'] as int,
     name: row['name'] as String,
     balance: (row['balance_minor'] as int) / 100,
+    icon: row['icon'] as String? ?? 'wallet',
     archived: row['archived_at'] != null,
   );
+
+  LedgerCategory _categoryFromRow(Map<String, Object?> row) {
+    final String rawType = row['type'] as String? ?? 'expense';
+    final String name = row['name'] as String;
+    final EntryType type =
+        rawType == 'income' ||
+            (rawType == 'both' && <String>['工资', '红包', '理财'].contains(name))
+        ? EntryType.income
+        : rawType == 'transfer'
+        ? EntryType.transfer
+        : EntryType.expense;
+    return LedgerCategory(
+      name: name,
+      type: type,
+      icon: row['icon'] as String? ?? 'tag',
+      custom: (row['uuid'] as String? ?? '').startsWith('custom-category-'),
+    );
+  }
 
   LedgerMember _memberFromRow(Map<String, Object?> row) => LedgerMember(
     id: row['id'] as int,
@@ -720,7 +904,7 @@ class LedgerRepository {
     amount: (row['amount_minor'] as int) / 100,
     frequency: row['frequency'] as String,
     anchorDate: DateTime.parse(row['anchor_date'] as String),
-    accountId: row['account_id'] as int,
+    accountId: row['account_id'] as int?,
     category: (row['category_name'] as String?) ?? '其他',
     enabled: (row['enabled'] as int) == 1,
   );
@@ -743,10 +927,17 @@ class LedgerRepository {
       memberIds: memberIds,
       recurring: row['recurring_rule_id'] != null,
       recurringFrequency: (row['recurring_frequency'] as String?) ?? 'month',
+      adjustmentDelta: ((row['adjustment_delta_minor'] as int?) ?? 0) / 100,
     );
   }
 
-  Future<int> _categoryId(DatabaseExecutor db, String name, int now) async {
+  Future<int> _categoryId(
+    DatabaseExecutor db,
+    String name,
+    int now, {
+    EntryType type = EntryType.expense,
+    String icon = 'tag',
+  }) async {
     final List<Map<String, Object?>> rows = await db.query(
       'categories',
       columns: <String>['id'],
@@ -758,8 +949,8 @@ class LedgerRepository {
     return db.insert('categories', <String, Object?>{
       'uuid': _uuid('category', now),
       'name': name,
-      'type': 'both',
-      'icon': 'tag',
+      'type': type.name,
+      'icon': icon,
       'created_at': now,
       'updated_at': now,
     });
@@ -792,6 +983,7 @@ class LedgerRepository {
     int direction,
   ) async {
     final int amount = _minor(entry.amount) * direction;
+    if (entry.type == EntryType.adjustment) return;
     if (entry.type == EntryType.transfer) {
       await db.rawUpdate(
         'UPDATE accounts SET balance_minor = balance_minor - ?, updated_at = ? WHERE id = ?',

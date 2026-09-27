@@ -3,10 +3,19 @@ import 'package:flutter/material.dart';
 import '../../data/ledger_controller.dart';
 import '../../models/ledger_models.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/swipe_action_tile.dart';
 
-class BudgetPage extends StatelessWidget {
+class BudgetPage extends StatefulWidget {
   const BudgetPage({required this.controller, super.key});
   final LedgerController controller;
+
+  @override
+  State<BudgetPage> createState() => _BudgetPageState();
+}
+
+class _BudgetPageState extends State<BudgetPage> {
+  LedgerController get controller => widget.controller;
+  bool _editing = false;
 
   @override
   Widget build(BuildContext context) => AnimatedBuilder(
@@ -33,8 +42,8 @@ class BudgetPage extends StatelessWidget {
           centerTitle: true,
           actions: <Widget>[
             TextButton(
-              onPressed: () => _editTotal(context, now),
-              child: const Text('编辑'),
+              onPressed: () => setState(() => _editing = !_editing),
+              child: Text(_editing ? '完成' : '编辑'),
             ),
           ],
         ),
@@ -46,6 +55,8 @@ class BudgetPage extends StatelessWidget {
               spent: spent,
               budget: budget,
               progress: progress,
+              editing: _editing,
+              onTap: _editing ? () => _editTotal(context, now) : null,
             ),
             const Padding(
               padding: EdgeInsets.fromLTRB(4, 16, 4, 8),
@@ -66,19 +77,37 @@ class BudgetPage extends StatelessWidget {
               )
             else
               ...controller.categoryBudgets.entries.map(
-                (entry) => _CategoryBudget(
-                  name: entry.key,
-                  spent: categorySpent[entry.key] ?? 0,
-                  budget: entry.value,
-                  onTap: () =>
-                      _editCategory(context, now, entry.key, entry.value),
+                (entry) => Padding(
+                  padding: const EdgeInsets.only(bottom: 9),
+                  child: SwipeActionTile(
+                    actionLabel: '删除',
+                    onAction: () =>
+                        controller.setCategoryBudget(now, entry.key, 0),
+                    onTap: _editing
+                        ? () => _editCategory(
+                            context,
+                            now,
+                            entry.key,
+                            entry.value,
+                          )
+                        : null,
+                    child: _CategoryBudget(
+                      name: entry.key,
+                      spent: categorySpent[entry.key] ?? 0,
+                      budget: entry.value,
+                      editing: _editing,
+                    ),
+                  ),
                 ),
               ),
-            OutlinedButton.icon(
-              onPressed: budget <= 0 ? null : () => _addCategory(context, now),
-              icon: const Icon(Icons.add),
-              label: const Text('添加分类预算'),
-            ),
+            if (_editing)
+              OutlinedButton.icon(
+                onPressed: budget <= 0
+                    ? null
+                    : () => _addCategory(context, now),
+                icon: const Icon(Icons.add),
+                label: const Text('添加分类预算'),
+              ),
           ],
         ),
       );
@@ -108,7 +137,9 @@ class BudgetPage extends StatelessWidget {
   }
 
   Future<void> _addCategory(BuildContext context, DateTime month) async {
-    final List<String> available = controller.categories
+    final List<String> available = controller
+        .categoriesFor(EntryType.expense)
+        .map((item) => item.name)
         .where(
           (name) =>
               !controller.categoryBudgets.containsKey(name) &&
@@ -238,54 +269,62 @@ class _BudgetHero extends StatelessWidget {
     required this.spent,
     required this.budget,
     required this.progress,
+    required this.editing,
+    required this.onTap,
   });
   final DateTime month;
   final double spent;
   final double budget;
   final double progress;
+  final bool editing;
+  final VoidCallback? onTap;
 
   @override
-  Widget build(BuildContext context) => Container(
-    padding: const EdgeInsets.all(18),
-    decoration: BoxDecoration(
-      color: Theme.of(context).colorScheme.surface,
-      borderRadius: BorderRadius.circular(16),
-    ),
-    child: Column(
-      children: <Widget>[
-        Text(
-          '${month.year}年${month.month}月',
-          style: const TextStyle(color: Color(0xFF8A9099)),
-        ),
-        const SizedBox(height: 18),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: <Widget>[
-            _Value(label: '已支出', value: spent),
-            const SizedBox(width: 36),
-            _Value(label: '预算', value: budget),
-          ],
-        ),
-        const SizedBox(height: 18),
-        LinearProgressIndicator(
-          value: progress.clamp(0, 1),
-          minHeight: 11,
-          color: progress > 1 ? AppTheme.expense : AppTheme.green,
-          borderRadius: BorderRadius.circular(99),
-        ),
-        const SizedBox(height: 8),
-        Text('${(progress * 100).toStringAsFixed(1)}%'),
-        const SizedBox(height: 10),
-        Text(
-          progress > 1
-              ? '超支 ¥${(spent - budget).toStringAsFixed(2)}'
-              : '剩余 ¥${(budget - spent).toStringAsFixed(2)}',
-          style: TextStyle(
-            fontWeight: FontWeight.w700,
-            color: progress > 1 ? AppTheme.expense : null,
+  Widget build(BuildContext context) => InkWell(
+    onTap: onTap,
+    borderRadius: BorderRadius.circular(16),
+    child: Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surface,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Column(
+        children: <Widget>[
+          Text(
+            '${month.year}年${month.month}月',
+            style: const TextStyle(color: Color(0xFF8A9099)),
           ),
-        ),
-      ],
+          const SizedBox(height: 18),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: <Widget>[
+              _Value(label: '已支出', value: spent),
+              const SizedBox(width: 36),
+              _Value(label: editing ? '预算 ›' : '预算', value: budget),
+            ],
+          ),
+          const SizedBox(height: 18),
+          LinearProgressIndicator(
+            value: progress.clamp(0, 1),
+            minHeight: 11,
+            color: progress > 1 ? AppTheme.expense : AppTheme.green,
+            borderRadius: BorderRadius.circular(99),
+          ),
+          const SizedBox(height: 8),
+          Text('${(progress * 100).toStringAsFixed(1)}%'),
+          const SizedBox(height: 10),
+          Text(
+            progress > 1
+                ? '超支 ¥${(spent - budget).toStringAsFixed(2)}'
+                : '剩余 ¥${(budget - spent).toStringAsFixed(2)}',
+            style: TextStyle(
+              fontWeight: FontWeight.w700,
+              color: progress > 1 ? AppTheme.expense : null,
+            ),
+          ),
+        ],
+      ),
     ),
   );
 }
@@ -315,67 +354,57 @@ class _CategoryBudget extends StatelessWidget {
     required this.name,
     required this.spent,
     required this.budget,
-    required this.onTap,
+    required this.editing,
   });
   final String name;
   final double spent;
   final double budget;
-  final VoidCallback onTap;
+  final bool editing;
   @override
   Widget build(BuildContext context) {
     final double progress = budget == 0 ? 0 : spent / budget;
-    return InkWell(
-      borderRadius: BorderRadius.circular(14),
-      onTap: onTap,
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 9),
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: Theme.of(context).colorScheme.surface,
-          borderRadius: BorderRadius.circular(14),
-        ),
-        child: Column(
-          children: <Widget>[
-            Row(
-              children: <Widget>[
-                Expanded(
-                  child: Text(
-                    name,
-                    style: const TextStyle(fontWeight: FontWeight.w600),
-                  ),
-                ),
-                Text(
-                  '¥${spent.toStringAsFixed(0)} / ¥${budget.toStringAsFixed(0)}',
-                  style: const TextStyle(
-                    color: Color(0xFF8A9099),
-                    fontSize: 12,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 9),
-            LinearProgressIndicator(
-              value: progress.clamp(0, 1),
-              minHeight: 9,
-              color: progress > 1 ? AppTheme.expense : AppTheme.green,
-              borderRadius: BorderRadius.circular(99),
-            ),
-            if (progress > 1)
-              Padding(
-                padding: const EdgeInsets.only(top: 7),
-                child: Align(
-                  alignment: Alignment.centerLeft,
-                  child: Text(
-                    '超支 ¥${(spent - budget).toStringAsFixed(0)} · ${(progress * 100).toStringAsFixed(1)}%',
-                    style: const TextStyle(
-                      color: AppTheme.expense,
-                      fontSize: 12,
-                    ),
-                  ),
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surface,
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Column(
+        children: <Widget>[
+          Row(
+            children: <Widget>[
+              Expanded(
+                child: Text(
+                  name,
+                  style: const TextStyle(fontWeight: FontWeight.w600),
                 ),
               ),
-          ],
-        ),
+              Text(
+                '¥${spent.toStringAsFixed(0)} / ¥${budget.toStringAsFixed(0)}',
+                style: const TextStyle(color: Color(0xFF8A9099), fontSize: 12),
+              ),
+              if (editing) const Icon(Icons.chevron_right, size: 18),
+            ],
+          ),
+          const SizedBox(height: 9),
+          LinearProgressIndicator(
+            value: progress.clamp(0, 1),
+            minHeight: 9,
+            color: progress > 1 ? AppTheme.expense : AppTheme.green,
+            borderRadius: BorderRadius.circular(99),
+          ),
+          if (progress > 1)
+            Padding(
+              padding: const EdgeInsets.only(top: 7),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  '超支 ¥${(spent - budget).toStringAsFixed(0)} · ${(progress * 100).toStringAsFixed(1)}%',
+                  style: const TextStyle(color: AppTheme.expense, fontSize: 12),
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }

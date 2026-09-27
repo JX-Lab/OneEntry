@@ -3,12 +3,15 @@ import 'package:flutter/material.dart';
 import '../../data/ledger_controller.dart';
 import '../../models/ledger_models.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/swipe_action_tile.dart';
 import 'period_picker_sheet.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({
     required this.controller,
     required this.onAddEntry,
+    required this.onEditEntry,
+    required this.onDeleteEntry,
     required this.onOpenStatistics,
     required this.onOpenSettings,
     required this.onOpenAccounts,
@@ -19,6 +22,8 @@ class HomePage extends StatefulWidget {
 
   final LedgerController controller;
   final VoidCallback onAddEntry;
+  final ValueChanged<LedgerEntry> onEditEntry;
+  final ValueChanged<LedgerEntry> onDeleteEntry;
   final VoidCallback onOpenStatistics;
   final VoidCallback onOpenSettings;
   final VoidCallback onOpenAccounts;
@@ -150,14 +155,16 @@ class _HomePageState extends State<HomePage> {
               const SizedBox(height: 10),
               Row(
                 children: <Widget>[
-                  Expanded(
-                    child: _QuickButton(
-                      icon: Icons.people_outline,
-                      label: '成员',
-                      onTap: widget.onOpenMembers,
+                  if (widget.controller.multiEnabled) ...<Widget>[
+                    Expanded(
+                      child: _QuickButton(
+                        icon: Icons.people_outline,
+                        label: '成员',
+                        onTap: widget.onOpenMembers,
+                      ),
                     ),
-                  ),
-                  const SizedBox(width: 10),
+                    const SizedBox(width: 10),
+                  ],
                   Expanded(
                     child: _QuickButton(
                       icon: Icons.account_balance_wallet_outlined,
@@ -259,18 +266,59 @@ class _HomePageState extends State<HomePage> {
     return groups.entries
         .expand(
           (entry) => <Widget>[
-            Padding(
-              padding: const EdgeInsets.fromLTRB(4, 8, 4, 6),
-              child: Text(
-                entry.key,
-                style: const TextStyle(
-                  fontSize: 12,
-                  color: Color(0xFF8A9099),
-                  fontWeight: FontWeight.w500,
-                ),
+            Builder(
+              builder: (BuildContext context) {
+                final List<LedgerEntry> values = entry.value;
+                final DateTime date = values.first.occurredAt;
+                final double income = values
+                    .where((item) => item.type == EntryType.income)
+                    .fold(0, (sum, item) => sum + item.amount);
+                final double expense = values
+                    .where((item) => item.type == EntryType.expense)
+                    .fold(0, (sum, item) => sum + item.amount);
+                return Padding(
+                  padding: const EdgeInsets.fromLTRB(4, 8, 4, 6),
+                  child: Row(
+                    children: <Widget>[
+                      Text(
+                        '${entry.key} ${_weekday(date.weekday)}',
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: Color(0xFF8A9099),
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      const Spacer(),
+                      if (income > 0)
+                        Text(
+                          '收 ${income.toStringAsFixed(2)}',
+                          style: const TextStyle(
+                            fontSize: 11,
+                            color: Color(0xFF8A9099),
+                          ),
+                        ),
+                      if (income > 0 && expense > 0) const SizedBox(width: 8),
+                      if (expense > 0)
+                        Text(
+                          '支 ${expense.toStringAsFixed(2)}',
+                          style: const TextStyle(
+                            fontSize: 11,
+                            color: Color(0xFF8A9099),
+                          ),
+                        ),
+                    ],
+                  ),
+                );
+              },
+            ),
+            ...entry.value.map(
+              (LedgerEntry item) => _EntryTile(
+                entry: item,
+                controller: widget.controller,
+                onTap: () => widget.onEditEntry(item),
+                onDelete: () => widget.onDeleteEntry(item),
               ),
             ),
-            ...entry.value.map((LedgerEntry item) => _EntryTile(entry: item)),
           ],
         )
         .toList();
@@ -329,7 +377,7 @@ class _SummaryCard extends StatelessWidget {
           ),
           if (showBudget)
             Material(
-              color: Theme.of(context).scaffoldBackgroundColor,
+              color: Colors.black.withValues(alpha: .14),
               child: InkWell(
                 onTap: onBudgetTap,
                 child: Padding(
@@ -344,6 +392,7 @@ class _SummaryCard extends StatelessWidget {
                         style: const TextStyle(
                           fontSize: 13,
                           fontWeight: FontWeight.w600,
+                          color: Colors.white,
                         ),
                       ),
                       const Spacer(),
@@ -353,10 +402,14 @@ class _SummaryCard extends StatelessWidget {
                             : '剩余 ¥${(budget - spent).toStringAsFixed(2)}',
                         style: TextStyle(
                           fontSize: 13,
-                          color: over ? AppTheme.expense : null,
+                          color: over ? const Color(0xFFFFD5D5) : Colors.white,
                         ),
                       ),
-                      const Icon(Icons.chevron_right, size: 20),
+                      const Icon(
+                        Icons.chevron_right,
+                        size: 20,
+                        color: Colors.white,
+                      ),
                     ],
                   ),
                 ),
@@ -433,76 +486,200 @@ class _QuickButton extends StatelessWidget {
 }
 
 class _EntryTile extends StatelessWidget {
-  const _EntryTile({required this.entry});
+  const _EntryTile({
+    required this.entry,
+    required this.controller,
+    required this.onTap,
+    required this.onDelete,
+  });
   final LedgerEntry entry;
+  final LedgerController controller;
+  final VoidCallback onTap;
+  final VoidCallback onDelete;
 
   @override
   Widget build(BuildContext context) {
-    final bool expense = entry.type == EntryType.expense;
+    final bool adjustment = entry.type == EntryType.adjustment;
+    final bool expense =
+        entry.type == EntryType.expense ||
+        (adjustment && entry.adjustmentDelta < 0);
     final bool transfer = entry.type == EntryType.transfer;
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surface,
-        borderRadius: BorderRadius.circular(14),
-      ),
-      child: ListTile(
-        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 3),
-        leading: Container(
-          width: 40,
-          height: 40,
+    final List<LedgerAccount> matchingAccounts = controller.accounts
+        .where((LedgerAccount item) => item.id == entry.accountId)
+        .toList();
+    final LedgerAccount? account = matchingAccounts.isEmpty
+        ? null
+        : matchingAccounts.first;
+    final List<LedgerMember> members = controller.members
+        .where((LedgerMember member) => entry.memberIds.contains(member.id))
+        .toList();
+    final double shownAmount = adjustment
+        ? entry.adjustmentDelta.abs()
+        : entry.amount;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: SwipeActionTile(
+        actionLabel: '删除',
+        onAction: () => _confirmDelete(context),
+        onTap: onTap,
+        child: Container(
           decoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.surfaceContainerHighest,
-            borderRadius: BorderRadius.circular(12),
+            color: Theme.of(context).colorScheme.surface,
+            borderRadius: BorderRadius.circular(14),
           ),
-          child: Icon(
-            transfer
-                ? Icons.swap_horiz
-                : expense
-                ? _categoryIcon(entry.category)
-                : Icons.payments_outlined,
-            size: 21,
-          ),
-        ),
-        title: Text(
-          transfer ? '转账' : entry.category,
-          style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
-        ),
-        subtitle: Text(
-          entry.note.isEmpty ? '无备注' : entry.note,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-        ),
-        trailing: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: <Widget>[
-            Text(
-              '${expense
-                  ? '-'
-                  : transfer
-                  ? ''
-                  : '+'}${entry.amount.toStringAsFixed(2)}',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w700,
-                color: expense
-                    ? AppTheme.expense
-                    : transfer
-                    ? null
-                    : AppTheme.income,
+          child: ListTile(
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 14,
+              vertical: 3,
+            ),
+            leading: SizedBox(
+              width: 44,
+              height: 44,
+              child: Stack(
+                clipBehavior: Clip.none,
+                children: <Widget>[
+                  Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      color: Theme.of(
+                        context,
+                      ).colorScheme.surfaceContainerHighest,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Icon(
+                      transfer
+                          ? Icons.swap_horiz
+                          : adjustment
+                          ? Icons.account_balance_wallet_outlined
+                          : _entryCategoryIcon(controller, entry.category),
+                      size: 21,
+                    ),
+                  ),
+                  if (controller.multiEnabled)
+                    Positioned(
+                      left: -3,
+                      top: -3,
+                      child: _MemberBadge(members: members),
+                    ),
+                ],
               ),
             ),
-            Text(
-              '${entry.occurredAt.hour.toString().padLeft(2, '0')}:${entry.occurredAt.minute.toString().padLeft(2, '0')}',
-              style: const TextStyle(fontSize: 11, color: Color(0xFF8A9099)),
+            title: Text(
+              adjustment
+                  ? '余额调整'
+                  : transfer
+                  ? '转账'
+                  : entry.category,
+              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
             ),
-          ],
+            subtitle: Text(
+              entry.note.isEmpty ? '无备注' : entry.note,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+            trailing: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: <Widget>[
+                Text(
+                  '${expense
+                      ? '-'
+                      : transfer
+                      ? ''
+                      : '+'}${shownAmount.toStringAsFixed(2)}',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                    color: expense
+                        ? AppTheme.expense
+                        : transfer
+                        ? null
+                        : AppTheme.income,
+                  ),
+                ),
+                Text(
+                  transfer
+                      ? '账户间转账'
+                      : account == null
+                      ? ''
+                      : '余额 ¥${account.balance.toStringAsFixed(2)}',
+                  style: const TextStyle(
+                    fontSize: 11,
+                    color: Color(0xFF8A9099),
+                  ),
+                ),
+              ],
+            ),
+          ),
         ),
       ),
     );
   }
+
+  Future<void> _confirmDelete(BuildContext context) async {
+    final bool? confirmed = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext context) => AlertDialog(
+        title: const Text('删除这笔账目？'),
+        content: Text(entry.note.isEmpty ? entry.category : entry.note),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('删除'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true) onDelete();
+  }
 }
+
+class _MemberBadge extends StatelessWidget {
+  const _MemberBadge({required this.members});
+  final List<LedgerMember> members;
+
+  @override
+  Widget build(BuildContext context) {
+    if (members.isEmpty) {
+      return _badge(context, '?', Theme.of(context).colorScheme.outline);
+    }
+    if (members.length == 1) {
+      return _badge(
+        context,
+        members.first.name.substring(0, 1),
+        Color(members.first.colorValue),
+      );
+    }
+    return _badge(
+      context,
+      '${members.length}',
+      Color(members.first.colorValue),
+    );
+  }
+
+  Widget _badge(BuildContext context, String text, Color color) => Container(
+    width: 19,
+    height: 19,
+    decoration: BoxDecoration(
+      color: Theme.of(context).colorScheme.surface,
+      shape: BoxShape.circle,
+      border: Border.all(color: color, width: 1.5),
+    ),
+    alignment: Alignment.center,
+    child: Text(
+      text,
+      style: TextStyle(fontSize: 9, color: color, fontWeight: FontWeight.w700),
+    ),
+  );
+}
+
+String _weekday(int day) =>
+    const <String>['周一', '周二', '周三', '周四', '周五', '周六', '周日'][day - 1];
 
 IconData _categoryIcon(String category) => switch (category) {
   '交通' => Icons.directions_car_outlined,
@@ -516,3 +693,35 @@ IconData _categoryIcon(String category) => switch (category) {
   '理财' => Icons.show_chart,
   _ => Icons.restaurant_outlined,
 };
+
+IconData _entryCategoryIcon(LedgerController controller, String categoryName) {
+  final List<LedgerCategory> matching = controller.categories
+      .where((item) => item.name == categoryName)
+      .toList();
+  if (matching.isEmpty) return _categoryIcon(categoryName);
+  return switch (matching.first.icon) {
+    'car' => Icons.directions_car_outlined,
+    'shopping' => Icons.shopping_bag_outlined,
+    'home' => Icons.home_outlined,
+    'game' => Icons.sports_esports_outlined,
+    'medical' => Icons.medical_services_outlined,
+    'book' => Icons.menu_book_outlined,
+    'flight' => Icons.flight_outlined,
+    'gift' => Icons.card_giftcard_outlined,
+    'salary' => Icons.payments_outlined,
+    'chart' => Icons.show_chart,
+    'pet' => Icons.pets_outlined,
+    'coffee' => Icons.coffee_outlined,
+    'phone' => Icons.phone_android_outlined,
+    'fitness' => Icons.fitness_center_outlined,
+    'child' => Icons.child_care_outlined,
+    'beauty' => Icons.brush_outlined,
+    'tools' => Icons.handyman_outlined,
+    'plant' => Icons.local_florist_outlined,
+    'cake' => Icons.cake_outlined,
+    'insurance' => Icons.health_and_safety_outlined,
+    'rent' => Icons.key_outlined,
+    'tag' => Icons.sell_outlined,
+    _ => _categoryIcon(categoryName),
+  };
+}

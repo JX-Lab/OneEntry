@@ -13,13 +13,20 @@ class LedgerController extends ChangeNotifier {
   final List<LedgerMember> members = <LedgerMember>[];
   final List<LedgerEntry> entries = <LedgerEntry>[];
   final List<RecurringRule> recurringRules = <RecurringRule>[];
-  final List<String> categories = <String>[];
+  final List<LedgerCategory> categories = <LedgerCategory>[];
   final Map<String, double> categoryBudgets = <String, double>{};
 
   double monthlyBudget = 0;
   bool dailyReminderEnabled = false;
   int dailyReminderHour = 20;
   int dailyReminderMinute = 0;
+  bool multiEnabled = true;
+  String splitMode = 'equal';
+  String themeMode = 'system';
+  double textScale = 1;
+  bool highContrast = false;
+  bool readerHints = true;
+  bool haptics = true;
   bool initialized = false;
 
   Future<void> initialize() async {
@@ -46,6 +53,13 @@ class LedgerController extends ChangeNotifier {
     dailyReminderEnabled = snapshot.dailyReminderEnabled;
     dailyReminderHour = snapshot.dailyReminderHour;
     dailyReminderMinute = snapshot.dailyReminderMinute;
+    multiEnabled = snapshot.multiEnabled;
+    splitMode = snapshot.splitMode;
+    themeMode = snapshot.themeMode;
+    textScale = snapshot.textScale;
+    highContrast = snapshot.highContrast;
+    readerHints = snapshot.readerHints;
+    haptics = snapshot.haptics;
     initialized = true;
     notifyListeners();
   }
@@ -91,6 +105,16 @@ class LedgerController extends ChangeNotifier {
     await initialize();
   }
 
+  Future<void> updateEntry(LedgerEntry previous, LedgerEntry next) async {
+    await _repository.updateEntry(previous, next);
+    await initialize();
+  }
+
+  Future<void> deleteEntry(LedgerEntry entry) async {
+    await _repository.deleteEntry(entry);
+    await initialize();
+  }
+
   Future<void> setAccountArchived(int id, bool archived) async {
     await _repository.setAccountArchived(id, archived);
     accounts.firstWhere((LedgerAccount account) => account.id == id).archived =
@@ -132,13 +156,41 @@ class LedgerController extends ChangeNotifier {
     return true;
   }
 
-  Future<void> addAccount(String name, double openingBalance) async {
-    await _repository.addAccount(name: name, openingBalance: openingBalance);
+  Future<void> addAccount(
+    String name,
+    double openingBalance,
+    String icon,
+  ) async {
+    await _repository.addAccount(
+      name: name,
+      openingBalance: openingBalance,
+      icon: icon,
+    );
     await initialize();
   }
 
-  Future<void> updateAccount(int id, String name) async {
-    await _repository.updateAccount(id, name: name);
+  Future<void> updateAccount(
+    int id,
+    String name,
+    double balance,
+    String icon,
+  ) async {
+    await _repository.updateAccount(
+      id,
+      name: name,
+      balance: balance,
+      icon: icon,
+    );
+    await initialize();
+  }
+
+  Future<void> addCategory(String name, EntryType type, String icon) async {
+    await _repository.addCategory(name: name, type: type, icon: icon);
+    await initialize();
+  }
+
+  Future<void> archiveCategory(String name) async {
+    await _repository.archiveCategory(name);
     await initialize();
   }
 
@@ -182,4 +234,36 @@ class LedgerController extends ChangeNotifier {
     dailyReminderMinute = minute;
     notifyListeners();
   }
+
+  Future<void> setPreference(String key, String value) async {
+    await _repository.setPreference(key, value);
+    switch (key) {
+      case 'multi_enabled':
+        multiEnabled = value == '1';
+        break;
+      case 'split_mode':
+        splitMode = value;
+        break;
+      case 'theme_mode':
+        themeMode = value;
+        break;
+      case 'text_scale':
+        textScale = double.tryParse(value) ?? 1;
+        break;
+      case 'high_contrast':
+        highContrast = value == '1';
+        break;
+      case 'reader_hints':
+        readerHints = value == '1';
+        break;
+      case 'haptics':
+        haptics = value == '1';
+        break;
+    }
+    notifyListeners();
+  }
+
+  List<LedgerCategory> categoriesFor(EntryType type) => categories
+      .where((LedgerCategory category) => category.type == type)
+      .toList();
 }

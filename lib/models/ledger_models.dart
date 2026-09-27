@@ -1,16 +1,18 @@
-enum EntryType { expense, income, transfer }
+enum EntryType { expense, income, transfer, adjustment }
 
 class LedgerAccount {
   LedgerAccount({
     required this.id,
     required this.name,
     required this.balance,
+    this.icon = 'wallet',
     this.archived = false,
   });
 
   final int id;
   final String name;
   double balance;
+  String icon;
   bool archived;
 }
 
@@ -41,6 +43,7 @@ class LedgerEntry {
     this.memberIds = const <int>[],
     this.recurring = false,
     this.recurringFrequency = 'month',
+    this.adjustmentDelta = 0,
   });
 
   final int id;
@@ -54,6 +57,21 @@ class LedgerEntry {
   final List<int> memberIds;
   final bool recurring;
   final String recurringFrequency;
+  final double adjustmentDelta;
+}
+
+class LedgerCategory {
+  const LedgerCategory({
+    required this.name,
+    required this.type,
+    required this.icon,
+    required this.custom,
+  });
+
+  final String name;
+  final EntryType type;
+  final String icon;
+  final bool custom;
 }
 
 class RecurringRule {
@@ -64,7 +82,7 @@ class RecurringRule {
     required this.amount,
     required this.frequency,
     required this.anchorDate,
-    required this.accountId,
+    this.accountId,
     required this.category,
     required this.enabled,
   });
@@ -75,7 +93,7 @@ class RecurringRule {
   double amount;
   String frequency;
   DateTime anchorDate;
-  int accountId;
+  int? accountId;
   String category;
   bool enabled;
 }

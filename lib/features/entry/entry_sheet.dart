@@ -6,9 +6,10 @@ import '../../models/ledger_models.dart';
 import '../../theme/app_theme.dart';
 
 class EntrySheet extends StatefulWidget {
-  const EntrySheet({required this.controller, super.key});
+  const EntrySheet({required this.controller, this.initial, super.key});
 
   final LedgerController controller;
+  final LedgerEntry? initial;
 
   @override
   State<EntrySheet> createState() => _EntrySheetState();
@@ -45,7 +46,25 @@ class _EntrySheetState extends State<EntrySheet> {
       ..clear()
       ..addAll(activeMembers.take(1).map((LedgerMember member) => member.id));
     if (widget.controller.categories.isNotEmpty) {
-      _category = widget.controller.categories.first;
+      final List<LedgerCategory> expense = widget.controller.categoriesFor(
+        EntryType.expense,
+      );
+      if (expense.isNotEmpty) _category = expense.first.name;
+    }
+    final LedgerEntry? initial = widget.initial;
+    if (initial != null) {
+      _type = initial.type;
+      _category = initial.category;
+      _accountId = initial.accountId;
+      _toAccountId = initial.toAccountId;
+      _members
+        ..clear()
+        ..addAll(initial.memberIds);
+      _recurring = initial.recurring;
+      _frequency = initial.recurringFrequency;
+      _occurredAt = initial.occurredAt;
+      _amountController.text = initial.amount.toStringAsFixed(2);
+      _noteController.text = initial.note;
     }
   }
 
@@ -73,7 +92,7 @@ class _EntrySheetState extends State<EntrySheet> {
     }
     Navigator.of(context).pop(
       LedgerEntry(
-        id: 0,
+        id: widget.initial?.id ?? 0,
         type: _type,
         amount: amount,
         category: _type == EntryType.transfer ? '转账' : _category,
@@ -99,11 +118,14 @@ class _EntrySheetState extends State<EntrySheet> {
     final LedgerAccount? account = _findAccount(accounts, _accountId);
     final LedgerAccount? toAccount = _findAccount(accounts, _toAccountId);
     final Color surface = Theme.of(context).colorScheme.surface;
+    final List<LedgerCategory> categories = widget.controller.categoriesFor(
+      _type,
+    );
 
     return Scaffold(
       appBar: AppBar(
         centerTitle: true,
-        title: const Text('记一笔'),
+        title: Text(widget.initial == null ? '记一笔' : '编辑账目'),
         actions: <Widget>[
           TextButton(onPressed: _save, child: const Text('保存')),
         ],
@@ -119,27 +141,23 @@ class _EntrySheetState extends State<EntrySheet> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: <Widget>[
               const SizedBox(height: 10),
-              _TypeTabs(
-                selected: _type,
-                onSelected: (EntryType value) => setState(() {
-                  _type = value;
-                  if (_type == EntryType.transfer) _recurring = false;
-                }),
-              ),
+              _TypeTabs(selected: _type, onSelected: _changeType),
               const SizedBox(height: 14),
               _AmountBox(
                 controller: _amountController,
                 category: _type == EntryType.transfer ? '转账' : _category,
                 icon: _type == EntryType.transfer
                     ? Icons.swap_horiz
-                    : _categoryIcon(_category),
+                    : _categoryIconFor(categories),
               ),
               if (_type != EntryType.transfer) ...<Widget>[
                 _CategoryGrid(
-                  categories: widget.controller.categories,
+                  categories: categories,
                   selected: _category,
                   onSelected: (String value) =>
                       setState(() => _category = value),
+                  onAdd: _addCategory,
+                  onLongPress: _deleteCategory,
                 ),
                 _SelectorCard(
                   title: '账户',
@@ -203,55 +221,61 @@ class _EntrySheetState extends State<EntrySheet> {
                       .toList(),
                 ),
               ],
-              _SelectorCard(
-                title: _type == EntryType.transfer ? '操作者 · 可多选' : '成员 · 可多选',
-                value: _memberSummary(members),
-                open: _membersOpen,
-                onHeaderTap: () => setState(() => _membersOpen = !_membersOpen),
-                footer: _membersOpen
-                    ? Align(
-                        alignment: Alignment.centerRight,
-                        child: FilledButton(
-                          onPressed: () => setState(() => _membersOpen = false),
-                          style: FilledButton.styleFrom(
-                            minimumSize: const Size(74, 34),
-                            padding: const EdgeInsets.symmetric(horizontal: 16),
+              if (widget.controller.multiEnabled)
+                _SelectorCard(
+                  title: _type == EntryType.transfer ? '操作者 · 可多选' : '成员 · 可多选',
+                  value: _memberSummary(members),
+                  open: _membersOpen,
+                  onHeaderTap: () =>
+                      setState(() => _membersOpen = !_membersOpen),
+                  footer: _membersOpen
+                      ? Align(
+                          alignment: Alignment.centerRight,
+                          child: FilledButton(
+                            onPressed: () =>
+                                setState(() => _membersOpen = false),
+                            style: FilledButton.styleFrom(
+                              minimumSize: const Size(74, 34),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                              ),
+                            ),
+                            child: const Text('完成'),
                           ),
-                          child: const Text('完成'),
-                        ),
-                      )
-                    : null,
-                children: <Widget>[
-                  _SelectorRow(
-                    icon: Icons.people_outline,
-                    title: '全体成员',
-                    selected:
-                        members.isNotEmpty && _members.length == members.length,
-                    onTap: () => setState(() {
-                      if (_members.length == members.length) {
-                        _members.clear();
-                      } else {
-                        _members
-                          ..clear()
-                          ..addAll(
-                            members.map((LedgerMember member) => member.id),
-                          );
-                      }
-                    }),
-                  ),
-                  ...members.map(
-                    (LedgerMember member) => _SelectorRow(
-                      color: Color(member.colorValue),
-                      title: member.name,
-                      selected: _members.contains(member.id),
+                        )
+                      : null,
+                  children: <Widget>[
+                    _SelectorRow(
+                      icon: Icons.people_outline,
+                      title: '全体成员',
+                      selected:
+                          members.isNotEmpty &&
+                          _members.length == members.length,
                       onTap: () => setState(() {
-                        if (!_members.add(member.id))
-                          _members.remove(member.id);
+                        if (_members.length == members.length) {
+                          _members.clear();
+                        } else {
+                          _members
+                            ..clear()
+                            ..addAll(
+                              members.map((LedgerMember member) => member.id),
+                            );
+                        }
                       }),
                     ),
-                  ),
-                ],
-              ),
+                    ...members.map(
+                      (LedgerMember member) => _SelectorRow(
+                        color: Color(member.colorValue),
+                        title: member.name,
+                        selected: _members.contains(member.id),
+                        onTap: () => setState(() {
+                          if (!_members.add(member.id))
+                            _members.remove(member.id);
+                        }),
+                      ),
+                    ),
+                  ],
+                ),
               Container(
                 margin: const EdgeInsets.only(top: 10),
                 decoration: BoxDecoration(
@@ -345,6 +369,163 @@ class _EntrySheetState extends State<EntrySheet> {
     return null;
   }
 
+  IconData _categoryIconFor(List<LedgerCategory> categories) {
+    for (final LedgerCategory category in categories) {
+      if (category.name == _category) {
+        return _categoryIcon(category.icon, category.name);
+      }
+    }
+    return Icons.sell_outlined;
+  }
+
+  void _changeType(EntryType value) {
+    setState(() {
+      _type = value;
+      if (_type == EntryType.transfer) {
+        _recurring = false;
+      } else {
+        final List<LedgerCategory> available = widget.controller.categoriesFor(
+          _type,
+        );
+        if (!available.any((item) => item.name == _category) &&
+            available.isNotEmpty) {
+          _category = available.first.name;
+        }
+      }
+    });
+  }
+
+  Future<void> _addCategory() async {
+    final TextEditingController name = TextEditingController();
+    String icon = 'tag';
+    final bool? save = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      builder: (BuildContext context) => StatefulBuilder(
+        builder: (BuildContext context, StateSetter update) => Padding(
+          padding: EdgeInsets.only(
+            bottom: MediaQuery.viewInsetsOf(context).bottom,
+          ),
+          child: SafeArea(
+            top: false,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                SizedBox(
+                  height: 52,
+                  child: Row(
+                    children: <Widget>[
+                      TextButton(
+                        onPressed: () => Navigator.pop(context),
+                        child: const Text('取消'),
+                      ),
+                      const Expanded(
+                        child: Text(
+                          '自定义标签',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(fontWeight: FontWeight.w700),
+                        ),
+                      ),
+                      TextButton(
+                        onPressed: () => Navigator.pop(context, true),
+                        child: const Text('保存'),
+                      ),
+                    ],
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 4, 16, 10),
+                  child: TextField(
+                    controller: name,
+                    autofocus: true,
+                    decoration: const InputDecoration(
+                      labelText: '名称',
+                      hintText: '如：宠物',
+                    ),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 6, 16, 20),
+                  child: Wrap(
+                    spacing: 10,
+                    runSpacing: 10,
+                    children: _customIcons
+                        .map(
+                          (String item) => InkWell(
+                            onTap: () => update(() => icon = item),
+                            borderRadius: BorderRadius.circular(12),
+                            child: Container(
+                              width: 46,
+                              height: 46,
+                              decoration: BoxDecoration(
+                                color: icon == item
+                                    ? AppTheme.green.withValues(alpha: .12)
+                                    : Theme.of(
+                                        context,
+                                      ).colorScheme.surfaceContainerHighest,
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(
+                                  color: icon == item
+                                      ? AppTheme.green
+                                      : Colors.transparent,
+                                  width: 2,
+                                ),
+                              ),
+                              child: Icon(_iconFromKey(item), size: 22),
+                            ),
+                          ),
+                        )
+                        .toList(),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+    final String value = name.text.trim();
+    if (save != true || value.isEmpty) return;
+    if (widget.controller.categories.any((item) => item.name == value)) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('标签已存在')));
+      }
+      return;
+    }
+    await widget.controller.addCategory(value, _type, icon);
+    if (mounted) setState(() => _category = value);
+  }
+
+  Future<void> _deleteCategory(LedgerCategory category) async {
+    final bool? confirmed = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext context) => AlertDialog(
+        title: Text('删除标签「${category.name}」？'),
+        content: const Text('已有账目仍会保留标签名称。'),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('删除'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    await widget.controller.archiveCategory(category.name);
+    final List<LedgerCategory> remaining = widget.controller.categoriesFor(
+      _type,
+    );
+    if (mounted && remaining.isNotEmpty) {
+      setState(() => _category = remaining.first.name);
+    }
+  }
+
   String _memberSummary(List<LedgerMember> members) {
     final List<String> selected = members
         .where((LedgerMember member) => _members.contains(member.id))
@@ -430,48 +611,54 @@ class _TypeTabs extends StatelessWidget {
       borderRadius: BorderRadius.circular(10),
     ),
     child: Row(
-      children: EntryType.values
-          .map(
-            (EntryType value) => Expanded(
-              child: InkWell(
-                onTap: () => onSelected(value),
-                borderRadius: BorderRadius.circular(8),
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 150),
-                  padding: const EdgeInsets.symmetric(vertical: 9),
-                  decoration: BoxDecoration(
-                    color: selected == value
-                        ? Theme.of(context).colorScheme.surface
-                        : Colors.transparent,
+      children:
+          const <EntryType>[
+                EntryType.expense,
+                EntryType.income,
+                EntryType.transfer,
+              ]
+              .map(
+                (EntryType value) => Expanded(
+                  child: InkWell(
+                    onTap: () => onSelected(value),
                     borderRadius: BorderRadius.circular(8),
-                    boxShadow: selected == value
-                        ? const <BoxShadow>[
-                            BoxShadow(
-                              color: Color(0x16000000),
-                              blurRadius: 4,
-                              offset: Offset(0, 1),
-                            ),
-                          ]
-                        : null,
-                  ),
-                  child: Text(
-                    switch (value) {
-                      EntryType.expense => '支出',
-                      EntryType.income => '收入',
-                      EntryType.transfer => '转账',
-                    },
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontWeight: selected == value
-                          ? FontWeight.w700
-                          : FontWeight.w400,
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 150),
+                      padding: const EdgeInsets.symmetric(vertical: 9),
+                      decoration: BoxDecoration(
+                        color: selected == value
+                            ? Theme.of(context).colorScheme.surface
+                            : Colors.transparent,
+                        borderRadius: BorderRadius.circular(8),
+                        boxShadow: selected == value
+                            ? const <BoxShadow>[
+                                BoxShadow(
+                                  color: Color(0x16000000),
+                                  blurRadius: 4,
+                                  offset: Offset(0, 1),
+                                ),
+                              ]
+                            : null,
+                      ),
+                      child: Text(
+                        switch (value) {
+                          EntryType.expense => '支出',
+                          EntryType.income => '收入',
+                          EntryType.transfer => '转账',
+                          EntryType.adjustment => '调整',
+                        },
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontWeight: selected == value
+                              ? FontWeight.w700
+                              : FontWeight.w400,
+                        ),
+                      ),
                     ),
                   ),
                 ),
-              ),
-            ),
-          )
-          .toList(),
+              )
+              .toList(),
     ),
   );
 }
@@ -525,6 +712,7 @@ class _AmountBox extends StatelessWidget {
               hintText: '0.00',
               border: InputBorder.none,
               isDense: true,
+              filled: false,
             ),
           ),
         ),
@@ -538,10 +726,14 @@ class _CategoryGrid extends StatelessWidget {
     required this.categories,
     required this.selected,
     required this.onSelected,
+    required this.onAdd,
+    required this.onLongPress,
   });
-  final List<String> categories;
+  final List<LedgerCategory> categories;
   final String selected;
   final ValueChanged<String> onSelected;
+  final VoidCallback onAdd;
+  final ValueChanged<LedgerCategory> onLongPress;
 
   @override
   Widget build(BuildContext context) => GridView.builder(
@@ -554,12 +746,35 @@ class _CategoryGrid extends StatelessWidget {
       crossAxisSpacing: 5,
       mainAxisSpacing: 6,
     ),
-    itemCount: categories.length,
+    itemCount: categories.length + 1,
     itemBuilder: (BuildContext context, int index) {
-      final String category = categories[index];
-      final bool active = category == selected;
+      if (index == categories.length) {
+        return InkWell(
+          onTap: onAdd,
+          borderRadius: BorderRadius.circular(14),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: <Widget>[
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: const Icon(Icons.add, size: 22),
+              ),
+              const SizedBox(height: 4),
+              const Text('自定义', style: TextStyle(fontSize: 12)),
+            ],
+          ),
+        );
+      }
+      final LedgerCategory category = categories[index];
+      final bool active = category.name == selected;
       return InkWell(
-        onTap: () => onSelected(category),
+        onTap: () => onSelected(category.name),
+        onLongPress: () => onLongPress(category),
         borderRadius: BorderRadius.circular(14),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -578,11 +793,14 @@ class _CategoryGrid extends StatelessWidget {
                   width: 2,
                 ),
               ),
-              child: Icon(_categoryIcon(category), size: 22),
+              child: Icon(
+                _categoryIcon(category.icon, category.name),
+                size: 22,
+              ),
             ),
             const SizedBox(height: 4),
             Text(
-              category,
+              category.name,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
@@ -704,7 +922,27 @@ String _formatDateTime(DateTime value) =>
     '${value.year}年${value.month.toString().padLeft(2, '0')}月${value.day.toString().padLeft(2, '0')}日 '
     '${value.hour.toString().padLeft(2, '0')}:${value.minute.toString().padLeft(2, '0')}';
 
-IconData _categoryIcon(String category) => switch (category) {
+const List<String> _customIcons = <String>[
+  'tag',
+  'pet',
+  'coffee',
+  'phone',
+  'fitness',
+  'child',
+  'beauty',
+  'tools',
+  'plant',
+  'cake',
+  'insurance',
+  'rent',
+];
+
+IconData _categoryIcon(String? key, String category) =>
+    key == null || key == 'tag'
+    ? _categoryIconByName(category)
+    : _iconFromKey(key);
+
+IconData _categoryIconByName(String category) => switch (category) {
   '交通' => Icons.directions_car_outlined,
   '购物' => Icons.shopping_bag_outlined,
   '居住' => Icons.home_outlined,
@@ -716,4 +954,30 @@ IconData _categoryIcon(String category) => switch (category) {
   '理财' => Icons.show_chart,
   '工资' => Icons.payments_outlined,
   _ => Icons.restaurant_outlined,
+};
+
+IconData _iconFromKey(String key) => switch (key) {
+  'restaurant' => Icons.restaurant_outlined,
+  'car' => Icons.directions_car_outlined,
+  'shopping' => Icons.shopping_bag_outlined,
+  'home' => Icons.home_outlined,
+  'game' => Icons.sports_esports_outlined,
+  'medical' => Icons.medical_services_outlined,
+  'book' => Icons.menu_book_outlined,
+  'flight' => Icons.flight_outlined,
+  'gift' => Icons.card_giftcard_outlined,
+  'salary' => Icons.payments_outlined,
+  'chart' => Icons.show_chart,
+  'pet' => Icons.pets_outlined,
+  'coffee' => Icons.coffee_outlined,
+  'phone' => Icons.phone_android_outlined,
+  'fitness' => Icons.fitness_center_outlined,
+  'child' => Icons.child_care_outlined,
+  'beauty' => Icons.brush_outlined,
+  'tools' => Icons.handyman_outlined,
+  'plant' => Icons.local_florist_outlined,
+  'cake' => Icons.cake_outlined,
+  'insurance' => Icons.health_and_safety_outlined,
+  'rent' => Icons.key_outlined,
+  _ => Icons.sell_outlined,
 };

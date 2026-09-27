@@ -2,7 +2,7 @@ import 'package:path/path.dart' as p;
 import 'package:sqflite/sqflite.dart';
 
 class AppDatabase {
-  static const int schemaVersion = 2;
+  static const int schemaVersion = 3;
   static const String fileName = 'oneentry.db';
 
   Database? _database;
@@ -20,6 +20,7 @@ class AppDatabase {
       onCreate: (Database db, int version) async {
         await _createVersion1(db);
         if (version >= 2) await _migrate1To2(db);
+        if (version >= 3) await _migrate2To3(db);
         await _seed(db);
       },
       onUpgrade: (Database db, int oldVersion, int newVersion) async {
@@ -28,6 +29,10 @@ class AppDatabase {
           if (version < 2 && newVersion >= 2) {
             await _migrate1To2(txn);
             version = 2;
+          }
+          if (version < 3 && newVersion >= 3) {
+            await _migrate2To3(txn);
+            version = 3;
           }
           if (version != newVersion) {
             throw StateError(
@@ -190,6 +195,50 @@ class AppDatabase {
     await db.execute('CREATE INDEX idx_budgets_period ON budgets(period)');
   }
 
+  Future<void> _migrate2To3(DatabaseExecutor db) async {
+    await db.execute(
+      'ALTER TABLE transactions ADD COLUMN adjustment_delta_minor INTEGER NOT NULL DEFAULT 0',
+    );
+    const Map<String, String> expenseIcons = <String, String>{
+      '餐饮': 'restaurant',
+      '交通': 'car',
+      '购物': 'shopping',
+      '居住': 'home',
+      '娱乐': 'game',
+      '医疗': 'medical',
+      '学习': 'book',
+      '旅行': 'flight',
+      '其他': 'tag',
+    };
+    const Map<String, String> incomeIcons = <String, String>{
+      '红包': 'gift',
+      '工资': 'salary',
+      '理财': 'chart',
+    };
+    for (final MapEntry<String, String> item in expenseIcons.entries) {
+      await db.update(
+        'categories',
+        <String, Object?>{'type': 'expense', 'icon': item.value},
+        where: 'name = ?',
+        whereArgs: <Object?>[item.key],
+      );
+    }
+    for (final MapEntry<String, String> item in incomeIcons.entries) {
+      await db.update(
+        'categories',
+        <String, Object?>{'type': 'income', 'icon': item.value},
+        where: 'name = ?',
+        whereArgs: <Object?>[item.key],
+      );
+    }
+    await db.update(
+      'categories',
+      <String, Object?>{'type': 'transfer', 'icon': 'transfer'},
+      where: 'name = ?',
+      whereArgs: <Object?>['转账'],
+    );
+  }
+
   Future<void> _seed(Database db) async {
     final int now = DateTime.now().millisecondsSinceEpoch;
     final DateTime current = DateTime.now();
@@ -233,26 +282,28 @@ class AppDatabase {
         'updated_at': now,
       });
     }
-    const List<String> categories = <String>[
-      '餐饮',
-      '交通',
-      '购物',
-      '居住',
-      '娱乐',
-      '医疗',
-      '学习',
-      '旅行',
-      '红包',
-      '转账',
-      '工资',
-      '理财',
-      '其他',
-    ];
+    const List<(String, String, String)> categories =
+        <(String, String, String)>[
+          ('餐饮', 'expense', 'restaurant'),
+          ('交通', 'expense', 'car'),
+          ('购物', 'expense', 'shopping'),
+          ('居住', 'expense', 'home'),
+          ('娱乐', 'expense', 'game'),
+          ('医疗', 'expense', 'medical'),
+          ('学习', 'expense', 'book'),
+          ('旅行', 'expense', 'flight'),
+          ('红包', 'income', 'gift'),
+          ('转账', 'transfer', 'transfer'),
+          ('工资', 'income', 'salary'),
+          ('理财', 'income', 'chart'),
+          ('其他', 'expense', 'tag'),
+        ];
     for (int index = 0; index < categories.length; index++) {
       batch.insert('categories', <String, Object?>{
         'uuid': 'seed-category-${index + 1}',
-        'name': categories[index],
-        'type': categories[index] == '工资' ? 'income' : 'both',
+        'name': categories[index].$1,
+        'type': categories[index].$2,
+        'icon': categories[index].$3,
         'sort_order': index,
         'created_at': now,
         'updated_at': now,

@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart';
+import 'package:flutter/services.dart';
 
 import '../../data/ledger_controller.dart';
 import '../recurring/recurring_rules_page.dart';
@@ -6,175 +8,251 @@ import '../../services/backup_service.dart';
 import '../../services/notification_service.dart';
 
 class SettingsPage extends StatefulWidget {
-  const SettingsPage({
-    required this.controller,
-    required this.themeMode,
-    required this.onThemeModeChanged,
-    super.key,
-  });
+  const SettingsPage({required this.controller, super.key});
 
   final LedgerController controller;
-  final ThemeMode themeMode;
-  final ValueChanged<ThemeMode> onThemeModeChanged;
 
   @override
   State<SettingsPage> createState() => _SettingsPageState();
 }
 
 class _SettingsPageState extends State<SettingsPage> {
-  bool _multi = true;
-  bool _highContrast = false;
-  bool _readerHints = true;
-  bool _haptics = true;
-
   @override
   Widget build(BuildContext context) {
-    return CustomScrollView(
-      slivers: <Widget>[
-        const SliverAppBar(title: Text('设置'), floating: true),
-        SliverPadding(
-          padding: const EdgeInsets.fromLTRB(12, 8, 12, 80),
-          sliver: SliverList.list(
-            children: <Widget>[
-              _Section(
-                title: '记账方式',
-                children: <Widget>[
-                  SwitchListTile(
-                    title: const Text('多人记账'),
-                    subtitle: const Text('每笔账目可关联多个成员'),
-                    value: _multi,
-                    onChanged: (bool value) => setState(() => _multi = value),
-                  ),
-                  const ListTile(
-                    title: Text('多人统计'),
-                    subtitle: Text('默认按参与人数 AA 均摊'),
-                    trailing: Icon(Icons.chevron_right),
-                  ),
-                ],
-              ),
-              _Section(
-                title: '提醒',
-                children: <Widget>[
-                  SwitchListTile(
-                    title: const Text('提醒记账'),
-                    subtitle: const Text('今天没有记账时提醒'),
-                    value: widget.controller.dailyReminderEnabled,
-                    onChanged: _toggleDailyReminder,
-                  ),
-                  if (widget.controller.dailyReminderEnabled)
+    return Scaffold(
+      body: CustomScrollView(
+        slivers: <Widget>[
+          const SliverAppBar(title: Text('设置'), floating: true),
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(12, 8, 12, 80),
+            sliver: SliverList.list(
+              children: <Widget>[
+                _Section(
+                  title: '记账方式',
+                  children: <Widget>[
+                    SwitchListTile(
+                      title: const Text('多人记账'),
+                      subtitle: const Text('每笔账目可关联多个成员'),
+                      value: widget.controller.multiEnabled,
+                      onChanged: (bool value) => widget.controller
+                          .setPreference('multi_enabled', value ? '1' : '0'),
+                    ),
                     ListTile(
-                      title: const Text('每天提醒时间'),
+                      title: const Text('多人统计'),
+                      subtitle: const Text('选择成员金额的统计方式'),
                       trailing: Text(
-                        '${widget.controller.dailyReminderHour.toString().padLeft(2, '0')}:${widget.controller.dailyReminderMinute.toString().padLeft(2, '0')}  ›',
+                        widget.controller.splitMode == 'full'
+                            ? '整笔计入  ›'
+                            : 'AA 均摊  ›',
                       ),
-                      onTap: _pickReminderTime,
+                      onTap: _pickSplitMode,
                     ),
-                  ListTile(
-                    title: const Text('周期账目'),
-                    trailing: Text(
-                      '${widget.controller.recurringRules.length} 笔  ›',
+                  ],
+                ),
+                _Section(
+                  title: '提醒',
+                  children: <Widget>[
+                    SwitchListTile(
+                      title: const Text('提醒记账'),
+                      subtitle: const Text('今天没有记账时提醒'),
+                      value: widget.controller.dailyReminderEnabled,
+                      onChanged: _toggleDailyReminder,
                     ),
-                    onTap: () => Navigator.of(context).push(
-                      MaterialPageRoute<void>(
-                        builder: (_) =>
-                            RecurringRulesPage(controller: widget.controller),
+                    if (widget.controller.dailyReminderEnabled)
+                      ListTile(
+                        title: const Text('每天提醒时间'),
+                        trailing: Text(
+                          '${widget.controller.dailyReminderHour.toString().padLeft(2, '0')}:${widget.controller.dailyReminderMinute.toString().padLeft(2, '0')}  ›',
+                        ),
+                        onTap: _pickReminderTime,
+                      ),
+                    ListTile(
+                      title: const Text('周期账目'),
+                      trailing: Text(
+                        '${widget.controller.recurringRules.length} 笔  ›',
+                      ),
+                      onTap: () => Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (_) =>
+                              RecurringRulesPage(controller: widget.controller),
+                        ),
                       ),
                     ),
-                  ),
-                ],
-              ),
-              _Section(
-                title: '显示与语言',
-                children: <Widget>[
-                  ListTile(
-                    title: const Text('主题'),
-                    trailing: DropdownButton<ThemeMode>(
-                      value: widget.themeMode,
-                      underline: const SizedBox.shrink(),
-                      items: const <DropdownMenuItem<ThemeMode>>[
-                        DropdownMenuItem(
-                          value: ThemeMode.system,
-                          child: Text('跟随系统'),
-                        ),
-                        DropdownMenuItem(
-                          value: ThemeMode.light,
-                          child: Text('日间'),
-                        ),
-                        DropdownMenuItem(
-                          value: ThemeMode.dark,
-                          child: Text('夜间'),
-                        ),
-                      ],
-                      onChanged: (ThemeMode? value) {
-                        if (value != null) widget.onThemeModeChanged(value);
-                      },
+                  ],
+                ),
+                _Section(
+                  title: '显示与语言',
+                  children: <Widget>[
+                    ListTile(
+                      title: const Text('主题'),
+                      trailing: Text('${_themeName()}  ›'),
+                      onTap: _pickTheme,
                     ),
-                  ),
-                  const ListTile(title: Text('语言'), trailing: Text('简体中文  ›')),
-                ],
-              ),
-              _Section(
-                title: '无障碍',
-                children: <Widget>[
-                  const ListTile(title: Text('文字大小'), trailing: Text('标准  ›')),
-                  SwitchListTile(
-                    title: const Text('增强颜色对比'),
-                    value: _highContrast,
-                    onChanged: (bool value) =>
-                        setState(() => _highContrast = value),
-                  ),
-                  SwitchListTile(
-                    title: const Text('屏幕朗读增强'),
-                    value: _readerHints,
-                    onChanged: (bool value) =>
-                        setState(() => _readerHints = value),
-                  ),
-                  SwitchListTile(
-                    title: const Text('震动反馈'),
-                    value: _haptics,
-                    onChanged: (bool value) => setState(() => _haptics = value),
-                  ),
-                ],
-              ),
-              _Section(
-                title: '数据',
-                children: <Widget>[
-                  const ListTile(
-                    title: Text('数据保存位置'),
-                    subtitle: Text('主数据库保存在应用内部'),
-                    trailing: Icon(Icons.chevron_right),
-                  ),
-                  ListTile(
-                    title: const Text('数据导出'),
-                    subtitle: const Text('JSON / ZIP / XLSX'),
-                    trailing: const Icon(Icons.chevron_right),
-                    onTap: _showExport,
-                  ),
-                  ListTile(
-                    title: const Text('数据导入'),
-                    subtitle: const Text('从系统文件选择器恢复'),
-                    trailing: const Icon(Icons.chevron_right),
-                    onTap: _importBackup,
-                  ),
-                  ListTile(
-                    title: const Text(
-                      '清除全部数据',
-                      style: TextStyle(color: Color(0xFFFA5151)),
+                    const ListTile(
+                      title: Text('语言'),
+                      trailing: Text('简体中文  ›'),
                     ),
-                    subtitle: const Text('删除全部本地记账数据'),
-                    trailing: const Icon(
-                      Icons.chevron_right,
-                      color: Color(0xFFFA5151),
+                  ],
+                ),
+                _Section(
+                  title: '无障碍',
+                  children: <Widget>[
+                    ListTile(
+                      title: const Text('文字大小'),
+                      subtitle: const Text('调整正文与操作文字'),
+                      trailing: Text('${_textScaleName()}  ›'),
+                      onTap: _pickTextScale,
                     ),
-                    onTap: _clearAllData,
-                  ),
-                ],
-              ),
-            ],
+                    SwitchListTile(
+                      title: const Text('增强颜色对比'),
+                      value: widget.controller.highContrast,
+                      onChanged: (bool value) => widget.controller
+                          .setPreference('high_contrast', value ? '1' : '0'),
+                    ),
+                    SwitchListTile(
+                      title: const Text('屏幕朗读增强'),
+                      value: widget.controller.readerHints,
+                      onChanged: _toggleReaderHints,
+                    ),
+                    SwitchListTile(
+                      title: const Text('震动反馈'),
+                      value: widget.controller.haptics,
+                      onChanged: _toggleHaptics,
+                    ),
+                  ],
+                ),
+                _Section(
+                  title: '数据',
+                  children: <Widget>[
+                    const ListTile(
+                      title: Text('数据保存位置'),
+                      subtitle: Text('主数据库保存在应用内部'),
+                      trailing: Icon(Icons.chevron_right),
+                    ),
+                    ListTile(
+                      title: const Text('数据导出'),
+                      subtitle: const Text('JSON / ZIP / XLSX'),
+                      trailing: const Icon(Icons.chevron_right),
+                      onTap: _showExport,
+                    ),
+                    ListTile(
+                      title: const Text('数据导入'),
+                      subtitle: const Text('从系统文件选择器恢复'),
+                      trailing: const Icon(Icons.chevron_right),
+                      onTap: _importBackup,
+                    ),
+                    ListTile(
+                      title: const Text(
+                        '清除全部数据',
+                        style: TextStyle(color: Color(0xFFFA5151)),
+                      ),
+                      subtitle: const Text('删除全部本地记账数据'),
+                      trailing: const Icon(
+                        Icons.chevron_right,
+                        color: Color(0xFFFA5151),
+                      ),
+                      onTap: _clearAllData,
+                    ),
+                  ],
+                ),
+              ],
+            ),
           ),
-        ),
+        ],
+      ),
+    );
+  }
+
+  String _themeName() => switch (widget.controller.themeMode) {
+    'light' => '日间',
+    'dark' => '夜间',
+    _ => '跟随系统',
+  };
+
+  String _textScaleName() {
+    if (widget.controller.textScale >= 1.3) return '特大';
+    if (widget.controller.textScale >= 1.15) return '较大';
+    return '标准';
+  }
+
+  Future<void> _pickSplitMode() async {
+    final String? value = await _simpleChoice(
+      '多人统计',
+      const <MapEntry<String, String>>[
+        MapEntry('equal', 'AA 均摊'),
+        MapEntry('full', '整笔计入每位成员'),
       ],
     );
+    if (value != null)
+      await widget.controller.setPreference('split_mode', value);
+  }
+
+  Future<void> _pickTheme() async {
+    final String? value = await _simpleChoice(
+      '主题',
+      const <MapEntry<String, String>>[
+        MapEntry('system', '跟随系统'),
+        MapEntry('light', '日间'),
+        MapEntry('dark', '夜间'),
+      ],
+    );
+    if (value != null)
+      await widget.controller.setPreference('theme_mode', value);
+  }
+
+  Future<void> _pickTextScale() async {
+    final String? value = await _simpleChoice(
+      '文字大小',
+      const <MapEntry<String, String>>[
+        MapEntry('1.0', '标准'),
+        MapEntry('1.15', '较大'),
+        MapEntry('1.3', '特大'),
+      ],
+    );
+    if (value != null)
+      await widget.controller.setPreference('text_scale', value);
+  }
+
+  Future<String?> _simpleChoice(
+    String title,
+    List<MapEntry<String, String>> items,
+  ) => showModalBottomSheet<String>(
+    context: context,
+    builder: (BuildContext context) => SafeArea(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          ListTile(
+            title: Text(
+              title,
+              style: const TextStyle(fontWeight: FontWeight.w700),
+            ),
+          ),
+          ...items.map(
+            (item) => ListTile(
+              title: Text(item.value),
+              onTap: () => Navigator.pop(context, item.key),
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
+
+  Future<void> _toggleReaderHints(bool value) async {
+    await widget.controller.setPreference('reader_hints', value ? '1' : '0');
+    if (value && mounted) {
+      SemanticsService.sendAnnouncement(
+        View.of(context),
+        '屏幕朗读增强已开启',
+        TextDirection.ltr,
+      );
+    }
+  }
+
+  Future<void> _toggleHaptics(bool value) async {
+    await widget.controller.setPreference('haptics', value ? '1' : '0');
+    if (value) await HapticFeedback.mediumImpact();
   }
 
   Future<void> _toggleDailyReminder(bool enabled) async {
