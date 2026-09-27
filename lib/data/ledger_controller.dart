@@ -127,6 +127,11 @@ class LedgerController extends ChangeNotifier {
     await initialize();
   }
 
+  Future<void> deleteAccount(int id) async {
+    await _repository.deleteAccount(id);
+    await initialize();
+  }
+
   Future<void> setMemberArchived(int id, bool archived) async {
     await _repository.setMemberArchived(id, archived);
     members.firstWhere((LedgerMember member) => member.id == id).archived =
@@ -136,6 +141,11 @@ class LedgerController extends ChangeNotifier {
 
   Future<void> reorderMembers(List<int> ids) async {
     await _repository.reorderMembers(ids);
+    await initialize();
+  }
+
+  Future<void> deleteMember(int id) async {
+    await _repository.deleteMember(id);
     await initialize();
   }
 

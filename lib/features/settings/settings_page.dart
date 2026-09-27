@@ -1,6 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/semantics.dart';
-import 'package:flutter/services.dart';
 
 import '../../data/ledger_controller.dart';
 import '../recurring/recurring_rules_page.dart';
@@ -110,16 +108,6 @@ class _SettingsPageState extends State<SettingsPage> {
                       onChanged: (bool value) => widget.controller
                           .setPreference('high_contrast', value ? '1' : '0'),
                     ),
-                    SwitchListTile(
-                      title: const Text('屏幕朗读增强'),
-                      value: widget.controller.readerHints,
-                      onChanged: _toggleReaderHints,
-                    ),
-                    SwitchListTile(
-                      title: const Text('震动反馈'),
-                      value: widget.controller.haptics,
-                      onChanged: _toggleHaptics,
-                    ),
                   ],
                 ),
                 _Section(
@@ -219,42 +207,33 @@ class _SettingsPageState extends State<SettingsPage> {
     List<MapEntry<String, String>> items,
   ) => showModalBottomSheet<String>(
     context: context,
+    isScrollControlled: true,
     builder: (BuildContext context) => SafeArea(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: <Widget>[
-          ListTile(
-            title: Text(
-              title,
-              style: const TextStyle(fontWeight: FontWeight.w700),
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            ListTile(
+              title: Text(
+                title,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
             ),
-          ),
-          ...items.map(
-            (item) => ListTile(
-              title: Text(item.value),
-              onTap: () => Navigator.pop(context, item.key),
+            ...items.map(
+              (item) => ListTile(
+                title: Text(item.value),
+                onTap: () => Navigator.pop(context, item.key),
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     ),
   );
-
-  Future<void> _toggleReaderHints(bool value) async {
-    await widget.controller.setPreference('reader_hints', value ? '1' : '0');
-    if (value && mounted) {
-      SemanticsService.sendAnnouncement(
-        View.of(context),
-        '屏幕朗读增强已开启',
-        TextDirection.ltr,
-      );
-    }
-  }
-
-  Future<void> _toggleHaptics(bool value) async {
-    await widget.controller.setPreference('haptics', value ? '1' : '0');
-    if (value) await HapticFeedback.mediumImpact();
-  }
 
   Future<void> _toggleDailyReminder(bool enabled) async {
     if (enabled && !await NotificationService.requestPermission()) {
@@ -303,32 +282,36 @@ class _SettingsPageState extends State<SettingsPage> {
   Future<void> _showExport() async {
     final ExportFormat? format = await showModalBottomSheet<ExportFormat>(
       context: context,
+      isScrollControlled: true,
       builder: (BuildContext context) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: <Widget>[
-            const ListTile(
-              title: Text(
-                '导出数据',
-                style: TextStyle(fontWeight: FontWeight.w700),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              const ListTile(
+                title: Text(
+                  '导出数据',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+                ),
               ),
-            ),
-            ListTile(
-              title: const Text('JSON 完整备份'),
-              subtitle: const Text('最适合恢复'),
-              onTap: () => Navigator.pop(context, ExportFormat.json),
-            ),
-            ListTile(
-              title: const Text('ZIP 归档'),
-              subtitle: const Text('包含 JSON 与 CSV'),
-              onTap: () => Navigator.pop(context, ExportFormat.zip),
-            ),
-            ListTile(
-              title: const Text('XLSX 表格'),
-              subtitle: const Text('可用 Excel 阅读，也可原样导回'),
-              onTap: () => Navigator.pop(context, ExportFormat.xlsx),
-            ),
-          ],
+              ListTile(
+                title: const Text('JSON 完整备份'),
+                subtitle: const Text('最适合恢复'),
+                onTap: () => Navigator.pop(context, ExportFormat.json),
+              ),
+              ListTile(
+                title: const Text('ZIP 归档'),
+                subtitle: const Text('包含 JSON 与 CSV'),
+                onTap: () => Navigator.pop(context, ExportFormat.zip),
+              ),
+              ListTile(
+                title: const Text('XLSX 表格'),
+                subtitle: const Text('可用 Excel 阅读，也可原样导回'),
+                onTap: () => Navigator.pop(context, ExportFormat.xlsx),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -344,36 +327,40 @@ class _SettingsPageState extends State<SettingsPage> {
   Future<void> _importBackup() async {
     final ImportSource? source = await showModalBottomSheet<ImportSource>(
       context: context,
+      isScrollControlled: true,
       builder: (BuildContext context) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: <Widget>[
-            const ListTile(
-              title: Text(
-                '选择导入来源',
-                style: TextStyle(fontWeight: FontWeight.w700),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              const ListTile(
+                title: Text(
+                  '选择导入来源',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+                ),
+                subtitle: Text('通常直接选择自动识别', textAlign: TextAlign.center),
               ),
-              subtitle: Text('通常直接选择自动识别'),
-            ),
-            ListTile(
-              leading: const Icon(Icons.auto_awesome_outlined),
-              title: const Text('自动识别'),
-              subtitle: const Text('自动判断一笔备份或同旅迁移 ZIP'),
-              onTap: () => Navigator.pop(context, ImportSource.automatic),
-            ),
-            ListTile(
-              leading: const Icon(Icons.archive_outlined),
-              title: const Text('同旅'),
-              subtitle: const Text('迁移 ZIP；只读取账本与成员颜色'),
-              onTap: () => Navigator.pop(context, ImportSource.tonglv),
-            ),
-            ListTile(
-              leading: const Icon(Icons.account_balance_wallet_outlined),
-              title: const Text('一笔完整备份'),
-              subtitle: const Text('JSON / ZIP / XLSX，可完整覆盖恢复'),
-              onTap: () => Navigator.pop(context, ImportSource.oneEntry),
-            ),
-          ],
+              ListTile(
+                leading: const Icon(Icons.auto_awesome_outlined),
+                title: const Text('自动识别'),
+                subtitle: const Text('自动判断一笔备份或同旅迁移 ZIP'),
+                onTap: () => Navigator.pop(context, ImportSource.automatic),
+              ),
+              ListTile(
+                leading: const Icon(Icons.archive_outlined),
+                title: const Text('同旅'),
+                subtitle: const Text('迁移 ZIP；只读取账本与成员颜色'),
+                onTap: () => Navigator.pop(context, ImportSource.tonglv),
+              ),
+              ListTile(
+                leading: const Icon(Icons.account_balance_wallet_outlined),
+                title: const Text('一笔完整备份'),
+                subtitle: const Text('JSON / ZIP / XLSX，可完整覆盖恢复'),
+                onTap: () => Navigator.pop(context, ImportSource.oneEntry),
+              ),
+            ],
+          ),
         ),
       ),
     );

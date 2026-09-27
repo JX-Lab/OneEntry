@@ -4,6 +4,7 @@ import '../../data/ledger_controller.dart';
 import '../../models/ledger_models.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/swipe_action_tile.dart';
+import '../entry/entry_sheet.dart';
 
 class AccountsPage extends StatefulWidget {
   const AccountsPage({required this.controller, super.key});
@@ -345,8 +346,10 @@ class _AccountDetailPage extends StatelessWidget {
               onSelected: (String value) {
                 if (value == 'edit') {
                   onEdit();
-                } else {
+                } else if (value == 'archive') {
                   controller.setAccountArchived(account.id, !account.archived);
+                } else {
+                  _deleteAccount(context, account);
                 }
               },
               itemBuilder: (_) => <PopupMenuEntry<String>>[
@@ -354,6 +357,13 @@ class _AccountDetailPage extends StatelessWidget {
                 PopupMenuItem(
                   value: 'archive',
                   child: Text(account.archived ? '取消归档' : '归档账户'),
+                ),
+                const PopupMenuItem(
+                  value: 'delete',
+                  child: Text(
+                    '永久删除',
+                    style: TextStyle(color: AppTheme.expense),
+                  ),
                 ),
               ],
             ),
@@ -442,6 +452,25 @@ class _AccountDetailPage extends StatelessWidget {
                     children: month.value
                         .map(
                           (entry) => ListTile(
+                            onTap: entry.type == EntryType.adjustment
+                                ? null
+                                : () => _openEntry(context, entry),
+                            leading: Container(
+                              width: 38,
+                              height: 38,
+                              decoration: BoxDecoration(
+                                color: Theme.of(
+                                  context,
+                                ).colorScheme.surfaceContainerHighest,
+                                borderRadius: BorderRadius.circular(11),
+                              ),
+                              child: Icon(
+                                entry.type == EntryType.adjustment
+                                    ? Icons.account_balance_wallet_outlined
+                                    : _detailCategoryIcon(entry.category),
+                                size: 20,
+                              ),
+                            ),
                             title: Text(
                               entry.type == EntryType.adjustment
                                   ? '余额调整'
@@ -450,14 +479,38 @@ class _AccountDetailPage extends StatelessWidget {
                             subtitle: entry.note.isEmpty
                                 ? null
                                 : Text(entry.note),
-                            trailing: Text(
-                              entry.type == EntryType.adjustment
-                                  ? '${entry.adjustmentDelta >= 0 ? '+' : '-'}¥${entry.adjustmentDelta.abs().toStringAsFixed(2)}'
-                                  : '${entry.type == EntryType.expense
-                                        ? '-'
-                                        : entry.type == EntryType.income
-                                        ? '+'
-                                        : ''}¥${entry.amount.toStringAsFixed(2)}',
+                            trailing: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              crossAxisAlignment: CrossAxisAlignment.end,
+                              children: <Widget>[
+                                Text(
+                                  entry.type == EntryType.adjustment
+                                      ? '${entry.adjustmentDelta >= 0 ? '+' : '-'}¥${entry.adjustmentDelta.abs().toStringAsFixed(2)}'
+                                      : '${entry.type == EntryType.expense
+                                            ? '-'
+                                            : entry.type == EntryType.income
+                                            ? '+'
+                                            : ''}¥${entry.amount.toStringAsFixed(2)}',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w600,
+                                    color:
+                                        entry.type == EntryType.expense ||
+                                            entry.adjustmentDelta < 0
+                                        ? AppTheme.expense
+                                        : entry.type == EntryType.income ||
+                                              entry.adjustmentDelta > 0
+                                        ? AppTheme.income
+                                        : null,
+                                  ),
+                                ),
+                                Text(
+                                  '余额 ¥${account.balance.toStringAsFixed(2)}',
+                                  style: const TextStyle(
+                                    fontSize: 11,
+                                    color: Color(0xFF8A9099),
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
                         )
@@ -470,6 +523,49 @@ class _AccountDetailPage extends StatelessWidget {
       );
     },
   );
+
+  Future<void> _openEntry(BuildContext context, LedgerEntry entry) async {
+    final LedgerEntry? updated = await Navigator.of(context).push<LedgerEntry>(
+      MaterialPageRoute<LedgerEntry>(
+        builder: (_) => EntrySheet(controller: controller, initial: entry),
+      ),
+    );
+    if (updated != null) await controller.updateEntry(entry, updated);
+  }
+
+  Future<void> _deleteAccount(
+    BuildContext context,
+    LedgerAccount account,
+  ) async {
+    if (controller.accounts.where((item) => !item.archived).length <= 1 &&
+        !account.archived) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('至少保留一个可用账户')));
+      return;
+    }
+    final bool? confirmed = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext context) => AlertDialog(
+        title: Text('永久删除「${account.name}」？'),
+        content: const Text('该账户及其相关账目将被永久删除，此操作无法撤销。'),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: AppTheme.expense),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('永久删除'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    await controller.deleteAccount(account.id);
+    if (context.mounted) Navigator.pop(context);
+  }
 }
 
 class _AccountMetric extends StatelessWidget {
@@ -545,4 +641,16 @@ IconData _accountIcon(String value) => switch (value) {
   'coin' => Icons.monetization_on_outlined,
   'online' => Icons.language,
   _ => Icons.account_balance_wallet_outlined,
+};
+
+IconData _detailCategoryIcon(String category) => switch (category) {
+  '交通' => Icons.directions_car_outlined,
+  '购物' => Icons.shopping_bag_outlined,
+  '居住' => Icons.home_outlined,
+  '娱乐' => Icons.sports_esports_outlined,
+  '医疗' => Icons.medical_services_outlined,
+  '学习' => Icons.menu_book_outlined,
+  '旅行' => Icons.flight_outlined,
+  '工资' => Icons.payments_outlined,
+  _ => Icons.restaurant_outlined,
 };

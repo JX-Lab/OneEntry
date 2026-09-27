@@ -310,6 +310,63 @@ class LedgerRepository {
     await batch.commit(noResult: true);
   }
 
+  Future<void> deleteAccount(int id) async {
+    final Database db = await _appDatabase.database;
+    await db.transaction((Transaction txn) async {
+      final List<Map<String, Object?>> transactionRows = await txn.query(
+        'transactions',
+        columns: <String>[
+          'id',
+          'type',
+          'amount_minor',
+          'account_id',
+          'to_account_id',
+        ],
+        where: 'account_id = ? OR to_account_id = ?',
+        whereArgs: <Object?>[id, id],
+      );
+      final List<int> transactionIds = transactionRows
+          .map((row) => row['id'] as int)
+          .toList();
+      for (final Map<String, Object?> row in transactionRows) {
+        if (row['type'] != 'transfer') continue;
+        final int amount = row['amount_minor'] as int;
+        final int fromId = row['account_id'] as int;
+        final int toId = row['to_account_id'] as int;
+        if (fromId == id) {
+          await txn.rawUpdate(
+            'UPDATE accounts SET balance_minor = balance_minor - ? WHERE id = ?',
+            <Object?>[amount, toId],
+          );
+        } else {
+          await txn.rawUpdate(
+            'UPDATE accounts SET balance_minor = balance_minor + ? WHERE id = ?',
+            <Object?>[amount, fromId],
+          );
+        }
+      }
+      for (final int transactionId in transactionIds) {
+        await txn.delete(
+          'transaction_members',
+          where: 'transaction_id = ?',
+          whereArgs: <Object?>[transactionId],
+        );
+      }
+      await txn.delete(
+        'transactions',
+        where: 'account_id = ? OR to_account_id = ?',
+        whereArgs: <Object?>[id, id],
+      );
+      await txn.update(
+        'recurring_rules',
+        <String, Object?>{'account_id': null},
+        where: 'account_id = ?',
+        whereArgs: <Object?>[id],
+      );
+      await txn.delete('accounts', where: 'id = ?', whereArgs: <Object?>[id]);
+    });
+  }
+
   Future<void> setMemberArchived(int id, bool archived) async {
     final Database db = await _appDatabase.database;
     await db.update(
@@ -338,6 +395,18 @@ class LedgerRepository {
       );
     }
     await batch.commit(noResult: true);
+  }
+
+  Future<void> deleteMember(int id) async {
+    final Database db = await _appDatabase.database;
+    await db.transaction((Transaction txn) async {
+      await txn.delete(
+        'transaction_members',
+        where: 'member_id = ?',
+        whereArgs: <Object?>[id],
+      );
+      await txn.delete('members', where: 'id = ?', whereArgs: <Object?>[id]);
+    });
   }
 
   Future<void> setMonthlyBudget(DateTime month, double amount) async {

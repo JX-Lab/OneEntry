@@ -1,6 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/semantics.dart';
-import 'package:flutter/services.dart';
 
 import 'data/ledger_controller.dart';
 import 'features/accounts/accounts_page.dart';
@@ -46,7 +44,6 @@ class _OneEntryAppState extends State<OneEntryApp> {
         );
     if (result != null) {
       await widget.controller.addEntry(result);
-      await _feedback('记账成功');
     }
   }
 
@@ -61,19 +58,6 @@ class _OneEntryAppState extends State<OneEntryApp> {
         );
     if (result != null) {
       await widget.controller.updateEntry(entry, result);
-      await _feedback('账目已保存');
-    }
-  }
-
-  Future<void> _feedback(String message) async {
-    if (widget.controller.haptics) await HapticFeedback.lightImpact();
-    final BuildContext? context = _navigatorKey.currentContext;
-    if (widget.controller.readerHints && context != null && context.mounted) {
-      SemanticsService.sendAnnouncement(
-        View.of(context),
-        message,
-        TextDirection.ltr,
-      );
     }
   }
 

@@ -4,6 +4,7 @@ import '../../data/ledger_controller.dart';
 import '../../models/ledger_models.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/swipe_action_tile.dart';
+import '../entry/entry_sheet.dart';
 
 class MembersPage extends StatefulWidget {
   const MembersPage({required this.controller, super.key});
@@ -499,8 +500,10 @@ class _MemberDetailPage extends StatelessWidget {
               onSelected: (String value) {
                 if (value == 'edit') {
                   onEdit();
-                } else {
+                } else if (value == 'archive') {
                   controller.setMemberArchived(member.id, !member.archived);
+                } else {
+                  _deleteMember(context, member);
                 }
               },
               itemBuilder: (_) => <PopupMenuEntry<String>>[
@@ -508,6 +511,13 @@ class _MemberDetailPage extends StatelessWidget {
                 PopupMenuItem(
                   value: 'archive',
                   child: Text(member.archived ? '取消归档' : '归档成员'),
+                ),
+                const PopupMenuItem(
+                  value: 'delete',
+                  child: Text(
+                    '永久删除',
+                    style: TextStyle(color: AppTheme.expense),
+                  ),
                 ),
               ],
             ),
@@ -544,6 +554,14 @@ class _MemberDetailPage extends StatelessWidget {
                           ),
                         ),
                       ],
+                    ),
+                    const SizedBox(height: 14),
+                    Text(
+                      '合计 ¥${expense.toStringAsFixed(2)}',
+                      style: const TextStyle(
+                        fontSize: 24,
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
                     const SizedBox(height: 14),
                     const Divider(height: 1),
@@ -596,16 +614,54 @@ class _MemberDetailPage extends StatelessWidget {
                     children: month.value
                         .map(
                           (entry) => ListTile(
+                            onTap: entry.type == EntryType.adjustment
+                                ? null
+                                : () => _openEntry(context, entry),
+                            leading: Container(
+                              width: 38,
+                              height: 38,
+                              decoration: BoxDecoration(
+                                color: Theme.of(
+                                  context,
+                                ).colorScheme.surfaceContainerHighest,
+                                borderRadius: BorderRadius.circular(11),
+                              ),
+                              child: Icon(
+                                _memberDetailCategoryIcon(entry.category),
+                                size: 20,
+                              ),
+                            ),
                             title: Text(entry.category),
                             subtitle: entry.note.isEmpty
                                 ? null
                                 : Text(entry.note),
-                            trailing: Text(
-                              '${entry.type == EntryType.expense
-                                  ? '-'
-                                  : entry.type == EntryType.income
-                                  ? '+'
-                                  : ''}¥${entry.amount.toStringAsFixed(2)}',
+                            trailing: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              crossAxisAlignment: CrossAxisAlignment.end,
+                              children: <Widget>[
+                                Text(
+                                  '${entry.type == EntryType.expense
+                                      ? '-'
+                                      : entry.type == EntryType.income
+                                      ? '+'
+                                      : ''}¥${entry.amount.toStringAsFixed(2)}',
+                                  style: TextStyle(
+                                    color: entry.type == EntryType.expense
+                                        ? AppTheme.expense
+                                        : entry.type == EntryType.income
+                                        ? AppTheme.income
+                                        : null,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                                Text(
+                                  '${entry.occurredAt.month}月${entry.occurredAt.day}日',
+                                  style: const TextStyle(
+                                    fontSize: 11,
+                                    color: Color(0xFF8A9099),
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
                         )
@@ -618,6 +674,39 @@ class _MemberDetailPage extends StatelessWidget {
       );
     },
   );
+
+  Future<void> _openEntry(BuildContext context, LedgerEntry entry) async {
+    final LedgerEntry? updated = await Navigator.of(context).push<LedgerEntry>(
+      MaterialPageRoute<LedgerEntry>(
+        builder: (_) => EntrySheet(controller: controller, initial: entry),
+      ),
+    );
+    if (updated != null) await controller.updateEntry(entry, updated);
+  }
+
+  Future<void> _deleteMember(BuildContext context, LedgerMember member) async {
+    final bool? confirmed = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext context) => AlertDialog(
+        title: Text('永久删除「${member.name}」？'),
+        content: const Text('成员会从历史账目的参与成员中移除，账目本身仍会保留。'),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: AppTheme.expense),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('永久删除'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    await controller.deleteMember(member.id);
+    if (context.mounted) Navigator.pop(context);
+  }
 }
 
 class _MemberMetric extends StatelessWidget {
@@ -640,3 +729,15 @@ class _MemberMetric extends StatelessWidget {
     ],
   );
 }
+
+IconData _memberDetailCategoryIcon(String category) => switch (category) {
+  '交通' => Icons.directions_car_outlined,
+  '购物' => Icons.shopping_bag_outlined,
+  '居住' => Icons.home_outlined,
+  '娱乐' => Icons.sports_esports_outlined,
+  '医疗' => Icons.medical_services_outlined,
+  '学习' => Icons.menu_book_outlined,
+  '旅行' => Icons.flight_outlined,
+  '工资' => Icons.payments_outlined,
+  _ => Icons.restaurant_outlined,
+};
