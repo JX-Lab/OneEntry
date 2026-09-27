@@ -538,39 +538,46 @@ class _EntryTile extends StatelessWidget {
               horizontal: 14,
               vertical: 3,
             ),
-            leading: Container(
-              width: 40,
-              height: 40,
-              decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Icon(
-                transfer
-                    ? Icons.swap_horiz
-                    : adjustment
-                    ? Icons.account_balance_wallet_outlined
-                    : _entryCategoryIcon(controller, entry.category),
-                size: 21,
-              ),
-            ),
-            title: Row(
-              children: <Widget>[
-                Expanded(
-                  child: Text(
-                    adjustment
-                        ? '余额调整'
-                        : transfer
-                        ? '转账'
-                        : entry.category,
-                    style: const TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w600,
+            leading: SizedBox(
+              width: 44,
+              height: 44,
+              child: Stack(
+                clipBehavior: Clip.none,
+                children: <Widget>[
+                  Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      color: Theme.of(
+                        context,
+                      ).colorScheme.surfaceContainerHighest,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Icon(
+                      transfer
+                          ? Icons.swap_horiz
+                          : adjustment
+                          ? Icons.account_balance_wallet_outlined
+                          : _entryCategoryIcon(controller, entry.category),
+                      size: 21,
                     ),
                   ),
-                ),
-                if (controller.multiEnabled) _MemberBadge(members: members),
-              ],
+                  if (controller.multiEnabled)
+                    Positioned(
+                      right: -2,
+                      bottom: -2,
+                      child: _MemberBadge(members: members),
+                    ),
+                ],
+              ),
+            ),
+            title: Text(
+              adjustment
+                  ? '余额调整'
+                  : transfer
+                  ? '转账'
+                  : entry.category,
+              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
             ),
             subtitle: entry.note.isEmpty
                 ? null
