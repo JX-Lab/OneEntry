@@ -397,75 +397,105 @@ class _EntrySheetState extends State<EntrySheet> {
 
   Future<void> _addCategory() async {
     final TextEditingController name = TextEditingController();
-    String icon = 'tag';
+    String group = _iconGroups.keys.first;
+    String icon = _iconGroups[group]!.first;
     final bool? save = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
+      useSafeArea: true,
       builder: (BuildContext context) => StatefulBuilder(
-        builder: (BuildContext context, StateSetter update) => Padding(
-          padding: EdgeInsets.only(
-            bottom: MediaQuery.viewInsetsOf(context).bottom,
-          ),
-          child: SafeArea(
-            top: false,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: <Widget>[
-                SizedBox(
-                  height: 52,
-                  child: Row(
-                    children: <Widget>[
-                      TextButton(
-                        onPressed: () => Navigator.pop(context),
-                        child: const Text('取消'),
+        builder: (BuildContext context, StateSetter update) =>
+            FractionallySizedBox(
+              heightFactor: .88,
+              child: Padding(
+                padding: EdgeInsets.only(
+                  bottom: MediaQuery.viewInsetsOf(context).bottom,
+                ),
+                child: Column(
+                  children: <Widget>[
+                    SizedBox(
+                      height: 52,
+                      child: Row(
+                        children: <Widget>[
+                          TextButton(
+                            onPressed: () => Navigator.pop(context),
+                            child: const Text('取消'),
+                          ),
+                          const Expanded(
+                            child: Text(
+                              '自定义标签',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(fontWeight: FontWeight.w700),
+                            ),
+                          ),
+                          TextButton(
+                            onPressed: () => Navigator.pop(context, true),
+                            child: const Text('保存'),
+                          ),
+                        ],
                       ),
-                      const Expanded(
-                        child: Text(
-                          '自定义标签',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 4, 16, 10),
+                      child: TextField(
+                        controller: name,
+                        autofocus: false,
+                        decoration: const InputDecoration(
+                          labelText: '名称',
+                          hintText: '如：宠物',
                         ),
                       ),
-                      TextButton(
-                        onPressed: () => Navigator.pop(context, true),
-                        child: const Text('保存'),
-                      ),
-                    ],
-                  ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 4, 16, 10),
-                  child: TextField(
-                    controller: name,
-                    autofocus: true,
-                    decoration: const InputDecoration(
-                      labelText: '名称',
-                      hintText: '如：宠物',
                     ),
-                  ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 6, 16, 20),
-                  child: Wrap(
-                    spacing: 10,
-                    runSpacing: 10,
-                    children: _customIcons
-                        .map(
-                          (String item) => InkWell(
+                    SizedBox(
+                      height: 46,
+                      child: ListView.separated(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        scrollDirection: Axis.horizontal,
+                        itemCount: _iconGroups.length,
+                        separatorBuilder: (_, _) => const SizedBox(width: 8),
+                        itemBuilder: (BuildContext context, int index) {
+                          final String item = _iconGroups.keys.elementAt(index);
+                          final bool selected = item == group;
+                          return ChoiceChip(
+                            label: Text(item),
+                            selected: selected,
+                            showCheckmark: false,
+                            onSelected: (_) => update(() {
+                              group = item;
+                              final List<String> icons = _iconGroups[group]!;
+                              if (!icons.contains(icon)) icon = icons.first;
+                            }),
+                          );
+                        },
+                      ),
+                    ),
+                    const Divider(height: 1),
+                    Expanded(
+                      child: GridView.builder(
+                        padding: const EdgeInsets.fromLTRB(16, 14, 16, 22),
+                        gridDelegate:
+                            const SliverGridDelegateWithFixedCrossAxisCount(
+                              crossAxisCount: 6,
+                              mainAxisSpacing: 10,
+                              crossAxisSpacing: 10,
+                            ),
+                        itemCount: _iconGroups[group]!.length,
+                        itemBuilder: (BuildContext context, int index) {
+                          final String item = _iconGroups[group]![index];
+                          final bool selected = icon == item;
+                          return InkWell(
                             onTap: () => update(() => icon = item),
                             borderRadius: BorderRadius.circular(12),
                             child: Container(
-                              width: 46,
-                              height: 46,
                               decoration: BoxDecoration(
-                                color: icon == item
+                                color: selected
                                     ? AppTheme.green.withValues(alpha: .12)
                                     : Theme.of(
                                         context,
                                       ).colorScheme.surfaceContainerHighest,
                                 borderRadius: BorderRadius.circular(12),
                                 border: Border.all(
-                                  color: icon == item
+                                  color: selected
                                       ? AppTheme.green
                                       : Colors.transparent,
                                   width: 2,
@@ -473,15 +503,14 @@ class _EntrySheetState extends State<EntrySheet> {
                               ),
                               child: Icon(_iconFromKey(item), size: 22),
                             ),
-                          ),
-                        )
-                        .toList(),
-                  ),
+                          );
+                        },
+                      ),
+                    ),
+                  ],
                 ),
-              ],
+              ),
             ),
-          ),
-        ),
       ),
     );
     final String value = name.text.trim();
@@ -923,40 +952,128 @@ String _formatDateTime(DateTime value) =>
     '${value.year}年${value.month.toString().padLeft(2, '0')}月${value.day.toString().padLeft(2, '0')}日 '
     '${value.hour.toString().padLeft(2, '0')}:${value.minute.toString().padLeft(2, '0')}';
 
-const List<String> _customIcons = <String>[
-  'tag',
-  'pet',
-  'coffee',
-  'phone',
-  'fitness',
-  'child',
-  'beauty',
-  'tools',
-  'plant',
-  'cake',
-  'insurance',
-  'rent',
-  'heart',
-  'star',
-  'key',
-  'bus',
-  'train',
-  'bicycle',
-  'clothes',
-  'bottle',
-  'bolt',
-  'music',
-  'movie',
-  'hotel',
-  'work',
-  'school',
-  'baby',
-  'repair',
-  'book',
-  'flight',
-  'gift',
-  'shopping',
-];
+const Map<String, List<String>> _iconGroups = <String, List<String>>{
+  '娱乐': <String>[
+    'game',
+    'movie',
+    'music',
+    'theater',
+    'karaoke',
+    'camera',
+    'sports',
+    'dice',
+  ],
+  '饮食': <String>[
+    'restaurant',
+    'coffee',
+    'cake',
+    'bottle',
+    'fastfood',
+    'icecream',
+    'breakfast',
+    'wine',
+  ],
+  '医疗': <String>[
+    'medical',
+    'medicine',
+    'hospital',
+    'pharmacy',
+    'dental',
+    'healing',
+    'psychology',
+    'spa',
+  ],
+  '学习': <String>[
+    'book',
+    'school',
+    'language',
+    'calculate',
+    'science',
+    'edit',
+    'library',
+    'computer',
+  ],
+  '交通': <String>[
+    'car',
+    'bus',
+    'train',
+    'subway',
+    'bicycle',
+    'flight',
+    'ship',
+    'taxi',
+  ],
+  '购物': <String>[
+    'shopping',
+    'cart',
+    'bag',
+    'store',
+    'gift',
+    'clothes',
+    'beauty',
+    'receipt',
+  ],
+  '生活': <String>[
+    'home',
+    'rent',
+    'phone',
+    'tools',
+    'repair',
+    'plant',
+    'pet',
+    'bolt',
+  ],
+  '个人': <String>[
+    'fitness',
+    'heart',
+    'star',
+    'child',
+    'person',
+    'beauty',
+    'watch',
+    'haircut',
+  ],
+  '家庭': <String>[
+    'family',
+    'baby',
+    'elderly',
+    'home',
+    'pet',
+    'child',
+    'toy',
+    'kitchen',
+  ],
+  '办公': <String>[
+    'work',
+    'briefcase',
+    'computer',
+    'print',
+    'email',
+    'folder',
+    'meeting',
+    'calendar',
+  ],
+  '金融': <String>[
+    'wallet',
+    'bank',
+    'card',
+    'savings',
+    'coin',
+    'chart',
+    'insurance',
+    'receipt',
+  ],
+  '其他': <String>[
+    'tag',
+    'more',
+    'key',
+    'globe',
+    'cloud',
+    'repeat',
+    'link',
+    'flag',
+  ],
+};
 
 IconData _categoryIcon(String? key, String category) =>
     key == null || key == 'tag'
@@ -974,6 +1091,15 @@ IconData _categoryIconByName(String category) => switch (category) {
   '红包' => Icons.card_giftcard_outlined,
   '理财' => Icons.show_chart,
   '工资' => Icons.payments_outlined,
+  '通讯' => Icons.phone_android_outlined,
+  '健身' => Icons.fitness_center_outlined,
+  '美妆' => Icons.brush_outlined,
+  '服饰' => Icons.checkroom_outlined,
+  '打赏' => Icons.volunteer_activism_outlined,
+  '报销' => Icons.receipt_long_outlined,
+  '礼物' => Icons.card_giftcard_outlined,
+  '兼职' => Icons.work_history_outlined,
+  '其他' => Icons.more_horiz,
   _ => Icons.restaurant_outlined,
 };
 
@@ -989,6 +1115,11 @@ IconData _iconFromKey(String key) => switch (key) {
   'gift' => Icons.card_giftcard_outlined,
   'salary' => Icons.payments_outlined,
   'chart' => Icons.show_chart,
+  'red_packet' => Icons.wallet_giftcard_outlined,
+  'tip' => Icons.volunteer_activism_outlined,
+  'reimbursement' => Icons.receipt_long_outlined,
+  'part_time' => Icons.work_history_outlined,
+  'more' => Icons.more_horiz,
   'pet' => Icons.pets_outlined,
   'coffee' => Icons.coffee_outlined,
   'phone' => Icons.phone_android_outlined,
@@ -1016,5 +1147,57 @@ IconData _iconFromKey(String key) => switch (key) {
   'school' => Icons.school_outlined,
   'baby' => Icons.child_friendly_outlined,
   'repair' => Icons.build_outlined,
+  'theater' => Icons.theater_comedy_outlined,
+  'karaoke' => Icons.mic_external_on_outlined,
+  'camera' => Icons.camera_alt_outlined,
+  'sports' => Icons.sports_basketball_outlined,
+  'dice' => Icons.casino_outlined,
+  'fastfood' => Icons.fastfood_outlined,
+  'icecream' => Icons.icecream_outlined,
+  'breakfast' => Icons.breakfast_dining_outlined,
+  'wine' => Icons.wine_bar_outlined,
+  'medicine' => Icons.medication_outlined,
+  'hospital' => Icons.local_hospital_outlined,
+  'pharmacy' => Icons.local_pharmacy_outlined,
+  'dental' => Icons.medical_information_outlined,
+  'healing' => Icons.healing_outlined,
+  'psychology' => Icons.psychology_outlined,
+  'spa' => Icons.spa_outlined,
+  'language' => Icons.language_outlined,
+  'calculate' => Icons.calculate_outlined,
+  'science' => Icons.science_outlined,
+  'edit' => Icons.edit_outlined,
+  'library' => Icons.local_library_outlined,
+  'computer' => Icons.computer_outlined,
+  'subway' => Icons.subway_outlined,
+  'ship' => Icons.directions_boat_outlined,
+  'taxi' => Icons.local_taxi_outlined,
+  'cart' => Icons.shopping_cart_outlined,
+  'bag' => Icons.shopping_bag_outlined,
+  'store' => Icons.storefront_outlined,
+  'receipt' => Icons.receipt_long_outlined,
+  'person' => Icons.person_outline,
+  'watch' => Icons.watch_outlined,
+  'haircut' => Icons.content_cut,
+  'family' => Icons.family_restroom_outlined,
+  'elderly' => Icons.elderly_outlined,
+  'toy' => Icons.toys_outlined,
+  'kitchen' => Icons.kitchen_outlined,
+  'briefcase' => Icons.business_center_outlined,
+  'print' => Icons.print_outlined,
+  'email' => Icons.email_outlined,
+  'folder' => Icons.folder_outlined,
+  'meeting' => Icons.groups_outlined,
+  'calendar' => Icons.calendar_month_outlined,
+  'wallet' => Icons.account_balance_wallet_outlined,
+  'bank' => Icons.account_balance_outlined,
+  'card' => Icons.credit_card_outlined,
+  'savings' => Icons.savings_outlined,
+  'coin' => Icons.monetization_on_outlined,
+  'globe' => Icons.public_outlined,
+  'cloud' => Icons.cloud_outlined,
+  'repeat' => Icons.repeat,
+  'link' => Icons.link,
+  'flag' => Icons.flag_outlined,
   _ => Icons.sell_outlined,
 };

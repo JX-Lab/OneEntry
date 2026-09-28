@@ -2,7 +2,7 @@ import 'package:path/path.dart' as p;
 import 'package:sqflite/sqflite.dart';
 
 class AppDatabase {
-  static const int schemaVersion = 3;
+  static const int schemaVersion = 4;
   static const String fileName = 'oneentry.db';
 
   Database? _database;
@@ -21,6 +21,7 @@ class AppDatabase {
         await _createVersion1(db);
         if (version >= 2) await _migrate1To2(db);
         if (version >= 3) await _migrate2To3(db);
+        if (version >= 4) await _migrate3To4(db);
         await _seed(db);
       },
       onUpgrade: (Database db, int oldVersion, int newVersion) async {
@@ -33,6 +34,10 @@ class AppDatabase {
           if (version < 3 && newVersion >= 3) {
             await _migrate2To3(txn);
             version = 3;
+          }
+          if (version < 4 && newVersion >= 4) {
+            await _migrate3To4(txn);
+            version = 4;
           }
           if (version != newVersion) {
             throw StateError(
@@ -239,6 +244,153 @@ class AppDatabase {
     );
   }
 
+  Future<void> _migrate3To4(DatabaseExecutor db) async {
+    final int now = DateTime.now().millisecondsSinceEpoch;
+    final List<Map<String, Object?>> learningRows = await db.query(
+      'categories',
+      columns: <String>['id'],
+      where: 'name = ?',
+      whereArgs: <Object?>['学习'],
+      limit: 1,
+    );
+    final List<Map<String, Object?>> educationRows = await db.query(
+      'categories',
+      columns: <String>['id'],
+      where: 'name = ?',
+      whereArgs: <Object?>['教育'],
+      limit: 1,
+    );
+    if (educationRows.isNotEmpty && learningRows.isEmpty) {
+      await db.update(
+        'categories',
+        <String, Object?>{
+          'name': '学习',
+          'type': 'expense',
+          'icon': 'book',
+          'updated_at': now,
+        },
+        where: 'id = ?',
+        whereArgs: <Object?>[educationRows.first['id']],
+      );
+    } else if (educationRows.isNotEmpty && learningRows.isNotEmpty) {
+      final int educationId = educationRows.first['id'] as int;
+      final int learningId = learningRows.first['id'] as int;
+      await db.update(
+        'transactions',
+        <String, Object?>{'category_id': learningId},
+        where: 'category_id = ?',
+        whereArgs: <Object?>[educationId],
+      );
+      await db.update(
+        'recurring_rules',
+        <String, Object?>{'category_id': learningId},
+        where: 'category_id = ?',
+        whereArgs: <Object?>[educationId],
+      );
+      final List<Map<String, Object?>> educationBudgets = await db.query(
+        'budgets',
+        where: 'category_id = ?',
+        whereArgs: <Object?>[educationId],
+      );
+      for (final Map<String, Object?> budget in educationBudgets) {
+        final String period = budget['period'] as String;
+        final List<Map<String, Object?>> existing = await db.query(
+          'budgets',
+          columns: <String>['id', 'amount_minor'],
+          where: 'period = ? AND category_id = ?',
+          whereArgs: <Object?>[period, learningId],
+          limit: 1,
+        );
+        if (existing.isEmpty) {
+          await db.update(
+            'budgets',
+            <String, Object?>{'category_id': learningId, 'updated_at': now},
+            where: 'id = ?',
+            whereArgs: <Object?>[budget['id']],
+          );
+        } else {
+          await db.update(
+            'budgets',
+            <String, Object?>{
+              'amount_minor':
+                  (existing.first['amount_minor'] as int) +
+                  (budget['amount_minor'] as int),
+              'updated_at': now,
+            },
+            where: 'id = ?',
+            whereArgs: <Object?>[existing.first['id']],
+          );
+          await db.delete(
+            'budgets',
+            where: 'id = ?',
+            whereArgs: <Object?>[budget['id']],
+          );
+        }
+      }
+      await db.delete(
+        'categories',
+        where: 'id = ?',
+        whereArgs: <Object?>[educationId],
+      );
+    }
+
+    const List<(String, String, String)> defaults = <(String, String, String)>[
+      ('餐饮', 'expense', 'restaurant'),
+      ('交通', 'expense', 'car'),
+      ('购物', 'expense', 'shopping'),
+      ('居住', 'expense', 'home'),
+      ('娱乐', 'expense', 'game'),
+      ('医疗', 'expense', 'medical'),
+      ('学习', 'expense', 'book'),
+      ('旅行', 'expense', 'flight'),
+      ('通讯', 'expense', 'phone'),
+      ('健身', 'expense', 'fitness'),
+      ('美妆', 'expense', 'beauty'),
+      ('服饰', 'expense', 'clothes'),
+      ('红包', 'income', 'red_packet'),
+      ('工资', 'income', 'salary'),
+      ('理财', 'income', 'chart'),
+      ('打赏', 'income', 'tip'),
+      ('报销', 'income', 'reimbursement'),
+      ('礼物', 'income', 'gift'),
+      ('兼职', 'income', 'part_time'),
+      ('其他', 'both', 'more'),
+    ];
+    for (int index = 0; index < defaults.length; index++) {
+      final item = defaults[index];
+      final List<Map<String, Object?>> rows = await db.query(
+        'categories',
+        columns: <String>['id'],
+        where: 'name = ?',
+        whereArgs: <Object?>[item.$1],
+        limit: 1,
+      );
+      if (rows.isEmpty) {
+        await db.insert('categories', <String, Object?>{
+          'uuid': 'default-v4-category-${index + 1}-$now',
+          'name': item.$1,
+          'type': item.$2,
+          'icon': item.$3,
+          'sort_order': index,
+          'created_at': now,
+          'updated_at': now,
+        });
+      } else {
+        await db.update(
+          'categories',
+          <String, Object?>{
+            'type': item.$2,
+            'icon': item.$3,
+            'sort_order': index,
+            'updated_at': now,
+          },
+          where: 'id = ?',
+          whereArgs: <Object?>[rows.first['id']],
+        );
+      }
+    }
+  }
+
   Future<void> _seed(Database db) async {
     final int now = DateTime.now().millisecondsSinceEpoch;
     final DateTime current = DateTime.now();
@@ -292,11 +444,19 @@ class AppDatabase {
           ('医疗', 'expense', 'medical'),
           ('学习', 'expense', 'book'),
           ('旅行', 'expense', 'flight'),
-          ('红包', 'income', 'gift'),
+          ('通讯', 'expense', 'phone'),
+          ('健身', 'expense', 'fitness'),
+          ('美妆', 'expense', 'beauty'),
+          ('服饰', 'expense', 'clothes'),
+          ('红包', 'income', 'red_packet'),
           ('转账', 'transfer', 'transfer'),
           ('工资', 'income', 'salary'),
           ('理财', 'income', 'chart'),
-          ('其他', 'expense', 'tag'),
+          ('打赏', 'income', 'tip'),
+          ('报销', 'income', 'reimbursement'),
+          ('礼物', 'income', 'gift'),
+          ('兼职', 'income', 'part_time'),
+          ('其他', 'both', 'more'),
         ];
     for (int index = 0; index < categories.length; index++) {
       batch.insert('categories', <String, Object?>{
@@ -307,7 +467,7 @@ class AppDatabase {
         'sort_order': index,
         'created_at': now,
         'updated_at': now,
-      });
+      }, conflictAlgorithm: ConflictAlgorithm.ignore);
     }
     batch.insert('budgets', <String, Object?>{
       'period': period,

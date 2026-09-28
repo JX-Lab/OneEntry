@@ -284,6 +284,8 @@ class LedgerController extends ChangeNotifier {
   }
 
   List<LedgerCategory> categoriesFor(EntryType type) => categories
-      .where((LedgerCategory category) => category.type == type)
+      .where(
+        (LedgerCategory category) => category.type == type || category.both,
+      )
       .toList();
 }

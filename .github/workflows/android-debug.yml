@@ -10,7 +10,7 @@ permissions:
   contents: write
 
 jobs:
-  build-debug-apk:
+  build-android-apk:
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
@@ -46,23 +46,46 @@ jobs:
         shell: bash
         run: flutter analyze --no-fatal-infos
 
-      - name: Build debug APK
+      - name: Configure stable release signing when secrets are available
         shell: bash
-        run: flutter build apk --debug --no-pub
+        env:
+          ONEENTRY_KEYSTORE_BASE64: ${{ secrets.ONEENTRY_KEYSTORE_BASE64 }}
+          ONEENTRY_KEY_ALIAS: ${{ secrets.ONEENTRY_KEY_ALIAS }}
+          ONEENTRY_KEY_PASSWORD: ${{ secrets.ONEENTRY_KEY_PASSWORD }}
+          ONEENTRY_STORE_PASSWORD: ${{ secrets.ONEENTRY_STORE_PASSWORD }}
+        run: |
+          if [[ -n "$ONEENTRY_KEYSTORE_BASE64" && -n "$ONEENTRY_KEY_ALIAS" && -n "$ONEENTRY_KEY_PASSWORD" && -n "$ONEENTRY_STORE_PASSWORD" ]]; then
+            echo "$ONEENTRY_KEYSTORE_BASE64" | base64 --decode > android/app/oneentry-release.jks
+            {
+              echo "storeFile=oneentry-release.jks"
+              echo "storePassword=$ONEENTRY_STORE_PASSWORD"
+              echo "keyAlias=$ONEENTRY_KEY_ALIAS"
+              echo "keyPassword=$ONEENTRY_KEY_PASSWORD"
+            } > android/key.properties
+            echo "BUILD_MODE=release" >> "$GITHUB_ENV"
+            echo "APK_NAME=app-release.apk" >> "$GITHUB_ENV"
+          else
+            echo "BUILD_MODE=debug" >> "$GITHUB_ENV"
+            echo "APK_NAME=app-debug.apk" >> "$GITHUB_ENV"
+          fi
+
+      - name: Build APK
+        shell: bash
+        run: flutter build apk --${BUILD_MODE} --no-pub --build-number=${{ github.run_number }}
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: OneEntry-debug-apk
-          path: build/app/outputs/flutter-apk/app-debug.apk
+          name: OneEntry-${{ env.BUILD_MODE }}-apk
+          path: build/app/outputs/flutter-apk/${{ env.APK_NAME }}
           if-no-files-found: error
           retention-days: 7
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: debug-build-${{ github.run_number }}
-          name: OneEntry Debug Build #${{ github.run_number }}
-          prerelease: true
+          tag_name: ${{ env.BUILD_MODE }}-build-${{ github.run_number }}
+          name: OneEntry ${{ env.BUILD_MODE }} Build #${{ github.run_number }}
+          prerelease: ${{ env.BUILD_MODE != 'release' }}
           generate_release_notes: false
-          files: build/app/outputs/flutter-apk/app-debug.apk
+          files: build/app/outputs/flutter-apk/${{ env.APK_NAME }}

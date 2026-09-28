@@ -707,10 +707,18 @@ class LedgerRepository {
             ('医疗', 'expense', 'medical'),
             ('学习', 'expense', 'book'),
             ('旅行', 'expense', 'flight'),
-            ('红包', 'income', 'gift'),
+            ('通讯', 'expense', 'phone'),
+            ('健身', 'expense', 'fitness'),
+            ('美妆', 'expense', 'beauty'),
+            ('服饰', 'expense', 'clothes'),
+            ('红包', 'income', 'red_packet'),
             ('工资', 'income', 'salary'),
             ('理财', 'income', 'chart'),
-            ('其他', 'expense', 'tag'),
+            ('打赏', 'income', 'tip'),
+            ('报销', 'income', 'reimbursement'),
+            ('礼物', 'income', 'gift'),
+            ('兼职', 'income', 'part_time'),
+            ('其他', 'both', 'more'),
           ];
       for (int index = 0; index < defaults.length; index++) {
         await txn.insert('categories', <String, Object?>{
@@ -980,7 +988,16 @@ class LedgerRepository {
     final String name = row['name'] as String;
     final EntryType type =
         rawType == 'income' ||
-            (rawType == 'both' && <String>['工资', '红包', '理财'].contains(name))
+            (rawType == 'both' &&
+                <String>[
+                  '工资',
+                  '红包',
+                  '理财',
+                  '打赏',
+                  '报销',
+                  '礼物',
+                  '兼职',
+                ].contains(name))
         ? EntryType.income
         : rawType == 'transfer'
         ? EntryType.transfer
@@ -990,6 +1007,7 @@ class LedgerRepository {
       type: type,
       icon: row['icon'] as String? ?? 'tag',
       custom: (row['uuid'] as String? ?? '').startsWith('custom-category-'),
+      both: rawType == 'both',
     );
   }
 
@@ -1041,17 +1059,18 @@ class LedgerRepository {
     EntryType type = EntryType.expense,
     String icon = 'tag',
   }) async {
+    final String normalizedName = name == '教育' ? '学习' : name;
     final List<Map<String, Object?>> rows = await db.query(
       'categories',
       columns: <String>['id'],
       where: 'name = ?',
-      whereArgs: <Object?>[name],
+      whereArgs: <Object?>[normalizedName],
       limit: 1,
     );
     if (rows.isNotEmpty) return rows.first['id'] as int;
     return db.insert('categories', <String, Object?>{
       'uuid': _uuid('category', now),
-      'name': name,
+      'name': normalizedName,
       'type': type.name,
       'icon': icon,
       'created_at': now,

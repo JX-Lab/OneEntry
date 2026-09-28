@@ -66,12 +66,14 @@ class LedgerCategory {
     required this.type,
     required this.icon,
     required this.custom,
+    this.both = false,
   });
 
   final String name;
   final EntryType type;
   final String icon;
   final bool custom;
+  final bool both;
 }
 
 class RecurringRule {
