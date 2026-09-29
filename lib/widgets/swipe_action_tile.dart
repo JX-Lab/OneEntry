@@ -6,6 +6,7 @@ class SwipeActionTile extends StatefulWidget {
     required this.actionLabel,
     required this.onAction,
     this.onTap,
+    this.onLongPress,
     this.actionColor = const Color(0xFFFA5151),
     this.borderRadius = 14,
     super.key,
@@ -15,6 +16,7 @@ class SwipeActionTile extends StatefulWidget {
   final String actionLabel;
   final VoidCallback onAction;
   final VoidCallback? onTap;
+  final VoidCallback? onLongPress;
   final Color actionColor;
   final double borderRadius;
 
@@ -53,6 +55,7 @@ class _SwipeActionTileState extends State<SwipeActionTile> {
               widget.onTap?.call();
             }
           },
+          onLongPress: widget.onLongPress,
           child: AnimatedContainer(
             duration: _dragging
                 ? Duration.zero

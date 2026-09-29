@@ -5,6 +5,7 @@ import '../../models/ledger_models.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/swipe_action_tile.dart';
 import '../entry/entry_sheet.dart';
+import '../entry/entry_detail_sheet.dart';
 
 class MembersPage extends StatefulWidget {
   const MembersPage({required this.controller, super.key});
@@ -614,7 +615,13 @@ class _MemberDetailPage extends StatelessWidget {
                     children: month.value
                         .map(
                           (entry) => ListTile(
-                            onTap: entry.type == EntryType.adjustment
+                            onTap: () => showEntryDetailSheet(
+                              context: context,
+                              controller: controller,
+                              entry: entry,
+                              onEdit: () => _openEntry(context, entry),
+                            ),
+                            onLongPress: entry.type == EntryType.adjustment
                                 ? null
                                 : () => _openEntry(context, entry),
                             leading: Container(

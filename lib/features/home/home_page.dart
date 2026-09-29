@@ -4,6 +4,7 @@ import '../../data/ledger_controller.dart';
 import '../../models/ledger_models.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/swipe_action_tile.dart';
+import '../entry/entry_detail_sheet.dart';
 import 'period_picker_sheet.dart';
 
 class HomePage extends StatefulWidget {
@@ -315,7 +316,7 @@ class _HomePageState extends State<HomePage> {
               (LedgerEntry item) => _EntryTile(
                 entry: item,
                 controller: widget.controller,
-                onTap: () => widget.onEditEntry(item),
+                onEdit: () => widget.onEditEntry(item),
                 onDelete: () => widget.onDeleteEntry(item),
               ),
             ),
@@ -489,12 +490,12 @@ class _EntryTile extends StatelessWidget {
   const _EntryTile({
     required this.entry,
     required this.controller,
-    required this.onTap,
+    required this.onEdit,
     required this.onDelete,
   });
   final LedgerEntry entry;
   final LedgerController controller;
-  final VoidCallback onTap;
+  final VoidCallback onEdit;
   final VoidCallback onDelete;
 
   @override
@@ -527,7 +528,13 @@ class _EntryTile extends StatelessWidget {
       child: SwipeActionTile(
         actionLabel: '删除',
         onAction: () => _confirmDelete(context),
-        onTap: onTap,
+        onTap: () => showEntryDetailSheet(
+          context: context,
+          controller: controller,
+          entry: entry,
+          onEdit: onEdit,
+        ),
+        onLongPress: entry.type == EntryType.adjustment ? null : onEdit,
         child: Container(
           decoration: BoxDecoration(
             color: Theme.of(context).colorScheme.surface,

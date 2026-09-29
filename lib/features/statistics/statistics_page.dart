@@ -6,6 +6,8 @@ import '../../data/ledger_controller.dart';
 import '../../models/ledger_models.dart';
 import '../../theme/app_theme.dart';
 import '../home/period_picker_sheet.dart';
+import '../entry/entry_detail_sheet.dart';
+import '../entry/entry_sheet.dart';
 
 class StatisticsPage extends StatefulWidget {
   const StatisticsPage({required this.controller, super.key});
@@ -261,6 +263,15 @@ class _StatisticsPageState extends State<StatisticsPage> {
                           final LedgerEntry entry = matching[index];
                           return Card(
                             child: ListTile(
+                              onTap: () => showEntryDetailSheet(
+                                context: this.context,
+                                controller: widget.controller,
+                                entry: entry,
+                                onEdit: () => _editEntry(entry),
+                              ),
+                              onLongPress: entry.type == EntryType.adjustment
+                                  ? null
+                                  : () => _editEntry(entry),
                               title: Text(entry.category),
                               subtitle: Text(
                                 '${entry.occurredAt.year}年${entry.occurredAt.month}月${entry.occurredAt.day}日${entry.note.isEmpty ? '' : ' · ${entry.note}'}',
@@ -278,6 +289,18 @@ class _StatisticsPageState extends State<StatisticsPage> {
         ),
       ),
     );
+  }
+
+  Future<void> _editEntry(LedgerEntry entry) async {
+    final LedgerEntry? updated = await Navigator.of(context).push<LedgerEntry>(
+      MaterialPageRoute<LedgerEntry>(
+        builder: (_) =>
+            EntrySheet(controller: widget.controller, initial: entry),
+      ),
+    );
+    if (updated != null) {
+      await widget.controller.updateEntry(entry, updated);
+    }
   }
 
   List<LedgerEntry> _entries(({DateTime start, DateTime end}) range) => widget

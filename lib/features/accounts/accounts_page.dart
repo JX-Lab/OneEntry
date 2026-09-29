@@ -5,6 +5,7 @@ import '../../models/ledger_models.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/swipe_action_tile.dart';
 import '../entry/entry_sheet.dart';
+import '../entry/entry_detail_sheet.dart';
 
 class AccountsPage extends StatefulWidget {
   const AccountsPage({required this.controller, super.key});
@@ -29,19 +30,21 @@ class _AccountsPageState extends State<AccountsPage> {
     animation: widget.controller,
     builder: (BuildContext context, Widget? child) {
       final String query = _search.text.trim().toLowerCase();
-      final List<LedgerAccount> active = widget.controller.accounts
-          .where(
-            (item) => !item.archived && item.name.toLowerCase().contains(query),
-          )
+      final List<LedgerAccount> allActive = widget.controller.accounts
+          .where((item) => !item.archived)
+          .toList();
+      final List<LedgerAccount> active = allActive
+          .where((item) => item.name.toLowerCase().contains(query))
           .toList();
       final List<LedgerAccount> archived = widget.controller.accounts
           .where(
             (item) => item.archived && item.name.toLowerCase().contains(query),
           )
           .toList();
-      final double total = widget.controller.accounts
-          .where((item) => !item.archived)
-          .fold(0, (sum, item) => sum + item.balance);
+      final double total = allActive.fold(0, (sum, item) => sum + item.balance);
+      final double debt = allActive
+          .where((item) => item.balance < 0)
+          .fold(0, (sum, item) => sum + item.balance.abs());
       return Scaffold(
         appBar: AppBar(
           title: _searching
@@ -95,6 +98,26 @@ class _AccountsPageState extends State<AccountsPage> {
                       fontSize: 28,
                       fontWeight: FontWeight.w700,
                     ),
+                  ),
+                  const SizedBox(height: 14),
+                  const Divider(height: 1),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: <Widget>[
+                      Expanded(
+                        child: _AccountSummaryValue(
+                          label: '账户数',
+                          value: '${allActive.length}',
+                        ),
+                      ),
+                      Expanded(
+                        child: _AccountSummaryValue(
+                          label: '负债',
+                          value: '¥${debt.toStringAsFixed(2)}',
+                          color: debt > 0 ? AppTheme.expense : null,
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),
@@ -452,7 +475,13 @@ class _AccountDetailPage extends StatelessWidget {
                     children: month.value
                         .map(
                           (entry) => ListTile(
-                            onTap: entry.type == EntryType.adjustment
+                            onTap: () => showEntryDetailSheet(
+                              context: context,
+                              controller: controller,
+                              entry: entry,
+                              onEdit: () => _openEntry(context, entry),
+                            ),
+                            onLongPress: entry.type == EntryType.adjustment
                                 ? null
                                 : () => _openEntry(context, entry),
                             leading: Container(
@@ -588,6 +617,34 @@ class _AccountMetric extends StatelessWidget {
       const SizedBox(height: 3),
       Text(
         text ?? '¥${value!.toStringAsFixed(2)}',
+        style: TextStyle(fontWeight: FontWeight.w700, color: color),
+      ),
+    ],
+  );
+}
+
+class _AccountSummaryValue extends StatelessWidget {
+  const _AccountSummaryValue({
+    required this.label,
+    required this.value,
+    this.color,
+  });
+
+  final String label;
+  final String value;
+  final Color? color;
+
+  @override
+  Widget build(BuildContext context) => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: <Widget>[
+      Text(
+        label,
+        style: const TextStyle(fontSize: 12, color: Color(0xFF8A9099)),
+      ),
+      const SizedBox(height: 3),
+      Text(
+        value,
         style: TextStyle(fontWeight: FontWeight.w700, color: color),
       ),
     ],
