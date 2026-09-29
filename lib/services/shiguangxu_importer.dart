@@ -8,6 +8,9 @@ import 'tonglv_importer.dart';
 class ShiguangxuImporter {
   ShiguangxuImporter._();
 
+  static List<List<String>> readSpreadsheetRows(Uint8List bytes) =>
+      _readRows(_unwrapXlsx(bytes));
+
   static bool looksLike(Uint8List bytes) {
     try {
       final Uint8List xlsx = _unwrapXlsx(bytes);

@@ -8,6 +8,7 @@ import '../models/ledger_models.dart';
 import 'system_file_service.dart';
 import 'tonglv_importer.dart';
 import 'shiguangxu_importer.dart';
+import 'generic_table_importer.dart';
 
 enum ExportFormat { json, zip, xlsx }
 
@@ -63,6 +64,9 @@ class BackupService {
         'application/json',
         'application/zip',
         'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'text/csv',
+        'text/tab-separated-values',
+        'text/plain',
       ],
     );
     if (document == null) return null;
@@ -116,8 +120,38 @@ class BackupService {
           ? 'oneentry/backup.json'
           : 'backup.json';
       final ArchiveFile? file = archive.find(expected);
-      if (file == null) throw const FormatException('文件中没有一笔完整备份');
+      if (file == null) {
+        if (source == ImportSource.oneEntry) {
+          throw const FormatException('文件中没有一笔完整备份');
+        }
+        final TonglvImportBundle bundle = GenericTableImporter.parse(
+          document.bytes,
+          document.name,
+        );
+        final result = await controller.importTonglv(
+          bundle,
+          sourceApp: 'generic_table',
+          sourceLabel: '通用表格导入',
+        );
+        return '自动识别并导入 ${result.imported} 条，跳过重复 ${result.skipped} 条；新增账户 ${result.accounts}、成员 ${result.members}';
+      }
       jsonBytes = file.content;
+    } else if (lower.endsWith('.csv') ||
+        lower.endsWith('.tsv') ||
+        lower.endsWith('.txt')) {
+      if (source != ImportSource.automatic) {
+        throw const FormatException('该来源不支持 CSV / TSV / TXT，请选择自动识别');
+      }
+      final TonglvImportBundle bundle = GenericTableImporter.parse(
+        document.bytes,
+        document.name,
+      );
+      final result = await controller.importTonglv(
+        bundle,
+        sourceApp: 'generic_table',
+        sourceLabel: '通用表格导入',
+      );
+      return '自动识别并导入 ${result.imported} 条，跳过重复 ${result.skipped} 条；新增账户 ${result.accounts}、成员 ${result.members}';
     } else {
       throw const FormatException('不支持的文件格式');
     }

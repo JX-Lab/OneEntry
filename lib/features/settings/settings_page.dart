@@ -339,12 +339,15 @@ class _SettingsPageState extends State<SettingsPage> {
                   textAlign: TextAlign.center,
                   style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
                 ),
-                subtitle: Text('通常直接选择自动识别', textAlign: TextAlign.center),
+                subtitle: Text(
+                  '自动识别可解析任意含日期和金额列的 XLSX / CSV 表格',
+                  textAlign: TextAlign.center,
+                ),
               ),
               ListTile(
                 leading: const Icon(Icons.auto_awesome_outlined),
                 title: const Text('自动识别'),
-                subtitle: const Text('自动判断一笔备份或同旅迁移 ZIP'),
+                subtitle: const Text('抓取表头关键词；分类、账户、成员和备注均可选'),
                 onTap: () => Navigator.pop(context, ImportSource.automatic),
               ),
               ListTile(
