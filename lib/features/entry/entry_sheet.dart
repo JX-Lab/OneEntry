@@ -157,7 +157,8 @@ class _EntrySheetState extends State<EntrySheet> {
                   onSelected: (String value) =>
                       setState(() => _category = value),
                   onAdd: _addCategory,
-                  onLongPress: _deleteCategory,
+                  onLongPress: (LedgerCategory category) =>
+                      _addCategory(category),
                 ),
                 _SelectorCard(
                   title: '账户',
@@ -395,10 +396,18 @@ class _EntrySheetState extends State<EntrySheet> {
     });
   }
 
-  Future<void> _addCategory() async {
-    final TextEditingController name = TextEditingController();
+  Future<void> _addCategory([LedgerCategory? existing]) async {
+    final TextEditingController name = TextEditingController(
+      text: existing?.name ?? '',
+    );
     String group = _iconGroups.keys.first;
-    String icon = _iconGroups[group]!.first;
+    for (final MapEntry<String, List<String>> item in _iconGroups.entries) {
+      if (item.value.contains(existing?.icon)) {
+        group = item.key;
+        break;
+      }
+    }
+    String icon = existing?.icon ?? _iconGroups[group]!.first;
     final bool? save = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
@@ -421,11 +430,13 @@ class _EntrySheetState extends State<EntrySheet> {
                             onPressed: () => Navigator.pop(context),
                             child: const Text('取消'),
                           ),
-                          const Expanded(
+                          Expanded(
                             child: Text(
-                              '自定义标签',
+                              existing == null ? '自定义标签' : '编辑标签',
                               textAlign: TextAlign.center,
-                              style: TextStyle(fontWeight: FontWeight.w700),
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w700,
+                              ),
                             ),
                           ),
                           TextButton(
@@ -507,6 +518,24 @@ class _EntrySheetState extends State<EntrySheet> {
                         },
                       ),
                     ),
+                    if (existing != null)
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                        child: SizedBox(
+                          width: double.infinity,
+                          child: TextButton(
+                            onPressed: () async {
+                              if (await _deleteCategory(existing)) {
+                                if (context.mounted) Navigator.pop(context);
+                              }
+                            },
+                            style: TextButton.styleFrom(
+                              foregroundColor: AppTheme.expense,
+                            ),
+                            child: const Text('删除标签'),
+                          ),
+                        ),
+                      ),
                   ],
                 ),
               ),
@@ -515,7 +544,9 @@ class _EntrySheetState extends State<EntrySheet> {
     );
     final String value = name.text.trim();
     if (save != true || value.isEmpty) return;
-    if (widget.controller.categories.any((item) => item.name == value)) {
+    if (widget.controller.categories.any(
+      (item) => item.name == value && item.name != existing?.name,
+    )) {
       if (mounted) {
         ScaffoldMessenger.of(
           context,
@@ -523,11 +554,15 @@ class _EntrySheetState extends State<EntrySheet> {
       }
       return;
     }
-    await widget.controller.addCategory(value, _type, icon);
+    if (existing == null) {
+      await widget.controller.addCategory(value, _type, icon);
+    } else {
+      await widget.controller.updateCategory(existing.name, value, icon);
+    }
     if (mounted) setState(() => _category = value);
   }
 
-  Future<void> _deleteCategory(LedgerCategory category) async {
+  Future<bool> _deleteCategory(LedgerCategory category) async {
     final bool? confirmed = await showDialog<bool>(
       context: context,
       builder: (BuildContext context) => AlertDialog(
@@ -545,7 +580,7 @@ class _EntrySheetState extends State<EntrySheet> {
         ],
       ),
     );
-    if (confirmed != true) return;
+    if (confirmed != true) return false;
     await widget.controller.archiveCategory(category.name);
     final List<LedgerCategory> remaining = widget.controller.categoriesFor(
       _type,
@@ -553,6 +588,7 @@ class _EntrySheetState extends State<EntrySheet> {
     if (mounted && remaining.isNotEmpty) {
       setState(() => _category = remaining.first.name);
     }
+    return true;
   }
 
   String _memberSummary(List<LedgerMember> members) {
@@ -765,82 +801,88 @@ class _CategoryGrid extends StatelessWidget {
   final ValueChanged<LedgerCategory> onLongPress;
 
   @override
-  Widget build(BuildContext context) => GridView.builder(
-    shrinkWrap: true,
-    physics: const NeverScrollableScrollPhysics(),
-    padding: const EdgeInsets.fromLTRB(2, 15, 2, 8),
-    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-      crossAxisCount: 4,
-      mainAxisExtent: 70,
-      crossAxisSpacing: 5,
-      mainAxisSpacing: 6,
-    ),
-    itemCount: categories.length + 1,
-    itemBuilder: (BuildContext context, int index) {
-      if (index == categories.length) {
+  Widget build(BuildContext context) => ConstrainedBox(
+    constraints: const BoxConstraints(maxHeight: 286),
+    child: GridView.builder(
+      key: ValueKey<int>(categories.length),
+      shrinkWrap: true,
+      physics: const BouncingScrollPhysics(),
+      padding: const EdgeInsets.fromLTRB(2, 15, 2, 8),
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 4,
+        mainAxisExtent: 70,
+        crossAxisSpacing: 5,
+        mainAxisSpacing: 6,
+      ),
+      itemCount: categories.length + 1,
+      itemBuilder: (BuildContext context, int index) {
+        if (index == categories.length) {
+          return InkWell(
+            onTap: onAdd,
+            borderRadius: BorderRadius.circular(14),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: <Widget>[
+                Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: Theme.of(
+                      context,
+                    ).colorScheme.surfaceContainerHighest,
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: const Icon(Icons.add, size: 22),
+                ),
+                const SizedBox(height: 4),
+                const Text('自定义', style: TextStyle(fontSize: 12)),
+              ],
+            ),
+          );
+        }
+        final LedgerCategory category = categories[index];
+        final bool active = category.name == selected;
         return InkWell(
-          onTap: onAdd,
+          onTap: () => onSelected(category.name),
+          onLongPress: () => onLongPress(category),
           borderRadius: BorderRadius.circular(14),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: <Widget>[
-              Container(
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 140),
                 width: 44,
                 height: 44,
                 decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                  color: active
+                      ? AppTheme.green.withValues(alpha: .10)
+                      : Theme.of(context).colorScheme.surfaceContainerHighest,
                   borderRadius: BorderRadius.circular(14),
+                  border: Border.all(
+                    color: active ? AppTheme.green : Colors.transparent,
+                    width: 2,
+                  ),
                 ),
-                child: const Icon(Icons.add, size: 22),
+                child: Icon(
+                  _categoryIcon(category.icon, category.name),
+                  size: 22,
+                ),
               ),
               const SizedBox(height: 4),
-              const Text('自定义', style: TextStyle(fontSize: 12)),
+              Text(
+                category.name,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: active ? FontWeight.w600 : FontWeight.w400,
+                ),
+              ),
             ],
           ),
         );
-      }
-      final LedgerCategory category = categories[index];
-      final bool active = category.name == selected;
-      return InkWell(
-        onTap: () => onSelected(category.name),
-        onLongPress: () => onLongPress(category),
-        borderRadius: BorderRadius.circular(14),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: <Widget>[
-            AnimatedContainer(
-              duration: const Duration(milliseconds: 140),
-              width: 44,
-              height: 44,
-              decoration: BoxDecoration(
-                color: active
-                    ? AppTheme.green.withValues(alpha: .10)
-                    : Theme.of(context).colorScheme.surfaceContainerHighest,
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(
-                  color: active ? AppTheme.green : Colors.transparent,
-                  width: 2,
-                ),
-              ),
-              child: Icon(
-                _categoryIcon(category.icon, category.name),
-                size: 22,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              category.name,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: active ? FontWeight.w600 : FontWeight.w400,
-              ),
-            ),
-          ],
-        ),
-      );
-    },
+      },
+    ),
   );
 }
 
@@ -1062,6 +1104,11 @@ const Map<String, List<String>> _iconGroups = <String, List<String>>{
     'chart',
     'insurance',
     'receipt',
+    'red_packet',
+    'salary',
+    'tip',
+    'reimbursement',
+    'part_time',
   ],
   '其他': <String>[
     'tag',

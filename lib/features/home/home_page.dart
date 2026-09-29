@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../data/ledger_controller.dart';
@@ -37,14 +39,31 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> {
   final TextEditingController _searchController = TextEditingController();
+  final ScrollController _scrollController = ScrollController();
+  final Set<int> _selectedEntryIds = <int>{};
   late DateTime _month = DateTime(DateTime.now().year, DateTime.now().month);
   bool _yearOnly = false;
   int? _day;
   bool _searching = false;
+  bool _selecting = false;
+  bool _showEdgeButton = false;
+  bool _edgeToBottom = true;
+  double _lastScrollOffset = 0;
+  Timer? _edgeButtonTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollController.addListener(_handleScroll);
+  }
 
   @override
   void dispose() {
     _searchController.dispose();
+    _scrollController
+      ..removeListener(_handleScroll)
+      ..dispose();
+    _edgeButtonTimer?.cancel();
     super.dispose();
   }
 
@@ -88,7 +107,15 @@ class _HomePageState extends State<HomePage> {
         return Scaffold(
           appBar: AppBar(
             centerTitle: true,
-            title: _searching
+            leading: _selecting
+                ? IconButton(
+                    onPressed: _exitSelection,
+                    icon: const Icon(Icons.close),
+                  )
+                : null,
+            title: _selecting
+                ? Text('已选 ${_selectedEntryIds.length} 笔')
+                : _searching
                 ? TextField(
                     controller: _searchController,
                     autofocus: true,
@@ -127,22 +154,25 @@ class _HomePageState extends State<HomePage> {
                     ),
                   ),
             actions: <Widget>[
-              IconButton(
-                tooltip: _searching ? '关闭搜索' : '搜索',
-                onPressed: () => setState(() {
-                  _searching = !_searching;
-                  if (!_searching) _searchController.clear();
-                }),
-                icon: Icon(_searching ? Icons.close : Icons.search),
-              ),
-              IconButton(
-                tooltip: '设置',
-                onPressed: widget.onOpenSettings,
-                icon: const Icon(Icons.settings_outlined),
-              ),
+              if (!_selecting) ...<Widget>[
+                IconButton(
+                  tooltip: _searching ? '关闭搜索' : '搜索',
+                  onPressed: () => setState(() {
+                    _searching = !_searching;
+                    if (!_searching) _searchController.clear();
+                  }),
+                  icon: Icon(_searching ? Icons.close : Icons.search),
+                ),
+                IconButton(
+                  tooltip: '设置',
+                  onPressed: widget.onOpenSettings,
+                  icon: const Icon(Icons.settings_outlined),
+                ),
+              ],
             ],
           ),
           body: ListView(
+            controller: _scrollController,
             padding: const EdgeInsets.fromLTRB(12, 8, 12, 92),
             children: <Widget>[
               _SummaryCard(
@@ -193,44 +223,57 @@ class _HomePageState extends State<HomePage> {
                 ..._groupedEntries(entries),
             ],
           ),
-          bottomNavigationBar: SafeArea(
-            minimum: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-            child: InkWell(
-              borderRadius: BorderRadius.circular(28),
-              onTap: widget.onAddEntry,
-              child: Ink(
-                height: 50,
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: <Color>[AppTheme.green, AppTheme.greenLight],
-                  ),
-                  borderRadius: BorderRadius.circular(28),
-                  boxShadow: const <BoxShadow>[
-                    BoxShadow(
-                      color: Color(0x420EB078),
-                      blurRadius: 18,
-                      offset: Offset(0, 8),
-                    ),
-                  ],
-                ),
-                child: const Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: <Widget>[
-                    Icon(Icons.edit_outlined, color: Colors.white),
-                    SizedBox(width: 8),
-                    Text(
-                      '记一笔',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
+          bottomNavigationBar: _selecting
+              ? _selectionBar(periodEntries)
+              : SafeArea(
+                  minimum: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(28),
+                    onTap: widget.onAddEntry,
+                    child: Ink(
+                      height: 50,
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                          colors: <Color>[AppTheme.green, AppTheme.greenLight],
+                        ),
+                        borderRadius: BorderRadius.circular(28),
+                        boxShadow: const <BoxShadow>[
+                          BoxShadow(
+                            color: Color(0x420EB078),
+                            blurRadius: 18,
+                            offset: Offset(0, 8),
+                          ),
+                        ],
+                      ),
+                      child: const Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: <Widget>[
+                          Icon(Icons.edit_outlined, color: Colors.white),
+                          SizedBox(width: 8),
+                          Text(
+                            '记一笔',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                  ],
+                  ),
                 ),
-              ),
-            ),
-          ),
+          floatingActionButton: _showEdgeButton
+              ? FloatingActionButton.small(
+                  heroTag: 'home-edge-scroll',
+                  onPressed: _jumpToEdge,
+                  child: Icon(
+                    _edgeToBottom
+                        ? Icons.keyboard_arrow_down
+                        : Icons.keyboard_arrow_up,
+                  ),
+                )
+              : null,
         );
       },
     );
@@ -281,6 +324,17 @@ class _HomePageState extends State<HomePage> {
                   padding: const EdgeInsets.fromLTRB(4, 8, 4, 6),
                   child: Row(
                     children: <Widget>[
+                      if (_selecting)
+                        SizedBox(
+                          width: 30,
+                          height: 30,
+                          child: Checkbox(
+                            value: values.every(
+                              (item) => _selectedEntryIds.contains(item.id),
+                            ),
+                            onChanged: (_) => _toggleEntries(values),
+                          ),
+                        ),
                       Text(
                         '${entry.key} ${_weekday(date.weekday)}',
                         style: const TextStyle(
@@ -318,13 +372,533 @@ class _HomePageState extends State<HomePage> {
                 controller: widget.controller,
                 onEdit: () => widget.onEditEntry(item),
                 onDelete: () => widget.onDeleteEntry(item),
+                selectionMode: _selecting,
+                selected: _selectedEntryIds.contains(item.id),
+                onToggleSelection: () => _toggleEntry(item),
+                onEnterSelection: () => _enterSelection(item),
               ),
             ),
           ],
         )
         .toList();
   }
+
+  Widget _selectionBar(List<LedgerEntry> periodEntries) {
+    final bool allSelected =
+        periodEntries.isNotEmpty &&
+        periodEntries.every((entry) => _selectedEntryIds.contains(entry.id));
+    final bool hasSelection = _selectedEntryIds.isNotEmpty;
+    return Material(
+      color: Theme.of(context).colorScheme.surface,
+      elevation: 12,
+      child: SafeArea(
+        top: false,
+        minimum: const EdgeInsets.fromLTRB(8, 8, 8, 10),
+        child: Row(
+          children: <Widget>[
+            InkWell(
+              borderRadius: BorderRadius.circular(10),
+              onTap: () => _toggleAll(periodEntries),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: <Widget>[
+                    Checkbox(
+                      value: allSelected,
+                      onChanged: (_) => _toggleAll(periodEntries),
+                    ),
+                    const Text('全选'),
+                  ],
+                ),
+              ),
+            ),
+            IconButton(
+              tooltip: '筛选选择',
+              onPressed: () => _showSelectionFilter(periodEntries),
+              icon: const Icon(Icons.filter_alt_outlined),
+            ),
+            const Spacer(),
+            FilledButton.tonal(
+              onPressed: hasSelection ? _batchEdit : null,
+              child: const Text('编辑'),
+            ),
+            const SizedBox(width: 8),
+            FilledButton(
+              onPressed: hasSelection ? _batchDelete : null,
+              style: FilledButton.styleFrom(backgroundColor: AppTheme.expense),
+              child: const Text('删除'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _enterSelection(LedgerEntry entry) => setState(() {
+    _selecting = true;
+    _searching = false;
+    _searchController.clear();
+    _selectedEntryIds.add(entry.id);
+  });
+
+  void _exitSelection() => setState(() {
+    _selecting = false;
+    _selectedEntryIds.clear();
+  });
+
+  void _toggleEntry(LedgerEntry entry) => setState(() {
+    if (!_selecting) _selecting = true;
+    if (!_selectedEntryIds.add(entry.id)) _selectedEntryIds.remove(entry.id);
+  });
+
+  void _toggleEntries(List<LedgerEntry> entries) => setState(() {
+    final bool all = entries.every(
+      (entry) => _selectedEntryIds.contains(entry.id),
+    );
+    if (all) {
+      _selectedEntryIds.removeAll(entries.map((entry) => entry.id));
+    } else {
+      _selectedEntryIds.addAll(entries.map((entry) => entry.id));
+    }
+  });
+
+  void _toggleAll(List<LedgerEntry> entries) => setState(() {
+    final bool all =
+        entries.isNotEmpty &&
+        entries.every((entry) => _selectedEntryIds.contains(entry.id));
+    if (all) {
+      _selectedEntryIds.removeAll(entries.map((entry) => entry.id));
+    } else {
+      _selectedEntryIds.addAll(entries.map((entry) => entry.id));
+    }
+  });
+
+  List<LedgerEntry> get _selectedEntries => widget.controller.entries
+      .where((entry) => _selectedEntryIds.contains(entry.id))
+      .toList();
+
+  Future<void> _showSelectionFilter(List<LedgerEntry> periodEntries) async {
+    final TextEditingController startController = TextEditingController();
+    final TextEditingController endController = TextEditingController();
+    final Set<String> categories = <String>{};
+    final Set<int> members = <int>{};
+    final List<String> categoryOptions =
+        periodEntries.map((entry) => entry.category).toSet().toList()..sort();
+    final bool? apply = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      builder: (BuildContext context) => StatefulBuilder(
+        builder: (BuildContext context, StateSetter update) =>
+            FractionallySizedBox(
+              heightFactor: .86,
+              child: Padding(
+                padding: EdgeInsets.only(
+                  bottom: MediaQuery.viewInsetsOf(context).bottom,
+                ),
+                child: Column(
+                  children: <Widget>[
+                    _SheetHeader(
+                      title: '筛选账目',
+                      onCancel: () => Navigator.pop(context, false),
+                      onConfirm: () => Navigator.pop(context, true),
+                    ),
+                    Expanded(
+                      child: ListView(
+                        padding: const EdgeInsets.fromLTRB(16, 4, 16, 20),
+                        children: <Widget>[
+                          const _FilterTitle('按时间'),
+                          Row(
+                            children: <Widget>[
+                              Expanded(
+                                child: _DateInput(
+                                  label: '开始日期',
+                                  controller: startController,
+                                  onPick: () => _pickDateInto(startController),
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: _DateInput(
+                                  label: '结束日期',
+                                  controller: endController,
+                                  onPick: () => _pickDateInto(endController),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const _FilterTitle('按标签分类 · 可多选'),
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 6,
+                            children: categoryOptions
+                                .map(
+                                  (category) => FilterChip(
+                                    label: Text(category),
+                                    selected: categories.contains(category),
+                                    onSelected: (_) => update(() {
+                                      if (!categories.add(category)) {
+                                        categories.remove(category);
+                                      }
+                                    }),
+                                  ),
+                                )
+                                .toList(),
+                          ),
+                          const _FilterTitle('按成员 · 可多选'),
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 6,
+                            children: widget.controller.members
+                                .where((member) => !member.archived)
+                                .map(
+                                  (member) => FilterChip(
+                                    avatar: CircleAvatar(
+                                      backgroundColor: Color(member.colorValue),
+                                    ),
+                                    label: Text(member.name),
+                                    selected: members.contains(member.id),
+                                    onSelected: (_) => update(() {
+                                      if (!members.add(member.id)) {
+                                        members.remove(member.id);
+                                      }
+                                    }),
+                                  ),
+                                )
+                                .toList(),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+      ),
+    );
+    if (apply != true) return;
+    final DateTime? start = _parseDate(startController.text);
+    final DateTime? end = _parseDate(endController.text);
+    if ((startController.text.trim().isNotEmpty && start == null) ||
+        (endController.text.trim().isNotEmpty && end == null)) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('日期格式应为 YYYY-MM-DD')));
+      }
+      return;
+    }
+    final List<int> selected = periodEntries
+        .where((entry) {
+          final DateTime day = DateTime(
+            entry.occurredAt.year,
+            entry.occurredAt.month,
+            entry.occurredAt.day,
+          );
+          if (start != null && day.isBefore(start)) return false;
+          if (end != null && day.isAfter(end)) return false;
+          if (categories.isNotEmpty && !categories.contains(entry.category)) {
+            return false;
+          }
+          if (members.isNotEmpty && !entry.memberIds.any(members.contains)) {
+            return false;
+          }
+          return true;
+        })
+        .map((entry) => entry.id)
+        .toList();
+    setState(() {
+      _selectedEntryIds
+        ..clear()
+        ..addAll(selected);
+    });
+  }
+
+  Future<void> _pickDateInto(TextEditingController controller) async {
+    final DateTime? value = await showDatePicker(
+      context: context,
+      firstDate: DateTime(1970),
+      lastDate: DateTime.now(),
+      initialDate: _parseDate(controller.text) ?? DateTime.now(),
+    );
+    if (value != null) controller.text = _dateKey(value);
+  }
+
+  Future<void> _batchEdit() async {
+    final List<LedgerEntry> entries = _selectedEntries;
+    if (entries.isEmpty) return;
+    bool changeAccount = false;
+    bool changeMembers = false;
+    bool changeNote = false;
+    final List<LedgerAccount> accounts = widget.controller.accounts
+        .where((account) => !account.archived)
+        .toList();
+    int? accountId = accounts.isEmpty ? null : accounts.first.id;
+    final Set<int> memberIds = <int>{};
+    final TextEditingController noteController = TextEditingController();
+    final bool? save = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      builder: (BuildContext context) => StatefulBuilder(
+        builder: (BuildContext context, StateSetter update) => Padding(
+          padding: EdgeInsets.only(
+            bottom: MediaQuery.viewInsetsOf(context).bottom,
+          ),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                _SheetHeader(
+                  title: '批量编辑 ${entries.length} 笔',
+                  onCancel: () => Navigator.pop(context, false),
+                  onConfirm: () => Navigator.pop(context, true),
+                ),
+                CheckboxListTile(
+                  title: const Text('统一账户'),
+                  subtitle: const Text('转账和余额调整记录不会更改账户'),
+                  value: changeAccount,
+                  onChanged: (value) =>
+                      update(() => changeAccount = value ?? false),
+                ),
+                if (changeAccount && accounts.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: DropdownButtonFormField<int>(
+                      initialValue: accountId,
+                      decoration: const InputDecoration(labelText: '账户'),
+                      items: accounts
+                          .map(
+                            (account) => DropdownMenuItem<int>(
+                              value: account.id,
+                              child: Text(account.name),
+                            ),
+                          )
+                          .toList(),
+                      onChanged: (value) => accountId = value,
+                    ),
+                  ),
+                CheckboxListTile(
+                  title: const Text('统一成员'),
+                  subtitle: const Text('未选择成员表示清空成员'),
+                  value: changeMembers,
+                  onChanged: (value) =>
+                      update(() => changeMembers = value ?? false),
+                ),
+                if (changeMembers)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: Wrap(
+                      spacing: 8,
+                      children: widget.controller.members
+                          .where((member) => !member.archived)
+                          .map(
+                            (member) => FilterChip(
+                              label: Text(member.name),
+                              selected: memberIds.contains(member.id),
+                              onSelected: (_) => update(() {
+                                if (!memberIds.add(member.id)) {
+                                  memberIds.remove(member.id);
+                                }
+                              }),
+                            ),
+                          )
+                          .toList(),
+                    ),
+                  ),
+                CheckboxListTile(
+                  title: const Text('统一备注'),
+                  subtitle: const Text('留空并保存表示清空备注'),
+                  value: changeNote,
+                  onChanged: (value) =>
+                      update(() => changeNote = value ?? false),
+                ),
+                if (changeNote)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 18),
+                    child: TextField(
+                      controller: noteController,
+                      decoration: const InputDecoration(labelText: '备注'),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+    if (save != true) return;
+    if (!changeAccount && !changeMembers && !changeNote) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('请至少选择一项要修改的内容')));
+      }
+      return;
+    }
+    await widget.controller.batchUpdateEntries(
+      entries,
+      changeAccount: changeAccount,
+      accountId: accountId,
+      changeMembers: changeMembers,
+      memberIds: memberIds.toList(),
+      changeNote: changeNote,
+      note: noteController.text.trim(),
+    );
+    if (mounted) {
+      _exitSelection();
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('已修改 ${entries.length} 笔账目')));
+    }
+  }
+
+  Future<void> _batchDelete() async {
+    final List<LedgerEntry> entries = _selectedEntries;
+    if (entries.isEmpty) return;
+    final bool? confirmed = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext context) => AlertDialog(
+        title: Text('删除 ${entries.length} 笔账目？'),
+        content: const Text('账户余额会同步恢复，此操作无法撤销。'),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: AppTheme.expense),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('删除'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    await widget.controller.deleteEntries(entries);
+    if (mounted) {
+      _exitSelection();
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('已删除 ${entries.length} 笔账目')));
+    }
+  }
+
+  void _handleScroll() {
+    if (!_scrollController.hasClients) return;
+    final double offset = _scrollController.offset;
+    final double delta = offset - _lastScrollOffset;
+    _lastScrollOffset = offset;
+    if (delta.abs() < 4) return;
+    final bool down = delta > 0;
+    final bool available = down
+        ? _scrollController.position.extentAfter > 24
+        : _scrollController.position.extentBefore > 24;
+    _edgeButtonTimer?.cancel();
+    if (mounted) {
+      setState(() {
+        _edgeToBottom = down;
+        _showEdgeButton = available;
+      });
+    }
+    _edgeButtonTimer = Timer(const Duration(milliseconds: 2400), () {
+      if (mounted) setState(() => _showEdgeButton = false);
+    });
+  }
+
+  void _jumpToEdge() {
+    if (!_scrollController.hasClients) return;
+    _scrollController.animateTo(
+      _edgeToBottom ? _scrollController.position.maxScrollExtent : 0,
+      duration: const Duration(milliseconds: 420),
+      curve: Curves.easeOutCubic,
+    );
+    setState(() => _showEdgeButton = false);
+  }
 }
+
+class _SheetHeader extends StatelessWidget {
+  const _SheetHeader({
+    required this.title,
+    required this.onCancel,
+    required this.onConfirm,
+  });
+
+  final String title;
+  final VoidCallback onCancel;
+  final VoidCallback onConfirm;
+
+  @override
+  Widget build(BuildContext context) => SizedBox(
+    height: 52,
+    child: Row(
+      children: <Widget>[
+        TextButton(onPressed: onCancel, child: const Text('取消')),
+        Expanded(
+          child: Text(
+            title,
+            textAlign: TextAlign.center,
+            style: const TextStyle(fontWeight: FontWeight.w700),
+          ),
+        ),
+        TextButton(onPressed: onConfirm, child: const Text('确定')),
+      ],
+    ),
+  );
+}
+
+class _FilterTitle extends StatelessWidget {
+  const _FilterTitle(this.value);
+  final String value;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.fromLTRB(0, 16, 0, 8),
+    child: Text(value, style: const TextStyle(fontWeight: FontWeight.w700)),
+  );
+}
+
+class _DateInput extends StatelessWidget {
+  const _DateInput({
+    required this.label,
+    required this.controller,
+    required this.onPick,
+  });
+
+  final String label;
+  final TextEditingController controller;
+  final VoidCallback onPick;
+
+  @override
+  Widget build(BuildContext context) => TextField(
+    controller: controller,
+    keyboardType: TextInputType.datetime,
+    decoration: InputDecoration(
+      labelText: label,
+      hintText: 'YYYY-MM-DD',
+      suffixIcon: IconButton(
+        onPressed: onPick,
+        icon: const Icon(Icons.calendar_month_outlined),
+      ),
+    ),
+  );
+}
+
+DateTime? _parseDate(String text) {
+  final RegExpMatch? match = RegExp(
+    r'^(\d{4})[-/](\d{1,2})[-/](\d{1,2})$',
+  ).firstMatch(text.trim());
+  if (match == null) return null;
+  return DateTime(
+    int.parse(match.group(1)!),
+    int.parse(match.group(2)!),
+    int.parse(match.group(3)!),
+  );
+}
+
+String _dateKey(DateTime value) =>
+    '${value.year}-${value.month.toString().padLeft(2, '0')}-${value.day.toString().padLeft(2, '0')}';
 
 class _SummaryCard extends StatelessWidget {
   const _SummaryCard({
@@ -492,11 +1066,19 @@ class _EntryTile extends StatelessWidget {
     required this.controller,
     required this.onEdit,
     required this.onDelete,
+    required this.selectionMode,
+    required this.selected,
+    required this.onToggleSelection,
+    required this.onEnterSelection,
   });
   final LedgerEntry entry;
   final LedgerController controller;
   final VoidCallback onEdit;
   final VoidCallback onDelete;
+  final bool selectionMode;
+  final bool selected;
+  final VoidCallback onToggleSelection;
+  final VoidCallback onEnterSelection;
 
   @override
   Widget build(BuildContext context) {
@@ -528,13 +1110,18 @@ class _EntryTile extends StatelessWidget {
       child: SwipeActionTile(
         actionLabel: '删除',
         onAction: () => _confirmDelete(context),
-        onTap: () => showEntryDetailSheet(
-          context: context,
-          controller: controller,
-          entry: entry,
-          onEdit: onEdit,
-        ),
-        onLongPress: entry.type == EntryType.adjustment ? null : onEdit,
+        leftSwipeEnabled: !selectionMode,
+        onSwipeRight: selectionMode ? onToggleSelection : null,
+        rightSwipeSelected: selected,
+        onTap: selectionMode
+            ? onToggleSelection
+            : () => showEntryDetailSheet(
+                context: context,
+                controller: controller,
+                entry: entry,
+                onEdit: onEdit,
+              ),
+        onLongPress: selectionMode ? onToggleSelection : onEnterSelection,
         child: Container(
           decoration: BoxDecoration(
             color: Theme.of(context).colorScheme.surface,
@@ -546,35 +1133,58 @@ class _EntryTile extends StatelessWidget {
               vertical: 3,
             ),
             leading: SizedBox(
-              width: 44,
+              width: selectionMode ? 72 : 44,
               height: 44,
-              child: Stack(
-                clipBehavior: Clip.none,
+              child: Row(
                 children: <Widget>[
-                  Container(
-                    width: 40,
-                    height: 40,
-                    decoration: BoxDecoration(
-                      color: Theme.of(
-                        context,
-                      ).colorScheme.surfaceContainerHighest,
-                      borderRadius: BorderRadius.circular(12),
+                  if (selectionMode)
+                    SizedBox(
+                      width: 28,
+                      child: Icon(
+                        selected
+                            ? Icons.check_circle
+                            : Icons.radio_button_unchecked,
+                        color: selected
+                            ? Theme.of(context).colorScheme.primary
+                            : Theme.of(context).colorScheme.outline,
+                      ),
                     ),
-                    child: Icon(
-                      transfer
-                          ? Icons.swap_horiz
-                          : adjustment
-                          ? Icons.account_balance_wallet_outlined
-                          : _entryCategoryIcon(controller, entry.category),
-                      size: 21,
+                  SizedBox(
+                    width: 44,
+                    height: 44,
+                    child: Stack(
+                      clipBehavior: Clip.none,
+                      children: <Widget>[
+                        Container(
+                          width: 40,
+                          height: 40,
+                          decoration: BoxDecoration(
+                            color: Theme.of(
+                              context,
+                            ).colorScheme.surfaceContainerHighest,
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Icon(
+                            transfer
+                                ? Icons.swap_horiz
+                                : adjustment
+                                ? Icons.account_balance_wallet_outlined
+                                : _entryCategoryIcon(
+                                    controller,
+                                    entry.category,
+                                  ),
+                            size: 21,
+                          ),
+                        ),
+                        if (controller.multiEnabled)
+                          Positioned(
+                            right: -2,
+                            bottom: -2,
+                            child: _MemberBadge(members: members),
+                          ),
+                      ],
                     ),
                   ),
-                  if (controller.multiEnabled)
-                    Positioned(
-                      right: -2,
-                      bottom: -2,
-                      child: _MemberBadge(members: members),
-                    ),
                 ],
               ),
             ),

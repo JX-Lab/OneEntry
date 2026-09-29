@@ -575,6 +575,98 @@ class LedgerRepository {
     );
   }
 
+  Future<void> updateCategory({
+    required String originalName,
+    required String name,
+    required String icon,
+  }) async {
+    final Database db = await _appDatabase.database;
+    await db.update(
+      'categories',
+      <String, Object?>{
+        'name': name,
+        'icon': icon,
+        'updated_at': DateTime.now().millisecondsSinceEpoch,
+      },
+      where: 'name = ?',
+      whereArgs: <Object?>[originalName],
+    );
+  }
+
+  Future<void> batchUpdateEntries(
+    List<LedgerEntry> entries, {
+    required bool changeAccount,
+    int? accountId,
+    required bool changeMembers,
+    List<int> memberIds = const <int>[],
+    required bool changeNote,
+    String note = '',
+  }) async {
+    final Database db = await _appDatabase.database;
+    final int now = DateTime.now().millisecondsSinceEpoch;
+    await db.transaction((Transaction txn) async {
+      for (final LedgerEntry entry in entries) {
+        final Map<String, Object?> values = <String, Object?>{
+          'updated_at': now,
+        };
+        if (changeAccount &&
+            accountId != null &&
+            entry.type != EntryType.transfer &&
+            entry.type != EntryType.adjustment &&
+            accountId != entry.accountId) {
+          await _applyBalance(txn, entry, -1);
+          values['account_id'] = accountId;
+          final LedgerEntry moved = LedgerEntry(
+            id: entry.id,
+            type: entry.type,
+            amount: entry.amount,
+            category: entry.category,
+            occurredAt: entry.occurredAt,
+            note: entry.note,
+            accountId: accountId,
+            toAccountId: entry.toAccountId,
+            memberIds: entry.memberIds,
+            recurring: entry.recurring,
+            recurringFrequency: entry.recurringFrequency,
+            adjustmentDelta: entry.adjustmentDelta,
+          );
+          await _applyBalance(txn, moved, 1);
+        }
+        if (changeNote) values['note'] = note;
+        if (values.length > 1) {
+          await txn.update(
+            'transactions',
+            values,
+            where: 'id = ?',
+            whereArgs: <Object?>[entry.id],
+          );
+        }
+        if (changeMembers && entry.type != EntryType.adjustment) {
+          await txn.delete(
+            'transaction_members',
+            where: 'transaction_id = ?',
+            whereArgs: <Object?>[entry.id],
+          );
+          await _insertMembers(txn, entry.id, memberIds, _minor(entry.amount));
+        }
+      }
+    });
+  }
+
+  Future<void> deleteEntries(List<LedgerEntry> entries) async {
+    final Database db = await _appDatabase.database;
+    await db.transaction((Transaction txn) async {
+      for (final LedgerEntry entry in entries) {
+        await _applyBalance(txn, entry, -1);
+        await txn.delete(
+          'transactions',
+          where: 'id = ?',
+          whereArgs: <Object?>[entry.id],
+        );
+      }
+    });
+  }
+
   Future<void> addMember({
     required String name,
     required int colorValue,

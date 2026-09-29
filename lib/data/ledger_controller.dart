@@ -220,6 +220,45 @@ class LedgerController extends ChangeNotifier {
     await initialize();
   }
 
+  Future<void> updateCategory(
+    String originalName,
+    String name,
+    String icon,
+  ) async {
+    await _repository.updateCategory(
+      originalName: originalName,
+      name: name,
+      icon: icon,
+    );
+    await initialize();
+  }
+
+  Future<void> batchUpdateEntries(
+    List<LedgerEntry> selected, {
+    required bool changeAccount,
+    int? accountId,
+    required bool changeMembers,
+    List<int> memberIds = const <int>[],
+    required bool changeNote,
+    String note = '',
+  }) async {
+    await _repository.batchUpdateEntries(
+      selected,
+      changeAccount: changeAccount,
+      accountId: accountId,
+      changeMembers: changeMembers,
+      memberIds: memberIds,
+      changeNote: changeNote,
+      note: note,
+    );
+    await initialize();
+  }
+
+  Future<void> deleteEntries(List<LedgerEntry> selected) async {
+    await _repository.deleteEntries(selected);
+    await initialize();
+  }
+
   Future<void> addMember(String name, int colorValue) async {
     await _repository.addMember(name: name, colorValue: colorValue);
     await initialize();
