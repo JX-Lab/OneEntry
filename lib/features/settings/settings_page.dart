@@ -354,6 +354,12 @@ class _SettingsPageState extends State<SettingsPage> {
                 onTap: () => Navigator.pop(context, ImportSource.tonglv),
               ),
               ListTile(
+                leading: const Icon(Icons.calendar_month_outlined),
+                title: const Text('时光序'),
+                subtitle: const Text('账本导出 ZIP / XLSX；自动读取明细表'),
+                onTap: () => Navigator.pop(context, ImportSource.shiguangxu),
+              ),
+              ListTile(
                 leading: const Icon(Icons.account_balance_wallet_outlined),
                 title: const Text('一笔完整备份'),
                 subtitle: const Text('JSON / ZIP / XLSX，可完整覆盖恢复'),
@@ -370,7 +376,7 @@ class _SettingsPageState extends State<SettingsPage> {
       builder: (BuildContext context) => AlertDialog(
         title: const Text('导入数据？'),
         content: const Text(
-          '导入前建议先导出 ZIP 备份。一笔完整备份会覆盖数据库；同旅迁移 ZIP 会追加账目并自动跳过重复记录。',
+          '导入前建议先导出 ZIP 备份。一笔完整备份会覆盖数据库；同旅和时光序会追加账目并自动跳过重复记录。',
         ),
         actions: <Widget>[
           TextButton(

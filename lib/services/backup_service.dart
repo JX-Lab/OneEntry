@@ -7,10 +7,11 @@ import '../data/ledger_controller.dart';
 import '../models/ledger_models.dart';
 import 'system_file_service.dart';
 import 'tonglv_importer.dart';
+import 'shiguangxu_importer.dart';
 
 enum ExportFormat { json, zip, xlsx }
 
-enum ImportSource { automatic, oneEntry, tonglv }
+enum ImportSource { automatic, oneEntry, tonglv, shiguangxu }
 
 class BackupService {
   BackupService._();
@@ -70,15 +71,27 @@ class BackupService {
     final bool tonglv =
         lower.endsWith('.zip') &&
         TonglvImporter.looksLikeTonglv(document.bytes);
+    final bool shiguangxu =
+        (lower.endsWith('.zip') || lower.endsWith('.xlsx')) &&
+        ShiguangxuImporter.looksLike(document.bytes);
     if (source == ImportSource.tonglv && !tonglv) {
       throw const FormatException('所选文件不是同旅迁移 ZIP');
     }
     if (source == ImportSource.oneEntry && tonglv) {
       throw const FormatException('这是同旅迁移 ZIP，请选择“同旅”来源');
     }
+    if (source == ImportSource.shiguangxu && !shiguangxu) {
+      throw const FormatException('所选文件不是时光序账本 ZIP / XLSX');
+    }
+    if (source == ImportSource.oneEntry && shiguangxu) {
+      throw const FormatException('这是时光序账本导出，请选择“时光序”来源');
+    }
     if (lower.endsWith('.json')) {
       if (source == ImportSource.tonglv) {
         throw const FormatException('同旅迁移文件应为 ZIP');
+      }
+      if (source == ImportSource.shiguangxu) {
+        throw const FormatException('时光序账本文件应为 ZIP 或 XLSX');
       }
       jsonBytes = document.bytes;
     } else if (lower.endsWith('.zip') || lower.endsWith('.xlsx')) {
@@ -86,6 +99,17 @@ class BackupService {
         final TonglvImportBundle bundle = TonglvImporter.parse(document.bytes);
         final result = await controller.importTonglv(bundle);
         return '同旅导入 ${result.imported} 条，跳过重复 ${result.skipped} 条；新增成员 ${result.members}、账户 ${result.accounts}';
+      }
+      if (shiguangxu) {
+        final TonglvImportBundle bundle = ShiguangxuImporter.parse(
+          document.bytes,
+        );
+        final result = await controller.importTonglv(
+          bundle,
+          sourceApp: 'shiguangxu',
+          sourceLabel: '时光序账本导出',
+        );
+        return '时光序导入 ${result.imported} 条，跳过重复 ${result.skipped} 条；新增账户 ${result.accounts}';
       }
       final Archive archive = ZipDecoder().decodeBytes(document.bytes);
       final String expected = lower.endsWith('.xlsx')

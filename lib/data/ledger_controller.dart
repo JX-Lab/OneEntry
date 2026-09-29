@@ -72,9 +72,15 @@ class LedgerController extends ChangeNotifier {
   }
 
   Future<({int imported, int skipped, int members, int accounts})> importTonglv(
-    TonglvImportBundle bundle,
-  ) async {
-    final result = await _repository.importTonglv(bundle);
+    TonglvImportBundle bundle, {
+    String sourceApp = 'tonglv',
+    String sourceLabel = '同旅迁移备份',
+  }) async {
+    final result = await _repository.importTonglv(
+      bundle,
+      sourceApp: sourceApp,
+      sourceLabel: sourceLabel,
+    );
     await initialize();
     return result;
   }

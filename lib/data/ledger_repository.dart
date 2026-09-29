@@ -819,8 +819,10 @@ class LedgerRepository {
   }
 
   Future<({int imported, int skipped, int members, int accounts})> importTonglv(
-    TonglvImportBundle bundle,
-  ) async {
+    TonglvImportBundle bundle, {
+    String sourceApp = 'tonglv',
+    String sourceLabel = '同旅迁移备份',
+  }) async {
     final Database db = await _appDatabase.database;
     return db.transaction((Transaction txn) async {
       final int now = DateTime.now().millisecondsSinceEpoch;
@@ -909,7 +911,7 @@ class LedgerRepository {
             Sqflite.firstIntValue(
               await txn.rawQuery(
                 'SELECT COUNT(*) FROM transactions WHERE source_app = ? AND source_row_key = ?',
-                <Object?>['tonglv', entry.sourceId],
+                <Object?>[sourceApp, entry.sourceId],
               ),
             ) ??
             0;
@@ -917,15 +919,23 @@ class LedgerRepository {
           skipped++;
           continue;
         }
-        final int categoryId = await _categoryId(txn, entry.category, now);
+        final EntryType entryType = entry.amount < 0
+            ? EntryType.expense
+            : EntryType.income;
+        final int categoryId = await _categoryId(
+          txn,
+          entry.category,
+          now,
+          type: entryType,
+        );
         final int accountId =
             accountIds[entry.accountSourceId] ?? fallbackAccountId;
-        final String type = entry.amount < 0 ? 'expense' : 'income';
+        final String type = entryType.name;
         final int amountMinor = _minor(entry.amount.abs());
         final int transactionId = await txn.insert(
           'transactions',
           <String, Object?>{
-            'uuid': 'tonglv-transaction-${entry.sourceId}',
+            'uuid': '$sourceApp-transaction-${entry.sourceId}',
             'type': type,
             'amount_minor': amountMinor,
             'account_id': accountId,
@@ -937,7 +947,7 @@ class LedgerRepository {
               entry.title,
               entry.note,
             ].where((value) => value.isNotEmpty).join(' · '),
-            'source_app': 'tonglv',
+            'source_app': sourceApp,
             'source_row_key': entry.sourceId,
             'created_at': now,
             'updated_at': now,
@@ -959,8 +969,8 @@ class LedgerRepository {
           'v${bundle.backupVersion}-${bundle.entries.length}-${bundle.entries.isEmpty ? 'empty' : bundle.entries.first.sourceId}';
       await txn.insert('import_jobs', <String, Object?>{
         'uuid': _uuid('import', now),
-        'source_app': 'tonglv',
-        'file_name': '同旅迁移备份',
+        'source_app': sourceApp,
+        'file_name': sourceLabel,
         'file_hash': signature,
         'status': 'complete',
         'summary_json': '{"imported":$imported,"skipped":$skipped}',
