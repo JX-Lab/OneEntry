@@ -55,7 +55,7 @@ class _MembersPageState extends State<MembersPage> {
           title: _searching
               ? TextField(
                   controller: _search,
-                  autofocus: true,
+                  autofocus: false,
                   decoration: const InputDecoration(
                     hintText: '搜索成员',
                     isDense: true,
@@ -296,7 +296,7 @@ class _MembersPageState extends State<MembersPage> {
                           const SizedBox(height: 14),
                           TextField(
                             controller: name,
-                            autofocus: true,
+                            autofocus: false,
                             decoration: const InputDecoration(labelText: '名称'),
                             onChanged: (_) => update(() {}),
                           ),

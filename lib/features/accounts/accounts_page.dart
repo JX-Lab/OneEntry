@@ -50,7 +50,7 @@ class _AccountsPageState extends State<AccountsPage> {
           title: _searching
               ? TextField(
                   controller: _search,
-                  autofocus: true,
+                  autofocus: false,
                   decoration: const InputDecoration(
                     hintText: '搜索账户',
                     isDense: true,
@@ -245,7 +245,7 @@ class _AccountsPageState extends State<AccountsPage> {
                       children: <Widget>[
                         TextField(
                           controller: name,
-                          autofocus: true,
+                          autofocus: false,
                           decoration: const InputDecoration(labelText: '名称'),
                         ),
                         const SizedBox(height: 12),

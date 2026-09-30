@@ -247,7 +247,7 @@ class _BudgetPageState extends State<BudgetPage> {
                 padding: const EdgeInsets.fromLTRB(16, 6, 16, 20),
                 child: TextField(
                   controller: input,
-                  autofocus: true,
+                  autofocus: false,
                   keyboardType: const TextInputType.numberWithOptions(
                     decimal: true,
                   ),

@@ -105,7 +105,7 @@ class RecurringRulesPage extends StatelessWidget {
                       children: <Widget>[
                         TextField(
                           controller: name,
-                          autofocus: true,
+                          autofocus: false,
                           decoration: const InputDecoration(labelText: '名称'),
                         ),
                         const SizedBox(height: 12),

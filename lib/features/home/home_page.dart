@@ -118,7 +118,7 @@ class _HomePageState extends State<HomePage> {
                 : _searching
                 ? TextField(
                     controller: _searchController,
-                    autofocus: true,
+                    autofocus: false,
                     decoration: const InputDecoration(
                       hintText: '搜索标签、成员、备注或日期',
                       isDense: true,

@@ -18,11 +18,12 @@ class EntrySheet extends StatefulWidget {
 class _EntrySheetState extends State<EntrySheet> {
   final TextEditingController _amountController = TextEditingController();
   final TextEditingController _noteController = TextEditingController();
+  final TextEditingController _memberSearchController = TextEditingController();
   EntryType _type = EntryType.expense;
   String _category = '餐饮';
   int _accountId = 1;
   int? _toAccountId = 2;
-  final Set<int> _members = <int>{1};
+  final Set<int> _members = <int>{};
   bool _accountOpen = false;
   bool _membersOpen = false;
   bool _fromAccountOpen = false;
@@ -39,12 +40,7 @@ class _EntrySheetState extends State<EntrySheet> {
         .toList();
     if (activeAccounts.isNotEmpty) _accountId = activeAccounts.first.id;
     if (activeAccounts.length > 1) _toAccountId = activeAccounts[1].id;
-    final List<LedgerMember> activeMembers = widget.controller.members
-        .where((LedgerMember member) => !member.archived)
-        .toList();
-    _members
-      ..clear()
-      ..addAll(activeMembers.take(1).map((LedgerMember member) => member.id));
+    _members.clear();
     if (widget.controller.categories.isNotEmpty) {
       final List<LedgerCategory> expense = widget.controller.categoriesFor(
         EntryType.expense,
@@ -72,6 +68,7 @@ class _EntrySheetState extends State<EntrySheet> {
   void dispose() {
     _amountController.dispose();
     _noteController.dispose();
+    _memberSearchController.dispose();
     super.dispose();
   }
 
@@ -114,6 +111,16 @@ class _EntrySheetState extends State<EntrySheet> {
         .toList();
     final List<LedgerMember> members = widget.controller.members
         .where((LedgerMember member) => !member.archived)
+        .toList();
+    final String memberQuery = _memberSearchController.text
+        .trim()
+        .toLowerCase();
+    final List<LedgerMember> filteredMembers = members
+        .where(
+          (member) =>
+              memberQuery.isEmpty ||
+              member.name.toLowerCase().contains(memberQuery),
+        )
         .toList();
     final LedgerAccount? account = _findAccount(accounts, _accountId);
     final LedgerAccount? toAccount = _findAccount(accounts, _toAccountId);
@@ -246,6 +253,32 @@ class _EntrySheetState extends State<EntrySheet> {
                         )
                       : null,
                   children: <Widget>[
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(12, 10, 12, 4),
+                      child: TextField(
+                        controller: _memberSearchController,
+                        autofocus: false,
+                        decoration: InputDecoration(
+                          hintText: '搜索成员',
+                          prefixIcon: const Icon(Icons.search, size: 20),
+                          suffixIcon: _memberSearchController.text.isEmpty
+                              ? null
+                              : IconButton(
+                                  onPressed: () =>
+                                      setState(_memberSearchController.clear),
+                                  icon: const Icon(Icons.close, size: 18),
+                                ),
+                          isDense: true,
+                        ),
+                        onChanged: (_) => setState(() {}),
+                      ),
+                    ),
+                    _SelectorRow(
+                      icon: Icons.block_outlined,
+                      title: '无选择',
+                      selected: _members.isEmpty,
+                      onTap: () => setState(_members.clear),
+                    ),
                     _SelectorRow(
                       icon: Icons.people_outline,
                       title: '全体成员',
@@ -264,7 +297,7 @@ class _EntrySheetState extends State<EntrySheet> {
                         }
                       }),
                     ),
-                    ...members.map(
+                    ...filteredMembers.map(
                       (LedgerMember member) => _SelectorRow(
                         color: Color(member.colorValue),
                         title: member.name,
