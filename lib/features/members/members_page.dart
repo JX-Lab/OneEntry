@@ -738,6 +738,7 @@ class _MemberMetric extends StatelessWidget {
 }
 
 IconData _memberDetailCategoryIcon(String category) => switch (category) {
+  '餐饮' => Icons.restaurant_outlined,
   '交通' => Icons.directions_car_outlined,
   '购物' => Icons.shopping_bag_outlined,
   '居住' => Icons.home_outlined,
@@ -755,5 +756,5 @@ IconData _memberDetailCategoryIcon(String category) => switch (category) {
   '礼物' => Icons.card_giftcard_outlined,
   '兼职' => Icons.work_history_outlined,
   '其他' => Icons.more_horiz,
-  _ => Icons.restaurant_outlined,
+  _ => Icons.label_outline,
 };

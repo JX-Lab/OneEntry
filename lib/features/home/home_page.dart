@@ -224,7 +224,7 @@ class _HomePageState extends State<HomePage> {
             ],
           ),
           bottomNavigationBar: _selecting
-              ? _selectionBar(periodEntries)
+              ? _selectionBar(entries)
               : SafeArea(
                   minimum: const EdgeInsets.fromLTRB(16, 8, 16, 12),
                   child: InkWell(
@@ -437,8 +437,6 @@ class _HomePageState extends State<HomePage> {
 
   void _enterSelection(LedgerEntry entry) => setState(() {
     _selecting = true;
-    _searching = false;
-    _searchController.clear();
     _selectedEntryIds.add(entry.id);
   });
 
@@ -483,6 +481,9 @@ class _HomePageState extends State<HomePage> {
     final TextEditingController endController = TextEditingController();
     final Set<String> categories = <String>{};
     final Set<int> members = <int>{};
+    final Set<int> accounts = <int>{};
+    bool includeNoMember = false;
+    bool includeNoNote = false;
     final List<String> categoryOptions =
         periodEntries.map((entry) => entry.category).toSet().toList()..sort();
     final bool? apply = await showModalBottomSheet<bool>(
@@ -546,27 +547,65 @@ class _HomePageState extends State<HomePage> {
                                 )
                                 .toList(),
                           ),
-                          const _FilterTitle('按成员 · 可多选'),
+                          const _FilterTitle('按账户 · 可多选'),
                           Wrap(
                             spacing: 8,
                             runSpacing: 6,
-                            children: widget.controller.members
-                                .where((member) => !member.archived)
+                            children: widget.controller.accounts
                                 .map(
-                                  (member) => FilterChip(
-                                    avatar: CircleAvatar(
-                                      backgroundColor: Color(member.colorValue),
-                                    ),
-                                    label: Text(member.name),
-                                    selected: members.contains(member.id),
+                                  (account) => FilterChip(
+                                    label: Text(account.name),
+                                    selected: accounts.contains(account.id),
                                     onSelected: (_) => update(() {
-                                      if (!members.add(member.id)) {
-                                        members.remove(member.id);
+                                      if (!accounts.add(account.id)) {
+                                        accounts.remove(account.id);
                                       }
                                     }),
                                   ),
                                 )
                                 .toList(),
+                          ),
+                          const _FilterTitle('按成员 · 可多选'),
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 6,
+                            children: <Widget>[
+                              FilterChip(
+                                label: const Text('无指定'),
+                                selected: includeNoMember,
+                                onSelected: (_) => update(
+                                  () => includeNoMember = !includeNoMember,
+                                ),
+                              ),
+                              ...widget.controller.members
+                                  .where((member) => !member.archived)
+                                  .map(
+                                    (member) => FilterChip(
+                                      avatar: CircleAvatar(
+                                        backgroundColor: Color(
+                                          member.colorValue,
+                                        ),
+                                      ),
+                                      label: Text(member.name),
+                                      selected: members.contains(member.id),
+                                      onSelected: (_) => update(() {
+                                        if (!members.add(member.id)) {
+                                          members.remove(member.id);
+                                        }
+                                      }),
+                                    ),
+                                  ),
+                            ],
+                          ),
+                          const _FilterTitle('按备注'),
+                          Align(
+                            alignment: Alignment.centerLeft,
+                            child: FilterChip(
+                              label: const Text('无备注'),
+                              selected: includeNoNote,
+                              onSelected: (_) =>
+                                  update(() => includeNoNote = !includeNoNote),
+                            ),
                           ),
                         ],
                       ),
@@ -601,9 +640,16 @@ class _HomePageState extends State<HomePage> {
           if (categories.isNotEmpty && !categories.contains(entry.category)) {
             return false;
           }
-          if (members.isNotEmpty && !entry.memberIds.any(members.contains)) {
+          if (accounts.isNotEmpty && !accounts.contains(entry.accountId)) {
             return false;
           }
+          if (members.isNotEmpty || includeNoMember) {
+            final bool memberMatched = entry.memberIds.any(members.contains);
+            final bool noMemberMatched =
+                includeNoMember && entry.memberIds.isEmpty;
+            if (!memberMatched && !noMemberMatched) return false;
+          }
+          if (includeNoNote && entry.note.trim().isNotEmpty) return false;
           return true;
         })
         .map((entry) => entry.id)
@@ -634,6 +680,9 @@ class _HomePageState extends State<HomePage> {
     final List<LedgerAccount> accounts = widget.controller.accounts
         .where((account) => !account.archived)
         .toList();
+    final List<LedgerMember> activeMembers = widget.controller.members
+        .where((member) => !member.archived)
+        .toList();
     int? accountId = accounts.isEmpty ? null : accounts.first.id;
     final Set<int> memberIds = <int>{};
     final TextEditingController noteController = TextEditingController();
@@ -657,7 +706,7 @@ class _HomePageState extends State<HomePage> {
                 ),
                 CheckboxListTile(
                   title: const Text('统一账户'),
-                  subtitle: const Text('转账和余额调整记录不会更改账户'),
+                  subtitle: const Text('所有选中收支账目都替换为下方账户'),
                   value: changeAccount,
                   onChanged: (value) =>
                       update(() => changeAccount = value ?? false),
@@ -681,7 +730,7 @@ class _HomePageState extends State<HomePage> {
                   ),
                 CheckboxListTile(
                   title: const Text('统一成员'),
-                  subtitle: const Text('未选择成员表示清空成员'),
+                  subtitle: const Text('所有选中账目都替换为下方成员'),
                   value: changeMembers,
                   onChanged: (value) =>
                       update(() => changeMembers = value ?? false),
@@ -691,25 +740,45 @@ class _HomePageState extends State<HomePage> {
                     padding: const EdgeInsets.symmetric(horizontal: 16),
                     child: Wrap(
                       spacing: 8,
-                      children: widget.controller.members
-                          .where((member) => !member.archived)
-                          .map(
-                            (member) => FilterChip(
-                              label: Text(member.name),
-                              selected: memberIds.contains(member.id),
-                              onSelected: (_) => update(() {
-                                if (!memberIds.add(member.id)) {
-                                  memberIds.remove(member.id);
-                                }
-                              }),
-                            ),
-                          )
-                          .toList(),
+                      children: <Widget>[
+                        FilterChip(
+                          label: const Text('无指定'),
+                          selected: memberIds.isEmpty,
+                          onSelected: (_) => update(memberIds.clear),
+                        ),
+                        FilterChip(
+                          label: const Text('全体成员'),
+                          selected:
+                              activeMembers.isNotEmpty &&
+                              memberIds.length == activeMembers.length &&
+                              activeMembers.every(
+                                (member) => memberIds.contains(member.id),
+                              ),
+                          onSelected: (_) => update(() {
+                            memberIds
+                              ..clear()
+                              ..addAll(
+                                activeMembers.map((member) => member.id),
+                              );
+                          }),
+                        ),
+                        ...activeMembers.map(
+                          (member) => FilterChip(
+                            label: Text(member.name),
+                            selected: memberIds.contains(member.id),
+                            onSelected: (_) => update(() {
+                              if (!memberIds.add(member.id)) {
+                                memberIds.remove(member.id);
+                              }
+                            }),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 CheckboxListTile(
                   title: const Text('统一备注'),
-                  subtitle: const Text('留空并保存表示清空备注'),
+                  subtitle: const Text('所有选中账目都替换为输入内容'),
                   value: changeNote,
                   onChanged: (value) =>
                       update(() => changeNote = value ?? false),
@@ -717,9 +786,22 @@ class _HomePageState extends State<HomePage> {
                 if (changeNote)
                   Padding(
                     padding: const EdgeInsets.fromLTRB(16, 0, 16, 18),
-                    child: TextField(
-                      controller: noteController,
-                      decoration: const InputDecoration(labelText: '备注'),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: <Widget>[
+                        TextField(
+                          controller: noteController,
+                          decoration: const InputDecoration(
+                            labelText: '统一备注',
+                            hintText: '输入要替换成的备注',
+                          ),
+                        ),
+                        TextButton.icon(
+                          onPressed: noteController.clear,
+                          icon: const Icon(Icons.clear, size: 17),
+                          label: const Text('设为无备注'),
+                        ),
+                      ],
                     ),
                   ),
               ],
@@ -1307,6 +1389,7 @@ String _weekday(int day) =>
     const <String>['周一', '周二', '周三', '周四', '周五', '周六', '周日'][day - 1];
 
 IconData _categoryIcon(String category) => switch (category) {
+  '餐饮' => Icons.restaurant_outlined,
   '交通' => Icons.directions_car_outlined,
   '购物' => Icons.shopping_bag_outlined,
   '居住' => Icons.home_outlined,
@@ -1326,7 +1409,7 @@ IconData _categoryIcon(String category) => switch (category) {
   '礼物' => Icons.card_giftcard_outlined,
   '兼职' => Icons.work_history_outlined,
   '其他' => Icons.more_horiz,
-  _ => Icons.restaurant_outlined,
+  _ => Icons.label_outline,
 };
 
 IconData _entryCategoryIcon(LedgerController controller, String categoryName) {
@@ -1381,10 +1464,16 @@ IconData _entryCategoryIcon(LedgerController controller, String categoryName) {
     'camera' => Icons.camera_alt_outlined,
     'sports' => Icons.sports_basketball_outlined,
     'dice' => Icons.casino_outlined,
+    'tv' => Icons.tv_outlined,
+    'palette' => Icons.palette_outlined,
+    'soccer' => Icons.sports_soccer_outlined,
     'fastfood' => Icons.fastfood_outlined,
     'icecream' => Icons.icecream_outlined,
     'breakfast' => Icons.breakfast_dining_outlined,
     'wine' => Icons.wine_bar_outlined,
+    'grocery' => Icons.local_grocery_store_outlined,
+    'bakery' => Icons.bakery_dining_outlined,
+    'fruit' => Icons.eco_outlined,
     'medicine' => Icons.medication_outlined,
     'hospital' => Icons.local_hospital_outlined,
     'pharmacy' => Icons.local_pharmacy_outlined,
@@ -1392,43 +1481,61 @@ IconData _entryCategoryIcon(LedgerController controller, String categoryName) {
     'healing' => Icons.healing_outlined,
     'psychology' => Icons.psychology_outlined,
     'spa' => Icons.spa_outlined,
+    'vaccine' => Icons.vaccines_outlined,
+    'glasses' => Icons.visibility_outlined,
     'language' => Icons.language_outlined,
     'calculate' => Icons.calculate_outlined,
     'science' => Icons.science_outlined,
     'edit' => Icons.edit_outlined,
     'library' => Icons.local_library_outlined,
     'computer' => Icons.computer_outlined,
+    'code' => Icons.code,
+    'graduation' => Icons.workspace_premium_outlined,
     'subway' => Icons.subway_outlined,
     'ship' => Icons.directions_boat_outlined,
     'taxi' => Icons.local_taxi_outlined,
+    'motorcycle' => Icons.two_wheeler_outlined,
+    'parking' => Icons.local_parking,
     'cart' => Icons.shopping_cart_outlined,
     'bag' => Icons.shopping_bag_outlined,
     'store' => Icons.storefront_outlined,
     'receipt' => Icons.receipt_long_outlined,
+    'electronics' => Icons.devices_other_outlined,
+    'furniture' => Icons.chair_outlined,
     'person' => Icons.person_outline,
     'watch' => Icons.watch_outlined,
     'haircut' => Icons.content_cut,
+    'meditation' => Icons.self_improvement,
+    'skincare' => Icons.face_retouching_natural,
     'family' => Icons.family_restroom_outlined,
     'elderly' => Icons.elderly_outlined,
     'toy' => Icons.toys_outlined,
     'kitchen' => Icons.kitchen_outlined,
+    'daycare' => Icons.escalator_warning_outlined,
+    'family_meal' => Icons.dining_outlined,
     'briefcase' => Icons.business_center_outlined,
     'print' => Icons.print_outlined,
     'email' => Icons.email_outlined,
     'folder' => Icons.folder_outlined,
     'meeting' => Icons.groups_outlined,
     'calendar' => Icons.calendar_month_outlined,
+    'document' => Icons.description_outlined,
+    'analytics' => Icons.analytics_outlined,
     'wallet' => Icons.account_balance_wallet_outlined,
     'bank' => Icons.account_balance_outlined,
     'card' => Icons.credit_card_outlined,
     'savings' => Icons.savings_outlined,
     'coin' => Icons.monetization_on_outlined,
+    'currency' => Icons.currency_exchange,
+    'percent' => Icons.percent,
     'globe' => Icons.public_outlined,
     'cloud' => Icons.cloud_outlined,
     'repeat' => Icons.repeat,
     'link' => Icons.link,
     'flag' => Icons.flag_outlined,
-    'tag' => Icons.sell_outlined,
+    'lock' => Icons.lock_outline,
+    'bell' => Icons.notifications_none,
+    'tag' => Icons.label_outline,
     _ => _categoryIcon(categoryName),
   };
 }

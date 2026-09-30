@@ -687,6 +687,18 @@ const List<String> _accountIcons = <String>[
   'saving',
   'coin',
   'online',
+  'phone',
+  'piggy',
+  'ticket',
+  'investment',
+  'loan',
+  'house',
+  'car',
+  'travel',
+  'digital',
+  'crypto',
+  'insurance',
+  'business',
 ];
 
 IconData _accountIcon(String value) => switch (value) {
@@ -697,10 +709,23 @@ IconData _accountIcon(String value) => switch (value) {
   'saving' => Icons.savings_outlined,
   'coin' => Icons.monetization_on_outlined,
   'online' => Icons.language,
+  'phone' => Icons.phone_android_outlined,
+  'piggy' => Icons.savings_outlined,
+  'ticket' => Icons.confirmation_number_outlined,
+  'investment' => Icons.trending_up,
+  'loan' => Icons.request_quote_outlined,
+  'house' => Icons.home_work_outlined,
+  'car' => Icons.directions_car_outlined,
+  'travel' => Icons.flight_takeoff_outlined,
+  'digital' => Icons.cloud_outlined,
+  'crypto' => Icons.currency_bitcoin,
+  'insurance' => Icons.health_and_safety_outlined,
+  'business' => Icons.business_center_outlined,
   _ => Icons.account_balance_wallet_outlined,
 };
 
 IconData _detailCategoryIcon(String category) => switch (category) {
+  '餐饮' => Icons.restaurant_outlined,
   '交通' => Icons.directions_car_outlined,
   '购物' => Icons.shopping_bag_outlined,
   '居住' => Icons.home_outlined,
@@ -718,5 +743,5 @@ IconData _detailCategoryIcon(String category) => switch (category) {
   '礼物' => Icons.card_giftcard_outlined,
   '兼职' => Icons.work_history_outlined,
   '其他' => Icons.more_horiz,
-  _ => Icons.restaurant_outlined,
+  _ => Icons.label_outline,
 };
