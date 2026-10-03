@@ -1310,7 +1310,7 @@ class _EntryTile extends StatelessWidget {
                       ? '${account?.name ?? ''} → ${toAccount?.name ?? ''}'
                       : account == null
                       ? ''
-                      : '余额 ¥${account.balance.toStringAsFixed(2)}',
+                      : account.name,
                   style: const TextStyle(
                     fontSize: 11,
                     color: Color(0xFF8A9099),
@@ -1380,7 +1380,14 @@ class _MemberBadge extends StatelessWidget {
     alignment: Alignment.center,
     child: Text(
       text,
-      style: TextStyle(fontSize: 9, color: color, fontWeight: FontWeight.w700),
+      textScaler: TextScaler.noScaling,
+      textAlign: TextAlign.center,
+      style: TextStyle(
+        fontSize: 9,
+        height: 1,
+        color: color,
+        fontWeight: FontWeight.w700,
+      ),
     ),
   );
 }
@@ -1392,6 +1399,7 @@ IconData _categoryIcon(String category) => switch (category) {
   '餐饮' => Icons.restaurant_outlined,
   '交通' => Icons.directions_car_outlined,
   '购物' => Icons.shopping_bag_outlined,
+  '住房' => Icons.home_outlined,
   '居住' => Icons.home_outlined,
   '娱乐' => Icons.sports_esports_outlined,
   '医疗' => Icons.medical_services_outlined,

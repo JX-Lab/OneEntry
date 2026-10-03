@@ -181,7 +181,12 @@ class _AccountsPageState extends State<AccountsPage> {
           builder: (_) => _AccountDetailPage(
             controller: widget.controller,
             accountId: account.id,
-            onEdit: () => _edit(context, account),
+            onEdit: () => _edit(
+              context,
+              widget.controller.accounts.firstWhere(
+                (item) => item.id == account.id,
+              ),
+            ),
           ),
         ),
       ),
@@ -728,6 +733,7 @@ IconData _detailCategoryIcon(String category) => switch (category) {
   '餐饮' => Icons.restaurant_outlined,
   '交通' => Icons.directions_car_outlined,
   '购物' => Icons.shopping_bag_outlined,
+  '住房' => Icons.home_outlined,
   '居住' => Icons.home_outlined,
   '娱乐' => Icons.sports_esports_outlined,
   '医疗' => Icons.medical_services_outlined,

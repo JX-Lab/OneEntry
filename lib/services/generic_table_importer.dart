@@ -175,6 +175,7 @@ class GenericTableImporter {
       if (category.isEmpty) category = subCategory;
       if (category.isEmpty) category = '其他';
       if (category == '教育') category = '学习';
+      if (category == '居住') category = '住房';
       if (subCategory.isNotEmpty && subCategory != category) {
         category = '$category-$subCategory';
       }

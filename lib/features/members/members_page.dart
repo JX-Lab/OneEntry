@@ -195,7 +195,12 @@ class _MembersPageState extends State<MembersPage> {
             builder: (_) => _MemberDetailPage(
               controller: widget.controller,
               memberId: member.id,
-              onEdit: () => _edit(context, member),
+              onEdit: () => _edit(
+                context,
+                widget.controller.members.firstWhere(
+                  (item) => item.id == member.id,
+                ),
+              ),
             ),
           ),
         ),
@@ -741,6 +746,7 @@ IconData _memberDetailCategoryIcon(String category) => switch (category) {
   '餐饮' => Icons.restaurant_outlined,
   '交通' => Icons.directions_car_outlined,
   '购物' => Icons.shopping_bag_outlined,
+  '住房' => Icons.home_outlined,
   '居住' => Icons.home_outlined,
   '娱乐' => Icons.sports_esports_outlined,
   '医疗' => Icons.medical_services_outlined,

@@ -1,4 +1,3 @@
-import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
 import '../../data/ledger_controller.dart';
@@ -636,61 +635,40 @@ class _EntrySheetState extends State<EntrySheet> {
   }
 
   Future<void> _pickDateTime() async {
-    DateTime selected = _occurredAt;
-    final DateTime? result = await showModalBottomSheet<DateTime>(
+    final DateTime now = DateTime.now();
+    final DateTime? date = await showDatePicker(
       context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (BuildContext context) => Container(
-        decoration: BoxDecoration(
-          color: Theme.of(context).colorScheme.surface,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(18)),
-        ),
-        child: SafeArea(
-          top: false,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: <Widget>[
-              SizedBox(
-                height: 52,
-                child: Row(
-                  children: <Widget>[
-                    TextButton(
-                      onPressed: () => Navigator.pop(context),
-                      child: const Text('取消'),
-                    ),
-                    const Expanded(
-                      child: Center(
-                        child: Text(
-                          '选择时间',
-                          style: TextStyle(fontWeight: FontWeight.w700),
-                        ),
-                      ),
-                    ),
-                    TextButton(
-                      onPressed: () => Navigator.pop(context, selected),
-                      child: const Text('确定'),
-                    ),
-                  ],
-                ),
-              ),
-              const Divider(height: 1),
-              SizedBox(
-                height: 230,
-                child: CupertinoDatePicker(
-                  initialDateTime: _occurredAt,
-                  maximumDate: DateTime.now(),
-                  use24hFormat: true,
-                  mode: CupertinoDatePickerMode.dateAndTime,
-                  onDateTimeChanged: (DateTime value) => selected = value,
-                ),
-              ),
-            ],
-          ),
-        ),
+      initialDate: DateTime(
+        _occurredAt.year,
+        _occurredAt.month,
+        _occurredAt.day,
       ),
+      firstDate: DateTime(1970),
+      lastDate: DateTime(now.year, now.month, now.day),
+      initialEntryMode: DatePickerEntryMode.calendar,
     );
-    if (result != null && mounted) setState(() => _occurredAt = result);
+    if (date == null || !mounted) return;
+    final TimeOfDay? time = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.fromDateTime(_occurredAt),
+      initialEntryMode: TimePickerEntryMode.dial,
+      helpText: '选择时分',
+    );
+    if (time == null || !mounted) return;
+    DateTime selected = DateTime(
+      date.year,
+      date.month,
+      date.day,
+      time.hour,
+      time.minute,
+    );
+    if (selected.isAfter(now)) {
+      selected = now;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('时间不能超过当前时间，已设为现在')));
+    }
+    setState(() => _occurredAt = selected);
   }
 }
 
@@ -1188,6 +1166,7 @@ IconData _categoryIconByName(String category) => switch (category) {
   '餐饮' => Icons.restaurant_outlined,
   '交通' => Icons.directions_car_outlined,
   '购物' => Icons.shopping_bag_outlined,
+  '住房' => Icons.home_outlined,
   '居住' => Icons.home_outlined,
   '娱乐' => Icons.sports_esports_outlined,
   '医疗' => Icons.medical_services_outlined,

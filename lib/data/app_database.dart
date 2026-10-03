@@ -2,7 +2,7 @@ import 'package:path/path.dart' as p;
 import 'package:sqflite/sqflite.dart';
 
 class AppDatabase {
-  static const int schemaVersion = 4;
+  static const int schemaVersion = 5;
   static const String fileName = 'oneentry.db';
 
   Database? _database;
@@ -22,6 +22,7 @@ class AppDatabase {
         if (version >= 2) await _migrate1To2(db);
         if (version >= 3) await _migrate2To3(db);
         if (version >= 4) await _migrate3To4(db);
+        if (version >= 5) await _migrate4To5(db);
         await _seed(db);
       },
       onUpgrade: (Database db, int oldVersion, int newVersion) async {
@@ -38,6 +39,10 @@ class AppDatabase {
           if (version < 4 && newVersion >= 4) {
             await _migrate3To4(txn);
             version = 4;
+          }
+          if (version < 5 && newVersion >= 5) {
+            await _migrate4To5(txn);
+            version = 5;
           }
           if (version != newVersion) {
             throw StateError(
@@ -208,7 +213,7 @@ class AppDatabase {
       '餐饮': 'restaurant',
       '交通': 'car',
       '购物': 'shopping',
-      '居住': 'home',
+      '住房': 'home',
       '娱乐': 'game',
       '医疗': 'medical',
       '学习': 'book',
@@ -338,7 +343,7 @@ class AppDatabase {
       ('餐饮', 'expense', 'restaurant'),
       ('交通', 'expense', 'car'),
       ('购物', 'expense', 'shopping'),
-      ('居住', 'expense', 'home'),
+      ('住房', 'expense', 'home'),
       ('娱乐', 'expense', 'game'),
       ('医疗', 'expense', 'medical'),
       ('学习', 'expense', 'book'),
@@ -391,6 +396,125 @@ class AppDatabase {
     }
   }
 
+  Future<void> _migrate4To5(DatabaseExecutor db) async {
+    final int now = DateTime.now().millisecondsSinceEpoch;
+    await _mergeCategory(
+      db,
+      from: '居住',
+      to: '住房',
+      type: 'expense',
+      icon: 'home',
+      now: now,
+    );
+  }
+
+  Future<void> _mergeCategory(
+    DatabaseExecutor db, {
+    required String from,
+    required String to,
+    required String type,
+    required String icon,
+    required int now,
+  }) async {
+    final List<Map<String, Object?>> fromRows = await db.query(
+      'categories',
+      columns: <String>['id'],
+      where: 'name = ?',
+      whereArgs: <Object?>[from],
+      limit: 1,
+    );
+    final List<Map<String, Object?>> toRows = await db.query(
+      'categories',
+      columns: <String>['id'],
+      where: 'name = ?',
+      whereArgs: <Object?>[to],
+      limit: 1,
+    );
+    if (fromRows.isEmpty) {
+      if (toRows.isNotEmpty) {
+        await db.update(
+          'categories',
+          <String, Object?>{'type': type, 'icon': icon, 'updated_at': now},
+          where: 'id = ?',
+          whereArgs: <Object?>[toRows.first['id']],
+        );
+      }
+      return;
+    }
+    if (toRows.isEmpty) {
+      await db.update(
+        'categories',
+        <String, Object?>{
+          'name': to,
+          'type': type,
+          'icon': icon,
+          'updated_at': now,
+        },
+        where: 'id = ?',
+        whereArgs: <Object?>[fromRows.first['id']],
+      );
+      return;
+    }
+    final int fromId = fromRows.first['id'] as int;
+    final int toId = toRows.first['id'] as int;
+    await db.update(
+      'transactions',
+      <String, Object?>{'category_id': toId},
+      where: 'category_id = ?',
+      whereArgs: <Object?>[fromId],
+    );
+    await db.update(
+      'recurring_rules',
+      <String, Object?>{'category_id': toId},
+      where: 'category_id = ?',
+      whereArgs: <Object?>[fromId],
+    );
+    final List<Map<String, Object?>> fromBudgets = await db.query(
+      'budgets',
+      where: 'category_id = ?',
+      whereArgs: <Object?>[fromId],
+    );
+    for (final Map<String, Object?> budget in fromBudgets) {
+      final List<Map<String, Object?>> existing = await db.query(
+        'budgets',
+        columns: <String>['id', 'amount_minor'],
+        where: 'period = ? AND category_id = ?',
+        whereArgs: <Object?>[budget['period'], toId],
+        limit: 1,
+      );
+      if (existing.isEmpty) {
+        await db.update(
+          'budgets',
+          <String, Object?>{'category_id': toId, 'updated_at': now},
+          where: 'id = ?',
+          whereArgs: <Object?>[budget['id']],
+        );
+      } else {
+        await db.update(
+          'budgets',
+          <String, Object?>{
+            'amount_minor':
+                (existing.first['amount_minor'] as int) +
+                (budget['amount_minor'] as int),
+            'updated_at': now,
+          },
+          where: 'id = ?',
+          whereArgs: <Object?>[existing.first['id']],
+        );
+        await db.delete(
+          'budgets',
+          where: 'id = ?',
+          whereArgs: <Object?>[budget['id']],
+        );
+      }
+    }
+    await db.delete(
+      'categories',
+      where: 'id = ?',
+      whereArgs: <Object?>[fromId],
+    );
+  }
+
   Future<void> _seed(Database db) async {
     final int now = DateTime.now().millisecondsSinceEpoch;
     final DateTime current = DateTime.now();
@@ -439,7 +563,7 @@ class AppDatabase {
           ('餐饮', 'expense', 'restaurant'),
           ('交通', 'expense', 'car'),
           ('购物', 'expense', 'shopping'),
-          ('居住', 'expense', 'home'),
+          ('住房', 'expense', 'home'),
           ('娱乐', 'expense', 'game'),
           ('医疗', 'expense', 'medical'),
           ('学习', 'expense', 'book'),

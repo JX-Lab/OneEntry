@@ -794,7 +794,7 @@ class LedgerRepository {
             ('餐饮', 'expense', 'restaurant'),
             ('交通', 'expense', 'car'),
             ('购物', 'expense', 'shopping'),
-            ('居住', 'expense', 'home'),
+            ('住房', 'expense', 'home'),
             ('娱乐', 'expense', 'game'),
             ('医疗', 'expense', 'medical'),
             ('学习', 'expense', 'book'),
@@ -1161,7 +1161,11 @@ class LedgerRepository {
     EntryType type = EntryType.expense,
     String icon = 'tag',
   }) async {
-    final String normalizedName = name == '教育' ? '学习' : name;
+    final String normalizedName = name == '教育'
+        ? '学习'
+        : name == '居住'
+        ? '住房'
+        : name;
     final List<Map<String, Object?>> rows = await db.query(
       'categories',
       columns: <String>['id'],

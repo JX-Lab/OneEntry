@@ -233,59 +233,16 @@ class _StatisticsPageState extends State<StatisticsPage> {
                   : entry.category == slice.name),
         )
         .toList();
-    await showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      builder: (BuildContext context) => FractionallySizedBox(
-        heightFactor: .72,
-        child: SafeArea(
-          top: false,
-          child: Column(
-            children: <Widget>[
-              ListTile(
-                title: Text(
-                  '${slice.name}明细',
-                  style: const TextStyle(fontWeight: FontWeight.w700),
-                ),
-                trailing: IconButton(
-                  onPressed: () => Navigator.pop(context),
-                  icon: const Icon(Icons.close),
-                ),
-              ),
-              const Divider(height: 1),
-              Expanded(
-                child: matching.isEmpty
-                    ? const Center(child: Text('暂无相关账目'))
-                    : ListView.builder(
-                        padding: const EdgeInsets.all(12),
-                        itemCount: matching.length,
-                        itemBuilder: (BuildContext context, int index) {
-                          final LedgerEntry entry = matching[index];
-                          return Card(
-                            child: ListTile(
-                              onTap: () => showEntryDetailSheet(
-                                context: this.context,
-                                controller: widget.controller,
-                                entry: entry,
-                                onEdit: () => _editEntry(entry),
-                              ),
-                              onLongPress: entry.type == EntryType.adjustment
-                                  ? null
-                                  : () => _editEntry(entry),
-                              title: Text(entry.category),
-                              subtitle: Text(
-                                '${entry.occurredAt.year}年${entry.occurredAt.month}月${entry.occurredAt.day}日${entry.note.isEmpty ? '' : ' · ${entry.note}'}',
-                              ),
-                              trailing: Text(
-                                '${entry.type == EntryType.expense ? '-' : '+'}¥${entry.amount.toStringAsFixed(2)}',
-                              ),
-                            ),
-                          );
-                        },
-                      ),
-              ),
-            ],
-          ),
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) => _StatisticsDetailPage(
+          controller: widget.controller,
+          title: slice.name,
+          color: slice.color,
+          type: _breakdown,
+          total: slice.value,
+          entryIds: matching.map((entry) => entry.id).toSet(),
+          onEdit: _editEntry,
         ),
       ),
     );
@@ -445,6 +402,178 @@ class _StatisticsPageState extends State<StatisticsPage> {
       _pointLabel = null;
     });
   }
+}
+
+class _StatisticsDetailPage extends StatelessWidget {
+  const _StatisticsDetailPage({
+    required this.controller,
+    required this.title,
+    required this.color,
+    required this.type,
+    required this.total,
+    required this.entryIds,
+    required this.onEdit,
+  });
+
+  final LedgerController controller;
+  final String title;
+  final Color color;
+  final EntryType type;
+  final double total;
+  final Set<int> entryIds;
+  final ValueChanged<LedgerEntry> onEdit;
+
+  @override
+  Widget build(BuildContext context) => AnimatedBuilder(
+    animation: controller,
+    builder: (BuildContext context, Widget? child) {
+      final List<LedgerEntry> entries = controller.entries
+          .where((entry) => entryIds.contains(entry.id))
+          .toList();
+      final Map<String, List<LedgerEntry>> months =
+          <String, List<LedgerEntry>>{};
+      for (final LedgerEntry entry in entries) {
+        final String key =
+            '${entry.occurredAt.year}年${entry.occurredAt.month}月';
+        months.putIfAbsent(key, () => <LedgerEntry>[]).add(entry);
+      }
+      return Scaffold(
+        appBar: AppBar(title: Text(title)),
+        body: ListView(
+          padding: const EdgeInsets.fromLTRB(12, 8, 12, 32),
+          children: <Widget>[
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(18),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Row(
+                      children: <Widget>[
+                        CircleAvatar(radius: 9, backgroundColor: color),
+                        const SizedBox(width: 10),
+                        Text(
+                          title,
+                          style: const TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 14),
+                    const Text(
+                      '合计',
+                      style: TextStyle(color: Color(0xFF8A9099)),
+                    ),
+                    Text(
+                      '¥${total.toStringAsFixed(2)}',
+                      style: const TextStyle(
+                        fontSize: 28,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                    const Divider(height: 1),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: <Widget>[
+                        Expanded(
+                          child: _DetailMetric(
+                            label: '类型',
+                            value: type == EntryType.expense ? '支出' : '收入',
+                          ),
+                        ),
+                        Expanded(
+                          child: _DetailMetric(
+                            label: '笔数',
+                            value: '${entries.length}',
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const Padding(
+              padding: EdgeInsets.fromLTRB(4, 14, 4, 8),
+              child: Text('相关账目'),
+            ),
+            if (entries.isEmpty)
+              const Center(child: Text('暂无相关账目'))
+            else
+              ...months.entries.map(
+                (month) => Card(
+                  clipBehavior: Clip.antiAlias,
+                  child: ExpansionTile(
+                    initiallyExpanded: month.key == months.keys.first,
+                    title: Text(
+                      month.key,
+                      style: const TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                    subtitle: Text('${month.value.length} 笔'),
+                    children: month.value
+                        .map(
+                          (entry) => ListTile(
+                            onTap: () => showEntryDetailSheet(
+                              context: context,
+                              controller: controller,
+                              entry: entry,
+                              onEdit: () => onEdit(entry),
+                            ),
+                            onLongPress: () => onEdit(entry),
+                            leading: Container(
+                              width: 38,
+                              height: 38,
+                              decoration: BoxDecoration(
+                                color: Theme.of(
+                                  context,
+                                ).colorScheme.surfaceContainerHighest,
+                                borderRadius: BorderRadius.circular(11),
+                              ),
+                              child: const Icon(Icons.receipt_long_outlined),
+                            ),
+                            title: Text(entry.category),
+                            subtitle: entry.note.isEmpty
+                                ? null
+                                : Text(entry.note),
+                            trailing: Text(
+                              '${entry.type == EntryType.expense ? '-' : '+'}¥${entry.amount.toStringAsFixed(2)}',
+                              style: TextStyle(
+                                color: entry.type == EntryType.expense
+                                    ? AppTheme.expense
+                                    : AppTheme.income,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                        )
+                        .toList(),
+                  ),
+                ),
+              ),
+          ],
+        ),
+      );
+    },
+  );
+}
+
+class _DetailMetric extends StatelessWidget {
+  const _DetailMetric({required this.label, required this.value});
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: <Widget>[
+      Text(label, style: const TextStyle(color: Color(0xFF8A9099))),
+      const SizedBox(height: 3),
+      Text(value, style: const TextStyle(fontWeight: FontWeight.w700)),
+    ],
+  );
 }
 
 class _ModeTabs extends StatelessWidget {
