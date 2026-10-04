@@ -64,6 +64,7 @@ class BackupService {
         'application/json',
         'application/zip',
         'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'application/vnd.ms-excel',
         'text/csv',
         'text/tab-separated-values',
         'text/plain',
@@ -136,7 +137,8 @@ class BackupService {
         return '自动识别并导入 ${result.imported} 条，跳过重复 ${result.skipped} 条；新增账户 ${result.accounts}、成员 ${result.members}';
       }
       jsonBytes = file.content;
-    } else if (lower.endsWith('.csv') ||
+    } else if (lower.endsWith('.xls') ||
+        lower.endsWith('.csv') ||
         lower.endsWith('.tsv') ||
         lower.endsWith('.txt')) {
       if (source != ImportSource.automatic) {

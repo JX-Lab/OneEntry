@@ -1,6 +1,8 @@
 import 'dart:convert';
 import 'dart:typed_data';
 
+import 'package:excel2003/excel2003.dart';
+
 import 'shiguangxu_importer.dart';
 import 'tonglv_importer.dart';
 
@@ -9,20 +11,22 @@ class GenericTableImporter {
 
   static const List<String> _dateAliases = <String>[
     '日期',
-    '时间',
+    '记账日期',
+    '交易日期',
+    '发生日期',
     '日期时间',
     '交易时间',
     '记账时间',
     '记录时间',
-    '记账日期',
-    '交易日期',
     '创建时间',
     '账单时间',
     '发生时间',
+    '时间',
     'date',
     'datetime',
     'time',
   ];
+  static const List<String> _clockAliases = <String>['记账时间', '交易时分', '时分'];
   static const List<String> _amountAliases = <String>[
     '金额',
     '数额',
@@ -114,10 +118,11 @@ class GenericTableImporter {
 
   static TonglvImportBundle parse(Uint8List bytes, String fileName) {
     final String lower = fileName.toLowerCase();
-    final List<List<String>> rows =
-        lower.endsWith('.csv') ||
-            lower.endsWith('.txt') ||
-            lower.endsWith('.tsv')
+    final List<List<String>> rows = lower.endsWith('.xls')
+        ? _xlsRows(bytes)
+        : lower.endsWith('.csv') ||
+              lower.endsWith('.txt') ||
+              lower.endsWith('.tsv')
         ? _csvRows(bytes)
         : ShiguangxuImporter.readSpreadsheetRows(bytes);
     if (rows.isEmpty) throw const FormatException('表格中没有数据');
@@ -142,8 +147,18 @@ class GenericTableImporter {
     final List<TonglvEntry> entries = <TonglvEntry>[];
     for (int rowIndex = 0; rowIndex < body.length; rowIndex++) {
       final List<String> row = body[rowIndex];
-      final DateTime? date = _date(_cell(row, mapping.date));
+      DateTime? date = _date(_cell(row, mapping.date));
       if (date == null) continue;
+      final ({int hour, int minute})? clock = _clock(_cell(row, mapping.clock));
+      if (clock != null) {
+        date = DateTime(
+          date.year,
+          date.month,
+          date.day,
+          clock.hour,
+          clock.minute,
+        );
+      }
       final String type = _cell(row, mapping.type).toLowerCase();
       double? amount;
       final double? income = _number(_cell(row, mapping.income));
@@ -176,6 +191,19 @@ class GenericTableImporter {
       if (category.isEmpty) category = '其他';
       if (category == '教育') category = '学习';
       if (category == '居住') category = '住房';
+      if (category == '一般') category = '其他';
+      category =
+          const <String, String>{
+            '食': '餐饮',
+            '住': '住房',
+            '购': '购物',
+            '乐': '娱乐',
+            '行': '交通',
+            '医': '医疗',
+            '学': '学习',
+            '其': '其他',
+          }[category] ??
+          category;
       if (subCategory.isNotEmpty && subCategory != category) {
         category = '$category-$subCategory';
       }
@@ -252,6 +280,7 @@ class GenericTableImporter {
   static _Mapping _mappingFromHeader(List<String> header, int row) => _Mapping(
     headerRow: row,
     date: _findColumn(header, _dateAliases),
+    clock: _findColumn(header, _clockAliases),
     amount: _findColumn(header, _amountAliases),
     income: _findColumn(header, _incomeAliases),
     expense: _findColumn(header, _expenseAliases),
@@ -356,6 +385,57 @@ class GenericTableImporter {
         .toList();
   }
 
+  static List<List<String>> _xlsRows(Uint8List bytes) {
+    final XlsReader reader = XlsReader.fromBytes(bytes);
+    reader.open();
+    final List<List<String>> rows = <List<String>>[];
+    for (int sheetIndex = 0; sheetIndex < reader.sheetCount; sheetIndex++) {
+      final sheet = reader.sheet(sheetIndex);
+      final String sheetName = sheet.name.toString();
+      // 转账表通常是一进一出两行，但通用表格没有可靠的配对字段。
+      // 跳过它可避免将内部转账错误计入收支或重复计算。
+      if (sheetName.contains('转账')) continue;
+      final String direction = sheetName.contains('收入')
+          ? '收入'
+          : sheetName.contains('支出')
+          ? '支出'
+          : '';
+      for (
+        int rowIndex = sheet.firstRow;
+        rowIndex < sheet.lastRow;
+        rowIndex++
+      ) {
+        final List<String> row = List<String>.filled(sheet.lastCol, '');
+        // 部分 BIFF8 文件会把 firstCol 错报为 1，但第 0 列仍有日期。
+        for (int column = 0; column < sheet.lastCol; column++) {
+          final Object? value = sheet.cell(rowIndex, column);
+          row[column] = value is DateTime
+              ? value.toIso8601String()
+              : (value ?? '').toString();
+        }
+        if (rowIndex > sheet.firstRow &&
+            direction.isNotEmpty &&
+            row.length > 2 &&
+            row[2].trim().isEmpty) {
+          row[2] = direction;
+        }
+        rows.add(row);
+      }
+    }
+    return rows;
+  }
+
+  static ({int hour, int minute})? _clock(String value) {
+    final RegExpMatch? match = RegExp(
+      r'(^|\s)(\d{1,2}):(\d{1,2})(?::\d{1,2})?($|\s)',
+    ).firstMatch(value.trim());
+    if (match == null) return null;
+    final int hour = int.parse(match.group(2)!);
+    final int minute = int.parse(match.group(3)!);
+    if (hour > 23 || minute > 59) return null;
+    return (hour: hour, minute: minute);
+  }
+
   static DateTime? _date(String value) {
     final String text = value.trim();
     if (text.isEmpty) return null;
@@ -426,8 +506,10 @@ class GenericTableImporter {
       .toLowerCase()
       .replaceAll(RegExp(r'[\s_\-—:：()（）\[\]【】/]'), '');
 
-  static String _clean(String value) =>
-      value.replaceAll(RegExp(r'[\u0000-\u001f\u007f]'), ' ').trim();
+  static String _clean(String value) => value
+      .replaceAll(RegExp(r'[\u0000-\u001f\u007f]'), ' ')
+      .trim()
+      .replaceFirst(RegExp(r"^'+"), '');
 
   static String _cell(List<String> row, int index) =>
       index < 0 || index >= row.length ? '' : row[index];
@@ -457,6 +539,7 @@ class _Mapping {
   const _Mapping({
     this.headerRow = -1,
     this.date = -1,
+    this.clock = -1,
     this.amount = -1,
     this.income = -1,
     this.expense = -1,
@@ -470,6 +553,7 @@ class _Mapping {
 
   final int headerRow;
   final int date;
+  final int clock;
   final int amount;
   final int income;
   final int expense;
@@ -482,6 +566,7 @@ class _Mapping {
 
   int get score => <int>[
     date,
+    clock,
     amount,
     income,
     expense,

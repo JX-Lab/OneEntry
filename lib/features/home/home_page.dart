@@ -41,8 +41,8 @@ class _HomePageState extends State<HomePage> {
   final TextEditingController _searchController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
   final Set<int> _selectedEntryIds = <int>{};
-  late DateTime _month = DateTime(DateTime.now().year, DateTime.now().month);
-  bool _yearOnly = false;
+  int? _year = DateTime.now().year;
+  int? _month = DateTime.now().month;
   int? _day;
   bool _searching = false;
   bool _selecting = false;
@@ -69,7 +69,6 @@ class _HomePageState extends State<HomePage> {
 
   @override
   Widget build(BuildContext context) {
-    final DateTime month = _month;
     return AnimatedBuilder(
       animation: widget.controller,
       builder: (BuildContext context, Widget? child) {
@@ -77,8 +76,8 @@ class _HomePageState extends State<HomePage> {
         final List<LedgerEntry> periodEntries = widget.controller.entries
             .where(
               (LedgerEntry entry) =>
-                  entry.occurredAt.year == month.year &&
-                  (_yearOnly || entry.occurredAt.month == month.month) &&
+                  (_year == null || entry.occurredAt.year == _year) &&
+                  (_month == null || entry.occurredAt.month == _month) &&
                   (_day == null || entry.occurredAt.day == _day),
             )
             .toList();
@@ -137,11 +136,7 @@ class _HomePageState extends State<HomePage> {
                         mainAxisSize: MainAxisSize.min,
                         children: <Widget>[
                           Text(
-                            _yearOnly
-                                ? '${month.year}年'
-                                : _day == null
-                                ? '${month.year}年${month.month}月'
-                                : '${month.year}年${month.month}月${_day}日',
+                            _periodLabel(),
                             style: const TextStyle(
                               fontSize: 17,
                               fontWeight: FontWeight.w600,
@@ -180,7 +175,7 @@ class _HomePageState extends State<HomePage> {
                 expense: expense,
                 spent: expense,
                 budget: widget.controller.monthlyBudget,
-                showBudget: !_yearOnly,
+                showBudget: _year != null && _month != null,
                 onBudgetTap: widget.onOpenBudget,
               ),
               const SizedBox(height: 10),
@@ -217,7 +212,7 @@ class _HomePageState extends State<HomePage> {
               if (entries.isEmpty)
                 const Padding(
                   padding: EdgeInsets.symmetric(vertical: 72),
-                  child: Center(child: Text('本月还没有匹配的账目')),
+                  child: Center(child: Text('当前时间范围还没有匹配的账目')),
                 )
               else
                 ..._groupedEntries(entries),
@@ -286,25 +281,32 @@ class _HomePageState extends State<HomePage> {
           isScrollControlled: true,
           backgroundColor: Colors.transparent,
           builder: (BuildContext context) => PeriodPickerSheet(
-            initial: (
-              year: _month.year,
-              month: _yearOnly ? null : _month.month,
-              day: _day,
-            ),
+            allowUnselectedYear: true,
+            initial: (year: _year, month: _month, day: _day),
           ),
         );
     if (selected == null) return;
     setState(() {
-      _month = DateTime(selected.year, selected.month ?? 1);
-      _yearOnly = selected.month == null;
-      _day = selected.month == null ? null : selected.day;
+      _year = selected.year;
+      _month = selected.month;
+      _day = selected.day;
     });
+  }
+
+  String _periodLabel() {
+    final List<String> parts = <String>[
+      if (_year != null) '${_year}年',
+      if (_month != null) '${_month}月',
+      if (_day != null) '${_day}日',
+    ];
+    return parts.isEmpty ? '全部' : parts.join();
   }
 
   List<Widget> _groupedEntries(List<LedgerEntry> entries) {
     final Map<String, List<LedgerEntry>> groups = <String, List<LedgerEntry>>{};
     for (final LedgerEntry entry in entries) {
-      final String key = '${entry.occurredAt.month}月${entry.occurredAt.day}日';
+      final String key =
+          '${entry.occurredAt.year}-${entry.occurredAt.month}-${entry.occurredAt.day}';
       groups.putIfAbsent(key, () => <LedgerEntry>[]).add(entry);
     }
     return groups.entries
@@ -336,7 +338,7 @@ class _HomePageState extends State<HomePage> {
                           ),
                         ),
                       Text(
-                        '${entry.key} ${_weekday(date.weekday)}',
+                        '${_year == null ? '${date.year}年' : ''}${date.month}月${date.day}日 ${_weekday(date.weekday)}',
                         style: const TextStyle(
                           fontSize: 12,
                           color: Color(0xFF8A9099),

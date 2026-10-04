@@ -1,32 +1,40 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
-typedef PeriodSelection = ({int year, int? month, int? day});
+typedef PeriodSelection = ({int? year, int? month, int? day});
 
 class PeriodPickerSheet extends StatefulWidget {
-  const PeriodPickerSheet({required this.initial, super.key});
+  const PeriodPickerSheet({
+    required this.initial,
+    this.allowUnselectedYear = false,
+    super.key,
+  });
   final PeriodSelection initial;
+  final bool allowUnselectedYear;
 
   @override
   State<PeriodPickerSheet> createState() => _PeriodPickerSheetState();
 }
 
 class _PeriodPickerSheetState extends State<PeriodPickerSheet> {
-  late int year = widget.initial.year;
+  late int? year = widget.initial.year;
   late int? month = widget.initial.month;
   late int? day = widget.initial.day;
   late final FixedExtentScrollController yearController;
   late final FixedExtentScrollController monthController;
   late final FixedExtentScrollController dayController;
-  late final List<int> years;
+  late final List<int?> years;
 
   @override
   void initState() {
     super.initState();
     final DateTime now = DateTime.now();
-    years = List<int>.generate(21, (index) => now.year - 20 + index);
+    years = <int?>[
+      if (widget.allowUnselectedYear) null,
+      ...List<int>.generate(21, (index) => now.year - 20 + index),
+    ];
     yearController = FixedExtentScrollController(
-      initialItem: years.indexOf(year),
+      initialItem: years.indexOf(year).clamp(0, years.length - 1),
     );
     monthController = FixedExtentScrollController(initialItem: month ?? 0);
     dayController = FixedExtentScrollController(initialItem: day ?? 0);
@@ -47,11 +55,15 @@ class _PeriodPickerSheetState extends State<PeriodPickerSheet> {
   }
 
   List<int?> get days {
-    if (month == null) return const <int?>[null];
     final DateTime now = DateTime.now();
-    final int max = year == now.year && month == now.month
-        ? now.day
-        : DateTime(year, month! + 1, 0).day;
+    final int max;
+    if (year == now.year && month == now.month) {
+      max = now.day;
+    } else if (month == null) {
+      max = 31;
+    } else {
+      max = DateTime(year ?? 2000, month! + 1, 0).day;
+    }
     return <int?>[null, ...List<int>.generate(max, (index) => index + 1)];
   }
 
@@ -88,7 +100,7 @@ class _PeriodPickerSheetState extends State<PeriodPickerSheet> {
                   onPressed: () => Navigator.pop(context, (
                     year: year,
                     month: month,
-                    day: month == null ? null : day,
+                    day: day,
                   )),
                   child: const Text('确定'),
                 ),
@@ -101,10 +113,10 @@ class _PeriodPickerSheetState extends State<PeriodPickerSheet> {
             child: Row(
               children: <Widget>[
                 Expanded(
-                  child: _picker<int>(
+                  child: _picker<int?>(
                     controller: yearController,
                     values: years,
-                    label: (value) => '$value年',
+                    label: (value) => value == null ? '不选' : '$value年',
                     onSelected: (value) {
                       setState(() {
                         year = value;
@@ -126,7 +138,7 @@ class _PeriodPickerSheetState extends State<PeriodPickerSheet> {
                     onSelected: (value) {
                       setState(() {
                         month = value;
-                        if (month == null || !days.contains(day)) day = null;
+                        if (!days.contains(day)) day = null;
                       });
                       dayController.jumpToItem(day ?? 0);
                     },

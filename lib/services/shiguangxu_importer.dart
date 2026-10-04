@@ -80,6 +80,7 @@ class ShiguangxuImporter {
       String category = row.category.isEmpty ? '其他' : row.category;
       if (category == '教育') category = '学习';
       if (category == '居住') category = '住房';
+      if (category == '一般') category = '其他';
       String note = row.note;
       if (category == '转账') {
         category = '其他';

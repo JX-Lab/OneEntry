@@ -197,7 +197,7 @@ class _StatisticsPageState extends State<StatisticsPage> {
           (item) => Card(
             child: ListTile(
               onTap: () => _showSliceDetail(item, entries, isMember),
-              leading: CircleAvatar(radius: 6, backgroundColor: item.color),
+              leading: CircleAvatar(radius: 9, backgroundColor: item.color),
               title: Text(item.name),
               subtitle: Text(
                 '${total == 0 ? 0 : item.value / total * 100 ~/ 1}%',
@@ -398,7 +398,11 @@ class _StatisticsPageState extends State<StatisticsPage> {
         );
     if (selected == null) return;
     setState(() {
-      _anchor = DateTime(selected.year, selected.month ?? 1, selected.day ?? 1);
+      _anchor = DateTime(
+        selected.year ?? _anchor.year,
+        selected.month ?? 1,
+        selected.day ?? 1,
+      );
       _pointLabel = null;
     });
   }
