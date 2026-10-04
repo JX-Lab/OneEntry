@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../data/ledger_controller.dart';
+import '../categories/categories_page.dart';
 import '../recurring/recurring_rules_page.dart';
 import '../../services/backup_service.dart';
 import '../../services/notification_service.dart';
@@ -45,6 +46,17 @@ class _SettingsPageState extends State<SettingsPage> {
                             : 'AA 均摊  ›',
                       ),
                       onTap: _pickSplitMode,
+                    ),
+                    ListTile(
+                      title: const Text('标签管理'),
+                      subtitle: const Text('批量合并、移除和调整显示顺序'),
+                      trailing: const Icon(Icons.chevron_right),
+                      onTap: () => Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (_) =>
+                              CategoriesPage(controller: widget.controller),
+                        ),
+                      ),
                     ),
                   ],
                 ),
@@ -340,7 +352,7 @@ class _SettingsPageState extends State<SettingsPage> {
                   style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
                 ),
                 subtitle: Text(
-                  '自动识别可解析任意含日期和金额列的 XLSX / CSV 表格',
+                  '自动识别可解析任意含日期和金额列的 XLS / XLSX / CSV 表格',
                   textAlign: TextAlign.center,
                 ),
               ),

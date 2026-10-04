@@ -593,8 +593,128 @@ class LedgerRepository {
     );
   }
 
+  Future<void> reorderCategories(List<String> names) async {
+    final Database db = await _appDatabase.database;
+    final int now = DateTime.now().millisecondsSinceEpoch;
+    final Batch batch = db.batch();
+    for (int index = 0; index < names.length; index++) {
+      batch.update(
+        'categories',
+        <String, Object?>{'sort_order': index, 'updated_at': now},
+        where: 'name = ?',
+        whereArgs: <Object?>[names[index]],
+      );
+    }
+    await batch.commit(noResult: true);
+  }
+
+  Future<void> archiveCategories(List<String> names) async {
+    if (names.isEmpty) return;
+    final Database db = await _appDatabase.database;
+    final int now = DateTime.now().millisecondsSinceEpoch;
+    await db.update(
+      'categories',
+      <String, Object?>{'archived_at': now, 'updated_at': now},
+      where: 'name IN (${List<String>.filled(names.length, '?').join(',')})',
+      whereArgs: names,
+    );
+  }
+
+  Future<void> mergeCategories(
+    List<String> sourceNames,
+    String targetName,
+  ) async {
+    final List<String> sources = sourceNames
+        .where((name) => name != targetName)
+        .toSet()
+        .toList();
+    if (sources.isEmpty) return;
+    final Database db = await _appDatabase.database;
+    final int now = DateTime.now().millisecondsSinceEpoch;
+    await db.transaction((Transaction txn) async {
+      final List<Map<String, Object?>> targetRows = await txn.query(
+        'categories',
+        columns: <String>['id'],
+        where: 'name = ?',
+        whereArgs: <Object?>[targetName],
+        limit: 1,
+      );
+      if (targetRows.isEmpty) throw StateError('找不到目标标签');
+      final int targetId = targetRows.first['id'] as int;
+      for (final String sourceName in sources) {
+        final List<Map<String, Object?>> sourceRows = await txn.query(
+          'categories',
+          columns: <String>['id'],
+          where: 'name = ?',
+          whereArgs: <Object?>[sourceName],
+          limit: 1,
+        );
+        if (sourceRows.isEmpty) continue;
+        final int sourceId = sourceRows.first['id'] as int;
+        await txn.update(
+          'transactions',
+          <String, Object?>{'category_id': targetId, 'updated_at': now},
+          where: 'category_id = ?',
+          whereArgs: <Object?>[sourceId],
+        );
+        await txn.update(
+          'recurring_rules',
+          <String, Object?>{'category_id': targetId, 'updated_at': now},
+          where: 'category_id = ?',
+          whereArgs: <Object?>[sourceId],
+        );
+        final List<Map<String, Object?>> sourceBudgets = await txn.query(
+          'budgets',
+          where: 'category_id = ?',
+          whereArgs: <Object?>[sourceId],
+        );
+        for (final Map<String, Object?> budget in sourceBudgets) {
+          final List<Map<String, Object?>> targetBudgets = await txn.query(
+            'budgets',
+            columns: <String>['id', 'amount_minor'],
+            where: 'period = ? AND category_id = ?',
+            whereArgs: <Object?>[budget['period'], targetId],
+            limit: 1,
+          );
+          if (targetBudgets.isEmpty) {
+            await txn.update(
+              'budgets',
+              <String, Object?>{'category_id': targetId, 'updated_at': now},
+              where: 'id = ?',
+              whereArgs: <Object?>[budget['id']],
+            );
+          } else {
+            await txn.update(
+              'budgets',
+              <String, Object?>{
+                'amount_minor':
+                    (targetBudgets.first['amount_minor'] as int) +
+                    (budget['amount_minor'] as int),
+                'updated_at': now,
+              },
+              where: 'id = ?',
+              whereArgs: <Object?>[targetBudgets.first['id']],
+            );
+            await txn.delete(
+              'budgets',
+              where: 'id = ?',
+              whereArgs: <Object?>[budget['id']],
+            );
+          }
+        }
+        await txn.delete(
+          'categories',
+          where: 'id = ?',
+          whereArgs: <Object?>[sourceId],
+        );
+      }
+    });
+  }
+
   Future<void> batchUpdateEntries(
     List<LedgerEntry> entries, {
+    required bool changeCategory,
+    String? category,
     required bool changeAccount,
     int? accountId,
     required bool changeMembers,
@@ -605,10 +725,33 @@ class LedgerRepository {
     final Database db = await _appDatabase.database;
     final int now = DateTime.now().millisecondsSinceEpoch;
     await db.transaction((Transaction txn) async {
+      final List<EntryType> editableTypes = entries
+          .where(
+            (entry) =>
+                entry.type == EntryType.expense ||
+                entry.type == EntryType.income,
+          )
+          .map((entry) => entry.type)
+          .toList();
+      final int? replacementCategoryId = changeCategory && category != null
+          ? await _categoryId(
+              txn,
+              category,
+              now,
+              type: editableTypes.isEmpty
+                  ? EntryType.expense
+                  : editableTypes.first,
+            )
+          : null;
       for (final LedgerEntry entry in entries) {
         final Map<String, Object?> values = <String, Object?>{
           'updated_at': now,
         };
+        if (replacementCategoryId != null &&
+            entry.type != EntryType.transfer &&
+            entry.type != EntryType.adjustment) {
+          values['category_id'] = replacementCategoryId;
+        }
         if (changeAccount &&
             accountId != null &&
             entry.type != EntryType.transfer &&
@@ -996,6 +1139,12 @@ class LedgerRepository {
                 )).first['id']
                 as int);
 
+      final Set<String> activeCategoryNames = (await txn.query(
+        'categories',
+        columns: <String>['name'],
+        where: 'archived_at IS NULL',
+      )).map((row) => row['name'] as String).toSet();
+
       int imported = 0;
       int skipped = 0;
       for (final TonglvEntry entry in bundle.entries) {
@@ -1014,9 +1163,33 @@ class LedgerRepository {
         final EntryType entryType = entry.amount < 0
             ? EntryType.expense
             : EntryType.income;
+        String category = entry.category;
+        String importedNote = <String>[
+          entry.title,
+          entry.note,
+        ].where((value) => value.isNotEmpty).join(' · ');
+        if (sourceApp == 'generic_table') {
+          final List<String> candidates = <String>[
+            entry.category,
+            entry.secondaryCategory,
+          ].where((value) => value.isNotEmpty).toSet().toList();
+          category = candidates.firstWhere(
+            activeCategoryNames.contains,
+            orElse: () => '其他',
+          );
+          final List<String> unmatched = candidates
+              .where((value) => value != category)
+              .toList();
+          if (unmatched.isNotEmpty) {
+            importedNote = <String>[
+              importedNote,
+              '原分类：${unmatched.join(' / ')}',
+            ].where((value) => value.isNotEmpty).join(' · ');
+          }
+        }
         final int categoryId = await _categoryId(
           txn,
-          entry.category,
+          category,
           now,
           type: entryType,
         );
@@ -1024,27 +1197,22 @@ class LedgerRepository {
             accountIds[entry.accountSourceId] ?? fallbackAccountId;
         final String type = entryType.name;
         final int amountMinor = _minor(entry.amount.abs());
-        final int transactionId = await txn.insert(
-          'transactions',
-          <String, Object?>{
-            'uuid': '$sourceApp-transaction-${entry.sourceId}',
-            'type': type,
-            'amount_minor': amountMinor,
-            'account_id': accountId,
-            'category_id': categoryId,
-            'occurred_at': entry.occurredAt.millisecondsSinceEpoch,
-            'local_date': _dateKey(entry.occurredAt),
-            'timezone': entry.occurredAt.timeZoneName,
-            'note': <String>[
-              entry.title,
-              entry.note,
-            ].where((value) => value.isNotEmpty).join(' · '),
-            'source_app': sourceApp,
-            'source_row_key': entry.sourceId,
-            'created_at': now,
-            'updated_at': now,
-          },
-        );
+        final int transactionId = await txn
+            .insert('transactions', <String, Object?>{
+              'uuid': '$sourceApp-transaction-${entry.sourceId}',
+              'type': type,
+              'amount_minor': amountMinor,
+              'account_id': accountId,
+              'category_id': categoryId,
+              'occurred_at': entry.occurredAt.millisecondsSinceEpoch,
+              'local_date': _dateKey(entry.occurredAt),
+              'timezone': entry.occurredAt.timeZoneName,
+              'note': importedNote,
+              'source_app': sourceApp,
+              'source_row_key': entry.sourceId,
+              'created_at': now,
+              'updated_at': now,
+            });
         final List<int> linkedMembers = entry.memberSourceIds
             .map((sourceId) => memberIds[sourceId])
             .whereType<int>()

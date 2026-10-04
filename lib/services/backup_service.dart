@@ -134,7 +134,7 @@ class BackupService {
           sourceApp: 'generic_table',
           sourceLabel: '通用表格导入',
         );
-        return '自动识别并导入 ${result.imported} 条，跳过重复 ${result.skipped} 条；新增账户 ${result.accounts}、成员 ${result.members}';
+        return '自动识别并导入 ${result.imported} 条，跳过重复 ${result.skipped} 条；未匹配分类已归入“其他”并写入备注';
       }
       jsonBytes = file.content;
     } else if (lower.endsWith('.xls') ||
@@ -142,7 +142,7 @@ class BackupService {
         lower.endsWith('.tsv') ||
         lower.endsWith('.txt')) {
       if (source != ImportSource.automatic) {
-        throw const FormatException('该来源不支持 CSV / TSV / TXT，请选择自动识别');
+        throw const FormatException('该来源不支持 XLS / CSV / TSV / TXT，请选择自动识别');
       }
       final TonglvImportBundle bundle = GenericTableImporter.parse(
         document.bytes,
@@ -153,7 +153,7 @@ class BackupService {
         sourceApp: 'generic_table',
         sourceLabel: '通用表格导入',
       );
-      return '自动识别并导入 ${result.imported} 条，跳过重复 ${result.skipped} 条；新增账户 ${result.accounts}、成员 ${result.members}';
+      return '自动识别并导入 ${result.imported} 条，跳过重复 ${result.skipped} 条；未匹配分类已归入“其他”并写入备注';
     } else {
       throw const FormatException('不支持的文件格式');
     }

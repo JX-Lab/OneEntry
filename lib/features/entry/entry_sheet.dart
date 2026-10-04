@@ -432,14 +432,15 @@ class _EntrySheetState extends State<EntrySheet> {
     final TextEditingController name = TextEditingController(
       text: existing?.name ?? '',
     );
-    String group = _iconGroups.keys.first;
-    for (final MapEntry<String, List<String>> item in _iconGroups.entries) {
+    String group = categoryIconGroups.keys.first;
+    for (final MapEntry<String, List<String>> item
+        in categoryIconGroups.entries) {
       if (item.value.contains(existing?.icon)) {
         group = item.key;
         break;
       }
     }
-    String icon = existing?.icon ?? _iconGroups[group]!.first;
+    String icon = existing?.icon ?? categoryIconGroups[group]!.first;
     final bool? save = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
@@ -494,10 +495,12 @@ class _EntrySheetState extends State<EntrySheet> {
                       child: ListView.separated(
                         padding: const EdgeInsets.symmetric(horizontal: 16),
                         scrollDirection: Axis.horizontal,
-                        itemCount: _iconGroups.length,
+                        itemCount: categoryIconGroups.length,
                         separatorBuilder: (_, _) => const SizedBox(width: 8),
                         itemBuilder: (BuildContext context, int index) {
-                          final String item = _iconGroups.keys.elementAt(index);
+                          final String item = categoryIconGroups.keys.elementAt(
+                            index,
+                          );
                           final bool selected = item == group;
                           return ChoiceChip(
                             label: Text(item),
@@ -505,7 +508,8 @@ class _EntrySheetState extends State<EntrySheet> {
                             showCheckmark: false,
                             onSelected: (_) => update(() {
                               group = item;
-                              final List<String> icons = _iconGroups[group]!;
+                              final List<String> icons =
+                                  categoryIconGroups[group]!;
                               if (!icons.contains(icon)) icon = icons.first;
                             }),
                           );
@@ -522,9 +526,9 @@ class _EntrySheetState extends State<EntrySheet> {
                               mainAxisSpacing: 10,
                               crossAxisSpacing: 10,
                             ),
-                        itemCount: _iconGroups[group]!.length,
+                        itemCount: categoryIconGroups[group]!.length,
                         itemBuilder: (BuildContext context, int index) {
-                          final String item = _iconGroups[group]![index];
+                          final String item = categoryIconGroups[group]![index];
                           final bool selected = icon == item;
                           return InkWell(
                             onTap: () => update(() => icon = item),
@@ -544,7 +548,7 @@ class _EntrySheetState extends State<EntrySheet> {
                                   width: 2,
                                 ),
                               ),
-                              child: Icon(_iconFromKey(item), size: 22),
+                              child: Icon(categoryIconFromKey(item), size: 22),
                             ),
                           );
                         },
@@ -1005,7 +1009,7 @@ String _formatDateTime(DateTime value) =>
     '${value.year}年${value.month.toString().padLeft(2, '0')}月${value.day.toString().padLeft(2, '0')}日 '
     '${value.hour.toString().padLeft(2, '0')}:${value.minute.toString().padLeft(2, '0')}';
 
-const Map<String, List<String>> _iconGroups = <String, List<String>>{
+const Map<String, List<String>> categoryIconGroups = <String, List<String>>{
   '娱乐': <String>[
     'game',
     'movie',
@@ -1160,7 +1164,7 @@ const Map<String, List<String>> _iconGroups = <String, List<String>>{
 };
 
 IconData _categoryIcon(String? key, String category) =>
-    key == null ? _categoryIconByName(category) : _iconFromKey(key);
+    key == null ? _categoryIconByName(category) : categoryIconFromKey(key);
 
 IconData _categoryIconByName(String category) => switch (category) {
   '餐饮' => Icons.restaurant_outlined,
@@ -1187,7 +1191,7 @@ IconData _categoryIconByName(String category) => switch (category) {
   _ => Icons.label_outline,
 };
 
-IconData _iconFromKey(String key) => switch (key) {
+IconData categoryIconFromKey(String key) => switch (key) {
   'restaurant' => Icons.restaurant_outlined,
   'car' => Icons.directions_car_outlined,
   'shopping' => Icons.shopping_bag_outlined,

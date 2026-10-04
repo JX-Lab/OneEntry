@@ -31,6 +31,7 @@ class TonglvEntry {
     required this.occurredAt,
     required this.accountSourceId,
     required this.category,
+    this.secondaryCategory = '',
     required this.memberSourceIds,
   });
   final String sourceId;
@@ -40,6 +41,7 @@ class TonglvEntry {
   final DateTime occurredAt;
   final String accountSourceId;
   final String category;
+  final String secondaryCategory;
   final List<String> memberSourceIds;
 }
 

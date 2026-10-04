@@ -233,8 +233,28 @@ class LedgerController extends ChangeNotifier {
     await initialize();
   }
 
+  Future<void> reorderCategories(List<String> names) async {
+    await _repository.reorderCategories(names);
+    await initialize();
+  }
+
+  Future<void> archiveCategories(List<String> names) async {
+    await _repository.archiveCategories(names);
+    await initialize();
+  }
+
+  Future<void> mergeCategories(
+    List<String> sourceNames,
+    String targetName,
+  ) async {
+    await _repository.mergeCategories(sourceNames, targetName);
+    await initialize();
+  }
+
   Future<void> batchUpdateEntries(
     List<LedgerEntry> selected, {
+    required bool changeCategory,
+    String? category,
     required bool changeAccount,
     int? accountId,
     required bool changeMembers,
@@ -244,6 +264,8 @@ class LedgerController extends ChangeNotifier {
   }) async {
     await _repository.batchUpdateEntries(
       selected,
+      changeCategory: changeCategory,
+      category: category,
       changeAccount: changeAccount,
       accountId: accountId,
       changeMembers: changeMembers,

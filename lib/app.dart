@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 
 import 'data/ledger_controller.dart';
 import 'features/accounts/accounts_page.dart';
@@ -69,6 +70,9 @@ class _OneEntryAppState extends State<OneEntryApp> {
         navigatorKey: _navigatorKey,
         title: '一笔',
         debugShowCheckedModeBanner: false,
+        locale: const Locale('zh', 'CN'),
+        supportedLocales: const <Locale>[Locale('zh', 'CN')],
+        localizationsDelegates: GlobalMaterialLocalizations.delegates,
         theme: AppTheme.light(highContrast: widget.controller.highContrast),
         darkTheme: AppTheme.dark(highContrast: widget.controller.highContrast),
         themeMode: switch (widget.controller.themeMode) {

@@ -185,28 +185,18 @@ class GenericTableImporter {
         }
       }
 
-      String category = _clean(_cell(row, mapping.category));
-      final String subCategory = _clean(_cell(row, mapping.subCategory));
-      if (category.isEmpty) category = subCategory;
-      if (category.isEmpty) category = '其他';
-      if (category == '教育') category = '学习';
-      if (category == '居住') category = '住房';
-      if (category == '一般') category = '其他';
-      category =
-          const <String, String>{
-            '食': '餐饮',
-            '住': '住房',
-            '购': '购物',
-            '乐': '娱乐',
-            '行': '交通',
-            '医': '医疗',
-            '学': '学习',
-            '其': '其他',
-          }[category] ??
-          category;
-      if (subCategory.isNotEmpty && subCategory != category) {
-        category = '$category-$subCategory';
+      String category = _normalizedCategory(
+        _clean(_cell(row, mapping.category)),
+      );
+      String subCategory = _normalizedCategory(
+        _clean(_cell(row, mapping.subCategory)),
+      );
+      if (category.isEmpty) {
+        category = subCategory;
+        subCategory = '';
       }
+      if (category.isEmpty) category = '其他';
+      if (subCategory == category) subCategory = '';
       String account = _clean(_cell(row, mapping.account));
       if (account.isEmpty) account = '通用导入账户';
       accounts.putIfAbsent(
@@ -240,6 +230,7 @@ class GenericTableImporter {
           occurredAt: date,
           accountSourceId: account,
           category: category,
+          secondaryCategory: subCategory,
           memberSourceIds: memberNames,
         ),
       );
@@ -510,6 +501,22 @@ class GenericTableImporter {
       .replaceAll(RegExp(r'[\u0000-\u001f\u007f]'), ' ')
       .trim()
       .replaceFirst(RegExp(r"^'+"), '');
+
+  static String _normalizedCategory(String value) =>
+      const <String, String>{
+        '食': '餐饮',
+        '住': '住房',
+        '购': '购物',
+        '乐': '娱乐',
+        '行': '交通',
+        '医': '医疗',
+        '学': '学习',
+        '其': '其他',
+        '教育': '学习',
+        '居住': '住房',
+        '一般': '其他',
+      }[value] ??
+      value;
 
   static String _cell(List<String> row, int index) =>
       index < 0 || index >= row.length ? '' : row[index];

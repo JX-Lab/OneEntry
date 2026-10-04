@@ -103,6 +103,7 @@ class _HomePageState extends State<HomePage> {
         final double expense = periodEntries
             .where((entry) => entry.type == EntryType.expense)
             .fold(0.0, (sum, entry) => sum + entry.amount);
+        final List<_HomeRow> rows = _homeRows(entries);
         return Scaffold(
           appBar: AppBar(
             centerTitle: true,
@@ -166,56 +167,87 @@ class _HomePageState extends State<HomePage> {
               ],
             ],
           ),
-          body: ListView(
+          body: CustomScrollView(
             controller: _scrollController,
-            padding: const EdgeInsets.fromLTRB(12, 8, 12, 92),
-            children: <Widget>[
-              _SummaryCard(
-                income: income,
-                expense: expense,
-                spent: expense,
-                budget: widget.controller.monthlyBudget,
-                showBudget: _year != null && _month != null,
-                onBudgetTap: widget.onOpenBudget,
-              ),
-              const SizedBox(height: 10),
-              Row(
-                children: <Widget>[
-                  if (widget.controller.multiEnabled) ...<Widget>[
-                    Expanded(
-                      child: _QuickButton(
-                        icon: Icons.people_outline,
-                        label: '成员',
-                        onTap: widget.onOpenMembers,
-                      ),
+            slivers: <Widget>[
+              SliverPadding(
+                padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+                sliver: SliverList.list(
+                  children: <Widget>[
+                    _SummaryCard(
+                      income: income,
+                      expense: expense,
+                      spent: expense,
+                      budget: widget.controller.monthlyBudget,
+                      showBudget: _year != null && _month != null,
+                      onBudgetTap: widget.onOpenBudget,
                     ),
-                    const SizedBox(width: 10),
+                    const SizedBox(height: 10),
+                    Row(
+                      children: <Widget>[
+                        if (widget.controller.multiEnabled) ...<Widget>[
+                          Expanded(
+                            child: _QuickButton(
+                              icon: Icons.people_outline,
+                              label: '成员',
+                              onTap: widget.onOpenMembers,
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                        ],
+                        Expanded(
+                          child: _QuickButton(
+                            icon: Icons.account_balance_wallet_outlined,
+                            label: '账户',
+                            onTap: widget.onOpenAccounts,
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: _QuickButton(
+                            icon: Icons.insights_outlined,
+                            label: '统计',
+                            onTap: widget.onOpenStatistics,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
                   ],
-                  Expanded(
-                    child: _QuickButton(
-                      icon: Icons.account_balance_wallet_outlined,
-                      label: '账户',
-                      onTap: widget.onOpenAccounts,
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: _QuickButton(
-                      icon: Icons.insights_outlined,
-                      label: '统计',
-                      onTap: widget.onOpenStatistics,
-                    ),
-                  ),
-                ],
+                ),
               ),
-              const SizedBox(height: 16),
               if (entries.isEmpty)
-                const Padding(
-                  padding: EdgeInsets.symmetric(vertical: 72),
-                  child: Center(child: Text('当前时间范围还没有匹配的账目')),
+                const SliverToBoxAdapter(
+                  child: Padding(
+                    padding: EdgeInsets.symmetric(vertical: 72),
+                    child: Center(child: Text('当前时间范围还没有匹配的账目')),
+                  ),
                 )
               else
-                ..._groupedEntries(entries),
+                SliverPadding(
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  sliver: SliverList.builder(
+                    itemCount: rows.length,
+                    itemBuilder: (BuildContext context, int index) {
+                      final _HomeRow row = rows[index];
+                      final List<LedgerEntry>? group = row.group;
+                      if (group != null) return _groupHeader(group);
+                      final LedgerEntry item = row.entry!;
+                      return _EntryTile(
+                        key: ValueKey<int>(item.id),
+                        entry: item,
+                        controller: widget.controller,
+                        onEdit: () => widget.onEditEntry(item),
+                        onDelete: () => widget.onDeleteEntry(item),
+                        selectionMode: _selecting,
+                        selected: _selectedEntryIds.contains(item.id),
+                        onToggleSelection: () => _toggleEntry(item),
+                        onEnterSelection: () => _enterSelection(item),
+                      );
+                    },
+                  ),
+                ),
+              const SliverToBoxAdapter(child: SizedBox(height: 92)),
             ],
           ),
           bottomNavigationBar: _selecting
@@ -302,87 +334,69 @@ class _HomePageState extends State<HomePage> {
     return parts.isEmpty ? '全部' : parts.join();
   }
 
-  List<Widget> _groupedEntries(List<LedgerEntry> entries) {
+  List<_HomeRow> _homeRows(List<LedgerEntry> entries) {
     final Map<String, List<LedgerEntry>> groups = <String, List<LedgerEntry>>{};
     for (final LedgerEntry entry in entries) {
       final String key =
           '${entry.occurredAt.year}-${entry.occurredAt.month}-${entry.occurredAt.day}';
       groups.putIfAbsent(key, () => <LedgerEntry>[]).add(entry);
     }
-    return groups.entries
+    return groups.values
         .expand(
-          (entry) => <Widget>[
-            Builder(
-              builder: (BuildContext context) {
-                final List<LedgerEntry> values = entry.value;
-                final DateTime date = values.first.occurredAt;
-                final double income = values
-                    .where((item) => item.type == EntryType.income)
-                    .fold(0, (sum, item) => sum + item.amount);
-                final double expense = values
-                    .where((item) => item.type == EntryType.expense)
-                    .fold(0, (sum, item) => sum + item.amount);
-                return Padding(
-                  padding: const EdgeInsets.fromLTRB(4, 8, 4, 6),
-                  child: Row(
-                    children: <Widget>[
-                      if (_selecting)
-                        SizedBox(
-                          width: 30,
-                          height: 30,
-                          child: Checkbox(
-                            value: values.every(
-                              (item) => _selectedEntryIds.contains(item.id),
-                            ),
-                            onChanged: (_) => _toggleEntries(values),
-                          ),
-                        ),
-                      Text(
-                        '${_year == null ? '${date.year}年' : ''}${date.month}月${date.day}日 ${_weekday(date.weekday)}',
-                        style: const TextStyle(
-                          fontSize: 12,
-                          color: Color(0xFF8A9099),
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                      const Spacer(),
-                      if (income > 0)
-                        Text(
-                          '收 ${income.toStringAsFixed(2)}',
-                          style: const TextStyle(
-                            fontSize: 11,
-                            color: Color(0xFF8A9099),
-                          ),
-                        ),
-                      if (income > 0 && expense > 0) const SizedBox(width: 8),
-                      if (expense > 0)
-                        Text(
-                          '支 ${expense.toStringAsFixed(2)}',
-                          style: const TextStyle(
-                            fontSize: 11,
-                            color: Color(0xFF8A9099),
-                          ),
-                        ),
-                    ],
-                  ),
-                );
-              },
-            ),
-            ...entry.value.map(
-              (LedgerEntry item) => _EntryTile(
-                entry: item,
-                controller: widget.controller,
-                onEdit: () => widget.onEditEntry(item),
-                onDelete: () => widget.onDeleteEntry(item),
-                selectionMode: _selecting,
-                selected: _selectedEntryIds.contains(item.id),
-                onToggleSelection: () => _toggleEntry(item),
-                onEnterSelection: () => _enterSelection(item),
-              ),
-            ),
+          (group) => <_HomeRow>[
+            _HomeRow.group(group),
+            ...group.map(_HomeRow.entry),
           ],
         )
         .toList();
+  }
+
+  Widget _groupHeader(List<LedgerEntry> values) {
+    final DateTime date = values.first.occurredAt;
+    final double income = values
+        .where((item) => item.type == EntryType.income)
+        .fold(0, (sum, item) => sum + item.amount);
+    final double expense = values
+        .where((item) => item.type == EntryType.expense)
+        .fold(0, (sum, item) => sum + item.amount);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(4, 8, 4, 6),
+      child: Row(
+        children: <Widget>[
+          if (_selecting)
+            SizedBox(
+              width: 30,
+              height: 30,
+              child: Checkbox(
+                value: values.every(
+                  (item) => _selectedEntryIds.contains(item.id),
+                ),
+                onChanged: (_) => _toggleEntries(values),
+              ),
+            ),
+          Text(
+            '${_year == null ? '${date.year}年' : ''}${date.month}月${date.day}日 ${_weekday(date.weekday)}',
+            style: const TextStyle(
+              fontSize: 12,
+              color: Color(0xFF8A9099),
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+          const Spacer(),
+          if (income > 0)
+            Text(
+              '收 ${income.toStringAsFixed(2)}',
+              style: const TextStyle(fontSize: 11, color: Color(0xFF8A9099)),
+            ),
+          if (income > 0 && expense > 0) const SizedBox(width: 8),
+          if (expense > 0)
+            Text(
+              '支 ${expense.toStringAsFixed(2)}',
+              style: const TextStyle(fontSize: 11, color: Color(0xFF8A9099)),
+            ),
+        ],
+      ),
+    );
   }
 
   Widget _selectionBar(List<LedgerEntry> periodEntries) {
@@ -676,6 +690,7 @@ class _HomePageState extends State<HomePage> {
   Future<void> _batchEdit() async {
     final List<LedgerEntry> entries = _selectedEntries;
     if (entries.isEmpty) return;
+    bool changeCategory = false;
     bool changeAccount = false;
     bool changeMembers = false;
     bool changeNote = false;
@@ -685,6 +700,11 @@ class _HomePageState extends State<HomePage> {
     final List<LedgerMember> activeMembers = widget.controller.members
         .where((member) => !member.archived)
         .toList();
+    final List<String> categories = widget.controller.categories
+        .map((category) => category.name)
+        .toSet()
+        .toList();
+    String? category = categories.isEmpty ? null : categories.first;
     int? accountId = accounts.isEmpty ? null : accounts.first.id;
     final Set<int> memberIds = <int>{};
     final TextEditingController noteController = TextEditingController();
@@ -706,6 +726,30 @@ class _HomePageState extends State<HomePage> {
                   onCancel: () => Navigator.pop(context, false),
                   onConfirm: () => Navigator.pop(context, true),
                 ),
+                CheckboxListTile(
+                  title: const Text('统一标签'),
+                  subtitle: const Text('所有选中的收支账目都替换为下方标签'),
+                  value: changeCategory,
+                  onChanged: (value) =>
+                      update(() => changeCategory = value ?? false),
+                ),
+                if (changeCategory && categories.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: DropdownButtonFormField<String>(
+                      initialValue: category,
+                      decoration: const InputDecoration(labelText: '标签'),
+                      items: categories
+                          .map(
+                            (name) => DropdownMenuItem<String>(
+                              value: name,
+                              child: Text(name),
+                            ),
+                          )
+                          .toList(),
+                      onChanged: (value) => category = value,
+                    ),
+                  ),
                 CheckboxListTile(
                   title: const Text('统一账户'),
                   subtitle: const Text('所有选中收支账目都替换为下方账户'),
@@ -813,7 +857,7 @@ class _HomePageState extends State<HomePage> {
       ),
     );
     if (save != true) return;
-    if (!changeAccount && !changeMembers && !changeNote) {
+    if (!changeCategory && !changeAccount && !changeMembers && !changeNote) {
       if (mounted) {
         ScaffoldMessenger.of(
           context,
@@ -823,6 +867,8 @@ class _HomePageState extends State<HomePage> {
     }
     await widget.controller.batchUpdateEntries(
       entries,
+      changeCategory: changeCategory,
+      category: category,
       changeAccount: changeAccount,
       accountId: accountId,
       changeMembers: changeMembers,
@@ -983,6 +1029,14 @@ DateTime? _parseDate(String text) {
 
 String _dateKey(DateTime value) =>
     '${value.year}-${value.month.toString().padLeft(2, '0')}-${value.day.toString().padLeft(2, '0')}';
+
+class _HomeRow {
+  const _HomeRow.entry(this.entry) : group = null;
+  const _HomeRow.group(this.group) : entry = null;
+
+  final LedgerEntry? entry;
+  final List<LedgerEntry>? group;
+}
 
 class _SummaryCard extends StatelessWidget {
   const _SummaryCard({
@@ -1154,6 +1208,7 @@ class _EntryTile extends StatelessWidget {
     required this.selected,
     required this.onToggleSelection,
     required this.onEnterSelection,
+    super.key,
   });
   final LedgerEntry entry;
   final LedgerController controller;
