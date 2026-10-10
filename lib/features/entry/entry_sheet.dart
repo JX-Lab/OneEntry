@@ -17,16 +17,11 @@ class EntrySheet extends StatefulWidget {
 class _EntrySheetState extends State<EntrySheet> {
   final TextEditingController _amountController = TextEditingController();
   final TextEditingController _noteController = TextEditingController();
-  final TextEditingController _memberSearchController = TextEditingController();
   EntryType _type = EntryType.expense;
   String _category = '餐饮';
   int _accountId = 1;
   int? _toAccountId = 2;
   final Set<int> _members = <int>{};
-  bool _accountOpen = false;
-  bool _membersOpen = false;
-  bool _fromAccountOpen = false;
-  bool _toAccountOpen = false;
   bool _recurring = false;
   String _frequency = 'month';
   DateTime _occurredAt = DateTime.now();
@@ -37,8 +32,14 @@ class _EntrySheetState extends State<EntrySheet> {
     final List<LedgerAccount> activeAccounts = widget.controller.accounts
         .where((LedgerAccount account) => !account.archived)
         .toList();
-    if (activeAccounts.isNotEmpty) _accountId = activeAccounts.first.id;
-    if (activeAccounts.length > 1) _toAccountId = activeAccounts[1].id;
+    if (activeAccounts.isNotEmpty) {
+      _accountId = _lastUsedAccountId(activeAccounts);
+    }
+    if (activeAccounts.length > 1) {
+      _toAccountId = activeAccounts
+          .firstWhere((account) => account.id != _accountId)
+          .id;
+    }
     _members.clear();
     if (widget.controller.categories.isNotEmpty) {
       final List<LedgerCategory> expense = widget.controller.categoriesFor(
@@ -67,8 +68,21 @@ class _EntrySheetState extends State<EntrySheet> {
   void dispose() {
     _amountController.dispose();
     _noteController.dispose();
-    _memberSearchController.dispose();
     super.dispose();
+  }
+
+  int _lastUsedAccountId(List<LedgerAccount> activeAccounts) {
+    final Set<int> activeIds = activeAccounts
+        .map((account) => account.id)
+        .toSet();
+    for (final LedgerEntry entry in widget.controller.entries) {
+      if (entry.type == EntryType.expense || entry.type == EntryType.income) {
+        return activeIds.contains(entry.accountId)
+            ? entry.accountId
+            : activeAccounts.first.id;
+      }
+    }
+    return activeAccounts.first.id;
   }
 
   void _save() {
@@ -110,16 +124,6 @@ class _EntrySheetState extends State<EntrySheet> {
         .toList();
     final List<LedgerMember> members = widget.controller.members
         .where((LedgerMember member) => !member.archived)
-        .toList();
-    final String memberQuery = _memberSearchController.text
-        .trim()
-        .toLowerCase();
-    final List<LedgerMember> filteredMembers = members
-        .where(
-          (member) =>
-              memberQuery.isEmpty ||
-              member.name.toLowerCase().contains(memberQuery),
-        )
         .toList();
     final LedgerAccount? account = _findAccount(accounts, _accountId);
     final LedgerAccount? toAccount = _findAccount(accounts, _toAccountId);
@@ -166,148 +170,45 @@ class _EntrySheetState extends State<EntrySheet> {
                   onLongPress: (LedgerCategory category) =>
                       _addCategory(category),
                 ),
-                _SelectorCard(
+                _PickerField(
                   title: '账户',
                   value: account?.name ?? '请选择',
-                  open: _accountOpen,
-                  onHeaderTap: () =>
-                      setState(() => _accountOpen = !_accountOpen),
-                  children: accounts
-                      .map(
-                        (LedgerAccount item) => _SelectorRow(
-                          icon: Icons.account_balance_wallet_outlined,
-                          title: item.name,
-                          selected: item.id == _accountId,
-                          onTap: () => setState(() {
-                            _accountId = item.id;
-                            _accountOpen = false;
-                          }),
-                        ),
-                      )
-                      .toList(),
+                  onTap: () => _pickAccount(
+                    title: '选择账户',
+                    accounts: accounts,
+                    selectedId: _accountId,
+                    onSelected: (int id) => setState(() => _accountId = id),
+                  ),
                 ),
               ] else ...<Widget>[
-                _SelectorCard(
+                _PickerField(
                   title: '转出账户',
                   value: account?.name ?? '请选择',
-                  open: _fromAccountOpen,
-                  onHeaderTap: () =>
-                      setState(() => _fromAccountOpen = !_fromAccountOpen),
-                  children: accounts
-                      .map(
-                        (LedgerAccount item) => _SelectorRow(
-                          icon: Icons.call_made,
-                          title: item.name,
-                          selected: item.id == _accountId,
-                          onTap: () => setState(() {
-                            _accountId = item.id;
-                            _fromAccountOpen = false;
-                          }),
-                        ),
-                      )
-                      .toList(),
+                  onTap: () => _pickAccount(
+                    title: '选择转出账户',
+                    accounts: accounts,
+                    selectedId: _accountId,
+                    excludedId: _toAccountId,
+                    onSelected: (int id) => setState(() => _accountId = id),
+                  ),
                 ),
-                _SelectorCard(
+                _PickerField(
                   title: '转入账户',
                   value: toAccount?.name ?? '请选择',
-                  open: _toAccountOpen,
-                  onHeaderTap: () =>
-                      setState(() => _toAccountOpen = !_toAccountOpen),
-                  children: accounts
-                      .map(
-                        (LedgerAccount item) => _SelectorRow(
-                          icon: Icons.call_received,
-                          title: item.name,
-                          selected: item.id == _toAccountId,
-                          onTap: () => setState(() {
-                            _toAccountId = item.id;
-                            _toAccountOpen = false;
-                          }),
-                        ),
-                      )
-                      .toList(),
+                  onTap: () => _pickAccount(
+                    title: '选择转入账户',
+                    accounts: accounts,
+                    selectedId: _toAccountId,
+                    excludedId: _accountId,
+                    onSelected: (int id) => setState(() => _toAccountId = id),
+                  ),
                 ),
               ],
               if (widget.controller.multiEnabled)
-                _SelectorCard(
+                _PickerField(
                   title: _type == EntryType.transfer ? '操作者 · 可多选' : '成员 · 可多选',
                   value: _memberSummary(members),
-                  open: _membersOpen,
-                  onHeaderTap: () =>
-                      setState(() => _membersOpen = !_membersOpen),
-                  footer: _membersOpen
-                      ? Align(
-                          alignment: Alignment.centerRight,
-                          child: FilledButton(
-                            onPressed: () =>
-                                setState(() => _membersOpen = false),
-                            style: FilledButton.styleFrom(
-                              minimumSize: const Size(74, 34),
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 16,
-                              ),
-                            ),
-                            child: const Text('完成'),
-                          ),
-                        )
-                      : null,
-                  children: <Widget>[
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(12, 10, 12, 4),
-                      child: TextField(
-                        controller: _memberSearchController,
-                        autofocus: false,
-                        decoration: InputDecoration(
-                          hintText: '搜索成员',
-                          prefixIcon: const Icon(Icons.search, size: 20),
-                          suffixIcon: _memberSearchController.text.isEmpty
-                              ? null
-                              : IconButton(
-                                  onPressed: () =>
-                                      setState(_memberSearchController.clear),
-                                  icon: const Icon(Icons.close, size: 18),
-                                ),
-                          isDense: true,
-                        ),
-                        onChanged: (_) => setState(() {}),
-                      ),
-                    ),
-                    _SelectorRow(
-                      icon: Icons.block_outlined,
-                      title: '无选择',
-                      selected: _members.isEmpty,
-                      onTap: () => setState(_members.clear),
-                    ),
-                    _SelectorRow(
-                      icon: Icons.people_outline,
-                      title: '全体成员',
-                      selected:
-                          members.isNotEmpty &&
-                          _members.length == members.length,
-                      onTap: () => setState(() {
-                        if (_members.length == members.length) {
-                          _members.clear();
-                        } else {
-                          _members
-                            ..clear()
-                            ..addAll(
-                              members.map((LedgerMember member) => member.id),
-                            );
-                        }
-                      }),
-                    ),
-                    ...filteredMembers.map(
-                      (LedgerMember member) => _SelectorRow(
-                        color: Color(member.colorValue),
-                        title: member.name,
-                        selected: _members.contains(member.id),
-                        onTap: () => setState(() {
-                          if (!_members.add(member.id))
-                            _members.remove(member.id);
-                        }),
-                      ),
-                    ),
-                  ],
+                  onTap: () => _pickMembers(members),
                 ),
               Container(
                 margin: const EdgeInsets.only(top: 10),
@@ -393,6 +294,46 @@ class _EntrySheetState extends State<EntrySheet> {
         ),
       ),
     );
+  }
+
+  Future<void> _pickAccount({
+    required String title,
+    required List<LedgerAccount> accounts,
+    required int? selectedId,
+    required ValueChanged<int> onSelected,
+    int? excludedId,
+  }) async {
+    final int? result = await showModalBottomSheet<int>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      builder: (BuildContext context) => _AccountPickerSheet(
+        title: title,
+        accounts: accounts,
+        selectedId: selectedId,
+        excludedId: excludedId,
+      ),
+    );
+    if (result != null && mounted) onSelected(result);
+  }
+
+  Future<void> _pickMembers(List<LedgerMember> members) async {
+    final Set<int>? result = await showModalBottomSheet<Set<int>>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      builder: (BuildContext context) => _MemberPickerSheet(
+        title: _type == EntryType.transfer ? '选择操作者' : '选择成员',
+        members: members,
+        selectedIds: _members,
+      ),
+    );
+    if (result == null || !mounted) return;
+    setState(() {
+      _members
+        ..clear()
+        ..addAll(result);
+    });
   }
 
   LedgerAccount? _findAccount(List<LedgerAccount> accounts, int? id) {
@@ -901,21 +842,15 @@ class _CategoryGrid extends StatelessWidget {
   );
 }
 
-class _SelectorCard extends StatelessWidget {
-  const _SelectorCard({
+class _PickerField extends StatelessWidget {
+  const _PickerField({
     required this.title,
     required this.value,
-    required this.open,
-    required this.onHeaderTap,
-    required this.children,
-    this.footer,
+    required this.onTap,
   });
   final String title;
   final String value;
-  final bool open;
-  final VoidCallback onHeaderTap;
-  final List<Widget> children;
-  final Widget? footer;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) => Container(
@@ -925,47 +860,339 @@ class _SelectorCard extends StatelessWidget {
       borderRadius: BorderRadius.circular(14),
     ),
     clipBehavior: Clip.antiAlias,
-    child: Column(
-      children: <Widget>[
-        InkWell(
-          onTap: onHeaderTap,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-            child: Row(
-              children: <Widget>[
-                Text(
-                  title,
-                  style: const TextStyle(fontWeight: FontWeight.w600),
+    child: InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+        child: Row(
+          children: <Widget>[
+            Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Text(
+                value,
+                textAlign: TextAlign.right,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
                 ),
-                const Spacer(),
-                Expanded(
-                  child: Text(
-                    value,
-                    textAlign: TextAlign.right,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(color: Color(0xFF8A9099)),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Icon(
+              Icons.chevron_right,
+              size: 20,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
+}
+
+class _AccountPickerSheet extends StatefulWidget {
+  const _AccountPickerSheet({
+    required this.title,
+    required this.accounts,
+    required this.selectedId,
+    this.excludedId,
+  });
+
+  final String title;
+  final List<LedgerAccount> accounts;
+  final int? selectedId;
+  final int? excludedId;
+
+  @override
+  State<_AccountPickerSheet> createState() => _AccountPickerSheetState();
+}
+
+class _AccountPickerSheetState extends State<_AccountPickerSheet> {
+  final TextEditingController _searchController = TextEditingController();
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final String query = _searchController.text.trim().toLowerCase();
+    final List<LedgerAccount> filtered = widget.accounts
+        .where((account) => account.name.toLowerCase().contains(query))
+        .toList();
+    final double height = (MediaQuery.sizeOf(context).height * .72)
+        .clamp(360.0, 620.0)
+        .toDouble();
+    return AnimatedPadding(
+      duration: const Duration(milliseconds: 160),
+      curve: Curves.easeOut,
+      padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
+      child: SizedBox(
+        height: height,
+        child: Column(
+          children: <Widget>[
+            _PickerSheetHeader(
+              title: widget.title,
+              onClose: () => Navigator.pop(context),
+            ),
+            _PickerSearchField(
+              controller: _searchController,
+              hintText: '搜索账户',
+              onChanged: () => setState(() {}),
+            ),
+            const SizedBox(height: 6),
+            Expanded(
+              child: filtered.isEmpty
+                  ? const _PickerEmpty(message: '没有匹配的账户')
+                  : ListView.builder(
+                      padding: const EdgeInsets.fromLTRB(8, 0, 8, 16),
+                      keyboardDismissBehavior:
+                          ScrollViewKeyboardDismissBehavior.onDrag,
+                      itemCount: filtered.length,
+                      itemBuilder: (BuildContext context, int index) {
+                        final LedgerAccount account = filtered[index];
+                        final bool excluded = account.id == widget.excludedId;
+                        return _SelectorRow(
+                          icon: _entryAccountIcon(account.icon),
+                          title: account.name,
+                          subtitle: excluded
+                              ? '已选为另一个转账账户'
+                              : '余额 ¥${account.balance.toStringAsFixed(2)}',
+                          selected: account.id == widget.selectedId,
+                          enabled: !excluded,
+                          onTap: () => Navigator.pop(context, account.id),
+                        );
+                      },
+                    ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _MemberPickerSheet extends StatefulWidget {
+  const _MemberPickerSheet({
+    required this.title,
+    required this.members,
+    required this.selectedIds,
+  });
+
+  final String title;
+  final List<LedgerMember> members;
+  final Set<int> selectedIds;
+
+  @override
+  State<_MemberPickerSheet> createState() => _MemberPickerSheetState();
+}
+
+class _MemberPickerSheetState extends State<_MemberPickerSheet> {
+  final TextEditingController _searchController = TextEditingController();
+  late final Set<int> _selectedIds;
+
+  @override
+  void initState() {
+    super.initState();
+    final Set<int> activeIds = widget.members
+        .map((member) => member.id)
+        .toSet();
+    _selectedIds = widget.selectedIds.intersection(activeIds);
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final String query = _searchController.text.trim().toLowerCase();
+    final List<LedgerMember> filtered = widget.members
+        .where((member) => member.name.toLowerCase().contains(query))
+        .toList();
+    final bool allSelected =
+        widget.members.isNotEmpty &&
+        widget.members.every((member) => _selectedIds.contains(member.id));
+    final double height = (MediaQuery.sizeOf(context).height * .78)
+        .clamp(400.0, 680.0)
+        .toDouble();
+    return AnimatedPadding(
+      duration: const Duration(milliseconds: 160),
+      curve: Curves.easeOut,
+      padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
+      child: SizedBox(
+        height: height,
+        child: Column(
+          children: <Widget>[
+            _PickerSheetHeader(
+              title: widget.title,
+              onClose: () => Navigator.pop(context),
+              action: TextButton(
+                onPressed: () => Navigator.pop(context, _selectedIds),
+                child: Text(
+                  _selectedIds.isEmpty ? '完成' : '完成 (${_selectedIds.length})',
+                  style: const TextStyle(fontWeight: FontWeight.w700),
+                ),
+              ),
+            ),
+            _PickerSearchField(
+              controller: _searchController,
+              hintText: '搜索成员',
+              onChanged: () => setState(() {}),
+            ),
+            const SizedBox(height: 6),
+            Expanded(
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(8, 0, 8, 16),
+                keyboardDismissBehavior:
+                    ScrollViewKeyboardDismissBehavior.onDrag,
+                children: <Widget>[
+                  _SelectorRow(
+                    icon: Icons.block_outlined,
+                    title: '无选择',
+                    selected: _selectedIds.isEmpty,
+                    onTap: () => setState(_selectedIds.clear),
                   ),
-                ),
-                const SizedBox(width: 10),
-                AnimatedRotation(
-                  turns: open ? .5 : 0,
-                  duration: const Duration(milliseconds: 180),
-                  child: const Icon(Icons.arrow_drop_down, size: 20),
-                ),
-              ],
+                  _SelectorRow(
+                    icon: Icons.people_outline,
+                    title: '全体成员',
+                    subtitle: widget.members.isEmpty
+                        ? '暂无可用成员'
+                        : '共 ${widget.members.length} 人',
+                    selected: allSelected,
+                    enabled: widget.members.isNotEmpty,
+                    onTap: () => setState(() {
+                      if (allSelected) {
+                        _selectedIds.clear();
+                      } else {
+                        _selectedIds
+                          ..clear()
+                          ..addAll(widget.members.map((member) => member.id));
+                      }
+                    }),
+                  ),
+                  if (filtered.isEmpty && query.isNotEmpty)
+                    const SizedBox(
+                      height: 120,
+                      child: _PickerEmpty(message: '没有匹配的成员'),
+                    )
+                  else
+                    ...filtered.map(
+                      (LedgerMember member) => _SelectorRow(
+                        color: Color(member.colorValue),
+                        title: member.name,
+                        selected: _selectedIds.contains(member.id),
+                        onTap: () => setState(() {
+                          if (!_selectedIds.add(member.id)) {
+                            _selectedIds.remove(member.id);
+                          }
+                        }),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _PickerSheetHeader extends StatelessWidget {
+  const _PickerSheetHeader({
+    required this.title,
+    required this.onClose,
+    this.action,
+  });
+
+  final String title;
+  final VoidCallback onClose;
+  final Widget? action;
+
+  @override
+  Widget build(BuildContext context) => SizedBox(
+    height: 48,
+    child: Row(
+      children: <Widget>[
+        SizedBox(
+          width: 64,
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: IconButton(
+              tooltip: '关闭',
+              onPressed: onClose,
+              icon: const Icon(Icons.close),
             ),
           ),
         ),
-        if (open) ...<Widget>[
-          const Divider(height: 1),
-          ...children,
-          if (footer != null)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(12, 6, 12, 10),
-              child: footer,
-            ),
-        ],
+        Expanded(
+          child: Text(
+            title,
+            textAlign: TextAlign.center,
+            style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
+          ),
+        ),
+        SizedBox(width: 64, child: action),
       ],
+    ),
+  );
+}
+
+class _PickerSearchField extends StatelessWidget {
+  const _PickerSearchField({
+    required this.controller,
+    required this.hintText,
+    required this.onChanged,
+  });
+
+  final TextEditingController controller;
+  final String hintText;
+  final VoidCallback onChanged;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+    child: TextField(
+      controller: controller,
+      autofocus: false,
+      textInputAction: TextInputAction.search,
+      decoration: InputDecoration(
+        hintText: hintText,
+        prefixIcon: const Icon(Icons.search, size: 20),
+        suffixIcon: controller.text.isEmpty
+            ? null
+            : IconButton(
+                tooltip: '清空',
+                onPressed: () {
+                  controller.clear();
+                  onChanged();
+                },
+                icon: const Icon(Icons.close, size: 18),
+              ),
+        isDense: true,
+      ),
+      onChanged: (_) => onChanged(),
+    ),
+  );
+}
+
+class _PickerEmpty extends StatelessWidget {
+  const _PickerEmpty({required this.message});
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) => Center(
+    child: Text(
+      message,
+      style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
     ),
   );
 }
@@ -977,17 +1204,22 @@ class _SelectorRow extends StatelessWidget {
     required this.onTap,
     this.icon,
     this.color,
+    this.subtitle,
+    this.enabled = true,
   });
   final String title;
   final bool selected;
   final VoidCallback onTap;
   final IconData? icon;
   final Color? color;
+  final String? subtitle;
+  final bool enabled;
 
   @override
   Widget build(BuildContext context) => ListTile(
     dense: true,
-    onTap: onTap,
+    enabled: enabled,
+    onTap: enabled ? onTap : null,
     leading: color == null
         ? Icon(icon, size: 20)
         : Container(
@@ -999,11 +1231,35 @@ class _SelectorRow extends StatelessWidget {
       title,
       style: TextStyle(fontWeight: selected ? FontWeight.w600 : null),
     ),
+    subtitle: subtitle == null ? null : Text(subtitle!),
     trailing: selected
         ? const Icon(Icons.check, color: AppTheme.green, size: 20)
         : const SizedBox(width: 20),
   );
 }
+
+IconData _entryAccountIcon(String value) => switch (value) {
+  'cash' => Icons.payments_outlined,
+  'chat' => Icons.chat_bubble_outline,
+  'bank' => Icons.account_balance_outlined,
+  'card' => Icons.credit_card,
+  'saving' => Icons.savings_outlined,
+  'coin' => Icons.monetization_on_outlined,
+  'online' => Icons.language,
+  'phone' => Icons.phone_android_outlined,
+  'piggy' => Icons.savings_outlined,
+  'ticket' => Icons.confirmation_number_outlined,
+  'investment' => Icons.trending_up,
+  'loan' => Icons.request_quote_outlined,
+  'house' => Icons.home_work_outlined,
+  'car' => Icons.directions_car_outlined,
+  'travel' => Icons.flight_takeoff_outlined,
+  'digital' => Icons.cloud_outlined,
+  'crypto' => Icons.currency_bitcoin,
+  'insurance' => Icons.health_and_safety_outlined,
+  'business' => Icons.business_center_outlined,
+  _ => Icons.account_balance_wallet_outlined,
+};
 
 String _formatDateTime(DateTime value) =>
     '${value.year}年${value.month.toString().padLeft(2, '0')}月${value.day.toString().padLeft(2, '0')}日 '
