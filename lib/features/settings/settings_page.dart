@@ -77,6 +77,15 @@ class _SettingsPageState extends State<SettingsPage> {
                         ),
                         onTap: _pickReminderTime,
                       ),
+                    if (widget.controller.dailyReminderEnabled)
+                      ListTile(
+                        title: const Text('测试提醒'),
+                        subtitle: const Text('立即发送一条测试通知'),
+                        trailing: const Icon(
+                          Icons.notifications_active_outlined,
+                        ),
+                        onTap: _testReminder,
+                      ),
                     ListTile(
                       title: const Text('周期账目'),
                       trailing: Text(
@@ -249,11 +258,7 @@ class _SettingsPageState extends State<SettingsPage> {
 
   Future<void> _toggleDailyReminder(bool enabled) async {
     if (enabled && !await NotificationService.requestPermission()) {
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('需要通知权限才能开启提醒')));
-      }
+      if (mounted) _showNotificationSettingsMessage();
       return;
     }
     await widget.controller.setDailyReminder(
@@ -267,6 +272,36 @@ class _SettingsPageState extends State<SettingsPage> {
       minute: widget.controller.dailyReminderMinute,
     );
     if (mounted) setState(() {});
+  }
+
+  Future<void> _testReminder() async {
+    if (!await NotificationService.requestPermission()) {
+      if (mounted) _showNotificationSettingsMessage();
+      return;
+    }
+    final bool shown = await NotificationService.showTestNotification();
+    if (!mounted) return;
+    if (!shown) {
+      _showNotificationSettingsMessage();
+      return;
+    }
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('测试通知已发送，请查看系统通知栏')));
+  }
+
+  void _showNotificationSettingsMessage() {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: const Text('通知权限或「记账提醒」通知渠道已关闭'),
+        action: SnackBarAction(
+          label: '打开设置',
+          onPressed: () {
+            NotificationService.openSettings();
+          },
+        ),
+      ),
+    );
   }
 
   Future<void> _pickReminderTime() async {

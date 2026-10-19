@@ -25,6 +25,20 @@ object NotificationScheduler {
         manager.createNotificationChannel(channel)
     }
 
+    fun notificationsEnabled(context: Context): Boolean {
+        val manager = context.getSystemService(NotificationManager::class.java)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N && !manager.areNotificationsEnabled()) {
+            return false
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channel = manager.getNotificationChannel(CHANNEL_ID)
+            if (channel != null && channel.importance == NotificationManager.IMPORTANCE_NONE) {
+                return false
+            }
+        }
+        return true
+    }
+
     fun scheduleDaily(context: Context, enabled: Boolean, hour: Int, minute: Int) {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
             .putBoolean("daily_enabled", enabled)
@@ -35,12 +49,7 @@ object NotificationScheduler {
         val pending = pendingIntent(context, ACTION_DAILY, 2101)
         alarm.cancel(pending)
         if (enabled) {
-            alarm.setInexactRepeating(
-                AlarmManager.RTC_WAKEUP,
-                nextTime(hour, minute),
-                AlarmManager.INTERVAL_DAY,
-                pending,
-            )
+            setOneShot(alarm, nextTime(hour, minute), pending)
         }
     }
 
@@ -48,11 +57,17 @@ object NotificationScheduler {
         val alarm = context.getSystemService(AlarmManager::class.java)
         val pending = pendingIntent(context, ACTION_RECURRING, 2102)
         alarm.cancel(pending)
-        alarm.setInexactRepeating(
-            AlarmManager.RTC_WAKEUP,
-            nextTime(8, 0),
-            AlarmManager.INTERVAL_DAY,
-            pending,
+        setOneShot(alarm, nextTime(8, 0), pending)
+    }
+
+    fun scheduleNextDaily(context: Context) {
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        if (!prefs.getBoolean("daily_enabled", false)) return
+        val alarm = context.getSystemService(AlarmManager::class.java)
+        setOneShot(
+            alarm,
+            nextTime(prefs.getInt("daily_hour", 20), prefs.getInt("daily_minute", 0)),
+            pendingIntent(context, ACTION_DAILY, 2101),
         )
     }
 
@@ -75,6 +90,10 @@ object NotificationScheduler {
             intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
+    }
+
+    private fun setOneShot(alarm: AlarmManager, triggerAtMillis: Long, pending: PendingIntent) {
+        alarm.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAtMillis, pending)
     }
 
     private fun nextTime(hour: Int, minute: Int): Long {

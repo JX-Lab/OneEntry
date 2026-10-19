@@ -8,6 +8,7 @@ import android.database.Cursor
 import android.net.Uri
 import android.os.Build
 import android.provider.OpenableColumns
+import android.provider.Settings
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -26,6 +27,10 @@ class MainActivity : FlutterActivity() {
                     result.success(null)
                 }
                 "requestPermission" -> requestNotificationPermission(result)
+                "notificationsEnabled" -> {
+                    NotificationScheduler.createChannel(this)
+                    result.success(NotificationScheduler.notificationsEnabled(this))
+                }
                 "scheduleDaily" -> {
                     NotificationScheduler.scheduleDaily(
                         this,
@@ -37,6 +42,11 @@ class MainActivity : FlutterActivity() {
                 }
                 "scheduleRecurringCheck" -> {
                     NotificationScheduler.scheduleRecurringCheck(this)
+                    result.success(null)
+                }
+                "showTestNotification" -> result.success(ReminderReceiver().showTest(this))
+                "openNotificationSettings" -> {
+                    openNotificationSettings()
                     result.success(null)
                 }
                 else -> result.notImplemented()
@@ -57,12 +67,13 @@ class MainActivity : FlutterActivity() {
     }
 
     private fun requestNotificationPermission(result: MethodChannel.Result) {
+        NotificationScheduler.createChannel(this)
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
-            result.success(true)
+            result.success(NotificationScheduler.notificationsEnabled(this))
             return
         }
         if (checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) {
-            result.success(true)
+            result.success(NotificationScheduler.notificationsEnabled(this))
             return
         }
         if (permissionResult != null) {
@@ -76,9 +87,24 @@ class MainActivity : FlutterActivity() {
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         if (requestCode == REQUEST_NOTIFICATIONS) {
-            permissionResult?.success(grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED)
+            val granted = grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED
+            permissionResult?.success(granted && NotificationScheduler.notificationsEnabled(this))
             permissionResult = null
         }
+    }
+
+    private fun openNotificationSettings() {
+        val intent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            Intent(Settings.ACTION_CHANNEL_NOTIFICATION_SETTINGS).apply {
+                putExtra(Settings.EXTRA_APP_PACKAGE, packageName)
+                putExtra(Settings.EXTRA_CHANNEL_ID, NotificationScheduler.CHANNEL_ID)
+            }
+        } else {
+            Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                data = Uri.parse("package:$packageName")
+            }
+        }
+        startActivity(intent)
     }
 
     private fun openFile(mimeTypes: List<String>, result: MethodChannel.Result) {

@@ -15,9 +15,22 @@ class ReminderReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         NotificationScheduler.createChannel(context)
         when (intent.action) {
-            NotificationScheduler.ACTION_DAILY -> notifyDailyIfNeeded(context)
-            NotificationScheduler.ACTION_RECURRING -> notifyRecurringIfNeeded(context)
+            NotificationScheduler.ACTION_DAILY -> try {
+                notifyDailyIfNeeded(context)
+            } finally {
+                NotificationScheduler.scheduleNextDaily(context)
+            }
+            NotificationScheduler.ACTION_RECURRING -> try {
+                notifyRecurringIfNeeded(context)
+            } finally {
+                NotificationScheduler.scheduleRecurringCheck(context)
+            }
         }
+    }
+
+    fun showTest(context: Context): Boolean {
+        NotificationScheduler.createChannel(context)
+        return show(context, 3199, "记账提醒测试成功", "之后会在设定时间提醒你记账")
     }
 
     private fun notifyDailyIfNeeded(context: Context) {
@@ -67,7 +80,8 @@ class ReminderReceiver : BroadcastReceiver() {
         }
     }
 
-    private fun show(context: Context, id: Int, title: String, body: String?) {
+    private fun show(context: Context, id: Int, title: String, body: String?): Boolean {
+        if (!NotificationScheduler.notificationsEnabled(context)) return false
         val launch = context.packageManager.getLaunchIntentForPackage(context.packageName)
         val contentIntent = launch?.let {
             PendingIntent.getActivity(context, id, it, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
@@ -78,13 +92,19 @@ class ReminderReceiver : BroadcastReceiver() {
             Notification.Builder(context)
         }
         val notification = builder
-            .setSmallIcon(R.drawable.ic_launcher_foreground)
+            .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle(title)
             .setContentText(body)
             .setAutoCancel(true)
             .setContentIntent(contentIntent)
+            .setCategory(Notification.CATEGORY_REMINDER)
             .setPriority(Notification.PRIORITY_DEFAULT)
             .build()
-        context.getSystemService(NotificationManager::class.java).notify(id, notification)
+        return try {
+            context.getSystemService(NotificationManager::class.java).notify(id, notification)
+            true
+        } catch (_: SecurityException) {
+            false
+        }
     }
 }
