@@ -15,7 +15,36 @@ class SettingsPage extends StatefulWidget {
   State<SettingsPage> createState() => _SettingsPageState();
 }
 
-class _SettingsPageState extends State<SettingsPage> {
+class _SettingsPageState extends State<SettingsPage>
+    with WidgetsBindingObserver {
+  bool _waitingForExactAlarmPermission = false;
+  bool? _exactAlarmAllowed;
+  int? _pendingReminderHour;
+  int? _pendingReminderMinute;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _refreshExactAlarmAccess();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed ||
+        !_waitingForExactAlarmPermission) {
+      return;
+    }
+    _waitingForExactAlarmPermission = false;
+    _finishExactAlarmPermissionRequest();
+  }
+
   @override
   Widget build(BuildContext context) => AnimatedBuilder(
     animation: widget.controller,
@@ -65,7 +94,7 @@ class _SettingsPageState extends State<SettingsPage> {
                   children: <Widget>[
                     SwitchListTile(
                       title: const Text('提醒记账'),
-                      subtitle: const Text('今天没有记账时提醒'),
+                      subtitle: const Text('每天在设定时间提醒，不受当天记账记录影响'),
                       value: widget.controller.dailyReminderEnabled,
                       onChanged: _toggleDailyReminder,
                     ),
@@ -76,6 +105,20 @@ class _SettingsPageState extends State<SettingsPage> {
                           '${widget.controller.dailyReminderHour.toString().padLeft(2, '0')}:${widget.controller.dailyReminderMinute.toString().padLeft(2, '0')}  ›',
                         ),
                         onTap: _pickReminderTime,
+                      ),
+                    if (widget.controller.dailyReminderEnabled &&
+                        _exactAlarmAllowed == false)
+                      ListTile(
+                        leading: const Icon(
+                          Icons.warning_amber_rounded,
+                          color: Color(0xFFFA8C16),
+                        ),
+                        title: const Text('需要允许精确提醒'),
+                        subtitle: const Text('点击打开系统「闹钟和提醒」权限'),
+                        onTap: () => _requestExactAlarmPermission(
+                          hour: widget.controller.dailyReminderHour,
+                          minute: widget.controller.dailyReminderMinute,
+                        ),
                       ),
                     if (widget.controller.dailyReminderEnabled)
                       ListTile(
@@ -257,21 +300,85 @@ class _SettingsPageState extends State<SettingsPage> {
   );
 
   Future<void> _toggleDailyReminder(bool enabled) async {
-    if (enabled && !await NotificationService.requestPermission()) {
+    if (!enabled) {
+      await _applyDailyReminder(enabled: false);
+      return;
+    }
+    if (!await NotificationService.requestPermission()) {
       if (mounted) _showNotificationSettingsMessage();
       return;
     }
+    final bool exactAllowed =
+        await NotificationService.canScheduleExactAlarms();
+    if (mounted) setState(() => _exactAlarmAllowed = exactAllowed);
+    if (!exactAllowed) {
+      await _requestExactAlarmPermission(
+        hour: widget.controller.dailyReminderHour,
+        minute: widget.controller.dailyReminderMinute,
+      );
+      return;
+    }
+    await _applyDailyReminder(enabled: true);
+  }
+
+  Future<void> _applyDailyReminder({
+    required bool enabled,
+    int? hour,
+    int? minute,
+  }) async {
+    final int nextHour = hour ?? widget.controller.dailyReminderHour;
+    final int nextMinute = minute ?? widget.controller.dailyReminderMinute;
     await widget.controller.setDailyReminder(
       enabled: enabled,
-      hour: widget.controller.dailyReminderHour,
-      minute: widget.controller.dailyReminderMinute,
+      hour: nextHour,
+      minute: nextMinute,
     );
     await NotificationService.scheduleDaily(
       enabled: enabled,
-      hour: widget.controller.dailyReminderHour,
-      minute: widget.controller.dailyReminderMinute,
+      hour: nextHour,
+      minute: nextMinute,
     );
     if (mounted) setState(() {});
+  }
+
+  Future<void> _requestExactAlarmPermission({
+    required int hour,
+    required int minute,
+  }) async {
+    _pendingReminderHour = hour;
+    _pendingReminderMinute = minute;
+    _waitingForExactAlarmPermission = true;
+    await NotificationService.openExactAlarmSettings();
+  }
+
+  Future<void> _refreshExactAlarmAccess() async {
+    final bool allowed = await NotificationService.canScheduleExactAlarms();
+    if (mounted) setState(() => _exactAlarmAllowed = allowed);
+  }
+
+  Future<void> _finishExactAlarmPermissionRequest() async {
+    final bool exactAllowed =
+        await NotificationService.canScheduleExactAlarms();
+    if (mounted) setState(() => _exactAlarmAllowed = exactAllowed);
+    if (!exactAllowed) {
+      _pendingReminderHour = null;
+      _pendingReminderMinute = null;
+      if (mounted) _showExactAlarmSettingsMessage();
+      return;
+    }
+    final int hour =
+        _pendingReminderHour ?? widget.controller.dailyReminderHour;
+    final int minute =
+        _pendingReminderMinute ?? widget.controller.dailyReminderMinute;
+    _pendingReminderHour = null;
+    _pendingReminderMinute = null;
+    if (mounted) setState(() => _exactAlarmAllowed = true);
+    await _applyDailyReminder(enabled: true, hour: hour, minute: minute);
+    if (mounted) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('已开启每日精确定时提醒')));
+    }
   }
 
   Future<void> _testReminder() async {
@@ -304,6 +411,23 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 
+  void _showExactAlarmSettingsMessage() {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: const Text('需要允许「闹钟和提醒」才能准时通知'),
+        action: SnackBarAction(
+          label: '打开设置',
+          onPressed: () {
+            _requestExactAlarmPermission(
+              hour: widget.controller.dailyReminderHour,
+              minute: widget.controller.dailyReminderMinute,
+            );
+          },
+        ),
+      ),
+    );
+  }
+
   Future<void> _pickReminderTime() async {
     final TimeOfDay? selected = await showTimePicker(
       context: context,
@@ -313,17 +437,21 @@ class _SettingsPageState extends State<SettingsPage> {
       ),
     );
     if (selected == null) return;
-    await widget.controller.setDailyReminder(
+    final bool exactAllowed =
+        await NotificationService.canScheduleExactAlarms();
+    if (mounted) setState(() => _exactAlarmAllowed = exactAllowed);
+    if (!exactAllowed) {
+      await _requestExactAlarmPermission(
+        hour: selected.hour,
+        minute: selected.minute,
+      );
+      return;
+    }
+    await _applyDailyReminder(
       enabled: true,
       hour: selected.hour,
       minute: selected.minute,
     );
-    await NotificationService.scheduleDaily(
-      enabled: true,
-      hour: selected.hour,
-      minute: selected.minute,
-    );
-    if (mounted) setState(() {});
   }
 
   Future<void> _showExport() async {

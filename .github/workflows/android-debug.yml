@@ -63,21 +63,19 @@ jobs:
               echo "keyPassword=$ONEENTRY_KEY_PASSWORD"
             } > android/key.properties
             echo "BUILD_MODE=release" >> "$GITHUB_ENV"
-            echo "APK_NAME=app-release.apk" >> "$GITHUB_ENV"
           else
             echo "BUILD_MODE=debug" >> "$GITHUB_ENV"
-            echo "APK_NAME=app-debug.apk" >> "$GITHUB_ENV"
           fi
 
-      - name: Build APK
+      - name: Build smaller APKs by CPU architecture
         shell: bash
-        run: flutter build apk --${BUILD_MODE} --no-pub --build-number=${{ github.run_number }}
+        run: flutter build apk --${BUILD_MODE} --split-per-abi --no-pub --build-number=${{ github.run_number }}
 
-      - name: Upload APK artifact
+      - name: Upload split APK artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: OneEntry-${{ env.BUILD_MODE }}-apk
-          path: build/app/outputs/flutter-apk/${{ env.APK_NAME }}
+          name: OneEntry-${{ env.BUILD_MODE }}-split-apks
+          path: build/app/outputs/flutter-apk/app-*-${{ env.BUILD_MODE }}.apk
           if-no-files-found: error
           retention-days: 7
 
@@ -88,4 +86,9 @@ jobs:
           name: OneEntry ${{ env.BUILD_MODE }} Build #${{ github.run_number }}
           prerelease: ${{ env.BUILD_MODE != 'release' }}
           generate_release_notes: false
-          files: build/app/outputs/flutter-apk/${{ env.APK_NAME }}
+          body: |
+            Choose the APK for your device:
+            - `arm64-v8a`: most current Android phones and tablets
+            - `armeabi-v7a`: older 32-bit Android devices
+            - `x86_64`: Android emulators and x86 devices
+          files: build/app/outputs/flutter-apk/app-*-${{ env.BUILD_MODE }}.apk

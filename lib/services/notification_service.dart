@@ -19,6 +19,10 @@ class NotificationService {
     return await _channel.invokeMethod<bool>('notificationsEnabled') ?? false;
   }
 
+  static Future<bool> canScheduleExactAlarms() async {
+    return await _channel.invokeMethod<bool>('canScheduleExactAlarms') ?? false;
+  }
+
   static Future<void> scheduleDaily({
     required bool enabled,
     required int hour,
@@ -41,5 +45,9 @@ class NotificationService {
 
   static Future<void> openSettings() async {
     await _channel.invokeMethod<void>('openNotificationSettings');
+  }
+
+  static Future<void> openExactAlarmSettings() async {
+    await _channel.invokeMethod<void>('openExactAlarmSettings');
   }
 }

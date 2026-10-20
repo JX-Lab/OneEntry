@@ -16,7 +16,7 @@ class ReminderReceiver : BroadcastReceiver() {
         NotificationScheduler.createChannel(context)
         when (intent.action) {
             NotificationScheduler.ACTION_DAILY -> try {
-                notifyDailyIfNeeded(context)
+                notifyDaily(context)
             } finally {
                 NotificationScheduler.scheduleNextDaily(context)
             }
@@ -33,14 +33,8 @@ class ReminderReceiver : BroadcastReceiver() {
         return show(context, 3199, "记账提醒测试成功", "之后会在设定时间提醒你记账")
     }
 
-    private fun notifyDailyIfNeeded(context: Context) {
-        withDatabase(context) { db ->
-            val today = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Calendar.getInstance().time)
-            val count = db.rawQuery("SELECT COUNT(*) FROM transactions WHERE local_date = ?", arrayOf(today)).use { cursor ->
-                if (cursor.moveToFirst()) cursor.getInt(0) else 0
-            }
-            if (count == 0) show(context, 3101, "今天还没有记账，记得记录一下哦", null)
-        }
+    private fun notifyDaily(context: Context) {
+        show(context, 3101, "记账时间到了", "打开一笔，记录今天的收支吧")
     }
 
     private fun notifyRecurringIfNeeded(context: Context) {
