@@ -1,33 +1,62 @@
 # 一笔 · OneEntry
 
-Flutter Android 工程，应用包名为 `com.junxu.yibi`。
+一笔是一款本地优先、支持多成员记录的 Android 记账应用，使用 Flutter 开发。它适合个人、家庭、情侣或旅行同行者在同一本账中管理收支、账户、成员与预算。
 
-当前 Flutter 界面正在按 HTML 原型逐页等效移植。首页整体结构、账户、成员、预算、统计、设置和记一笔页面已经建立；HTML 原型是最终 UI 与交互标准，不再将 Material 默认骨架视为设计稿。
+<p align="center">
+  <img src="docs/prototype-preview.png" alt="一笔交互原型预览" width="760">
+</p>
 
-SQLite 数据库与版本迁移已经接入：账户、成员、分类、账目、账目成员、预算、周期规则、导入批次和设置使用独立关系表；金额以整数分保存，转账、余额和多人分摊在事务中写入。
+> 预览图来自项目早期交互原型。可下载 [HTML 交互原型](docs/oneentry-prototype.html) 后在浏览器中完整体验。实际应用已根据真机使用反馈继续优化，细节可能与原型略有不同。
 
-Android 本地通知、系统文件选择器、JSON / ZIP / XLSX 导入导出、同旅迁移 ZIP，以及预算、成员 / 账户归档和周期账目管理页面均已接入。当前 APK 仍应视为持续开发版本，需要继续以真机反馈校正 UI 细节。
+## 主要功能
 
-## 本地运行
+- **收支与转账**：记录支出、收入、账户间转账和余额调整。
+- **金额算式**：金额框可直接输入 `+ - × ÷` 或 `* /` 四则运算，支持括号与实时结果预览。
+- **多成员记账**：每笔账可选择一个或多个成员，并支持 AA 均摊或整笔计入。
+- **账户管理**：管理现金、银行卡、支付工具等账户，支持排序、归档和余额明细。
+- **自定义标签**：支持支出、收入标签和 200 余个图标，可排序、编辑、合并与移除。
+- **预算与统计**：提供月度预算、分类预算、收支构成、成员构成和明细下钻。
+- **搜索与批量操作**：按时间、标签、成员、备注搜索，并可批量编辑或删除账目。
+- **周期账目**：管理按天、周、月或年重复的账目规则。
+- **数据导入导出**：支持 JSON、ZIP、XLSX，以及同旅、时光序和通用表格数据。
+- **显示与无障碍**：支持日间/夜间主题、系统跟随、文字缩放和增强颜色对比。
 
-Flutter SDK 必须位于当前用户可写的位置，或允许它写入 `bin/cache`。之后执行：
+## 数据与隐私
+
+账本使用 SQLite 保存在应用内部，无需登录或云端服务。金额以整数分存储，转账、余额变更和多人分摊在数据库事务中完成。
+
+建议定期从设置页导出 ZIP 或 JSON 完整备份，特别是在卸载应用或更换设备之前。
+
+## 安装 APK
+
+GitHub Actions 会按 CPU 架构生成独立 APK，避免通用安装包同时携带多套原生库。
+
+- `app-arm64-v8a-release.apk`：大多数现代 Android 手机和平板。
+- `app-armeabi-v7a-release.apk`：较旧的 32 位 ARM 设备。
+- `app-x86_64-release.apk`：Android 模拟器或 x86 设备。
+
+在 GitHub 仓库的 **Actions** 或 **Releases** 中下载对应文件。绝大多数真机应选择 `arm64-v8a`。
+
+## 本地开发
+
+需要 Flutter `3.41.4` 或与项目兼容的更高版本，以及 Android SDK/JDK 17。
 
 ```text
 flutter pub get
 flutter run
 ```
 
-## 在私有 GitHub 仓库构建 APK
+使用 Android Studio 时，请打开项目根目录，安装 Flutter 和 Dart 插件，然后在已连接真机或模拟器上运行 `lib/main.dart`。
 
-工程包含 `.github/workflows/android-debug.yml`。推送到 `main` 后会自动构建，也可以在仓库的 `Actions → Build Android APK → Run workflow` 手动触发。
+## GitHub Actions 构建
 
-成功后可在 workflow run 的 `Artifacts` 下载 `OneEntry-debug-apk`，也可以在私有仓库 Releases 中下载对应的预发布 APK。
+推送到 `main` 后，`.github/workflows/android-debug.yml` 会自动执行格式检查、静态分析和 APK 构建。也可在 **Actions → Build Android APK → Run workflow** 手动触发。
 
-工作流只使用 GitHub 官方 Actions，以及从 Flutter 官方仓库固定下载的 Flutter `3.41.4`。仓库必须先设置为 `Private`，再上传源代码。
+如果仓库配置了签名 Secrets，工作流会生成 release APK；否则生成 debug APK。
 
-## 下一阶段
+## 项目信息
 
-- 根据真机截图继续做 HTML 原型的像素级对齐
-- 增加通用 CSV / XLSX 第三方账单字段映射预览
-- 完善编辑账目、删除账目和账户 / 成员详情交互
-- 增加自动化集成测试与正式签名构建
+- Android 应用 ID：`com.junxu.yibi`
+- 数据库：SQLite / `oneentry.db`
+- 主要框架：Flutter + Android Kotlin
+- 项目状态：主要功能已完成，可日常使用

@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../data/ledger_controller.dart';
 import '../../models/ledger_models.dart';
 import '../../theme/app_theme.dart';
+import '../../utils/amount_expression.dart';
 
 class EntrySheet extends StatefulWidget {
   const EntrySheet({required this.controller, this.initial, super.key});
@@ -86,11 +88,11 @@ class _EntrySheetState extends State<EntrySheet> {
   }
 
   void _save() {
-    final double? amount = double.tryParse(_amountController.text);
+    final double? amount = evaluateAmountExpression(_amountController.text);
     if (amount == null || amount <= 0) {
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(const SnackBar(content: Text('请输入金额')));
+      ).showSnackBar(const SnackBar(content: Text('请输入有效的金额或算式')));
       return;
     }
     if (_type == EntryType.transfer &&
@@ -701,43 +703,92 @@ class _AmountBox extends StatelessWidget {
       color: Theme.of(context).colorScheme.surface,
       borderRadius: BorderRadius.circular(14),
     ),
-    child: Row(
-      children: <Widget>[
-        Container(
-          width: 34,
-          height: 34,
-          decoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.surfaceContainerHighest,
-            borderRadius: BorderRadius.circular(10),
-          ),
-          child: Icon(icon, size: 20),
-        ),
-        const SizedBox(width: 8),
-        Text(category, style: const TextStyle(fontWeight: FontWeight.w600)),
-        const SizedBox(width: 8),
-        const Spacer(),
-        const Text(
-          '¥',
-          style: TextStyle(fontSize: 24, fontWeight: FontWeight.w500),
-        ),
-        const SizedBox(width: 6),
-        SizedBox(
-          width: 150,
-          child: TextField(
-            controller: controller,
-            autofocus: false,
-            textAlign: TextAlign.right,
-            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            style: const TextStyle(fontSize: 34, fontWeight: FontWeight.w600),
-            decoration: const InputDecoration(
-              hintText: '0.00',
-              border: InputBorder.none,
-              isDense: true,
-              filled: false,
+    child: ValueListenableBuilder<TextEditingValue>(
+      valueListenable: controller,
+      builder: (BuildContext context, TextEditingValue value, Widget? child) {
+        final String expression = value.text.trim();
+        final bool showResult = containsAmountExpression(expression);
+        final double? result = showResult
+            ? evaluateAmountExpression(expression)
+            : null;
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            Row(
+              children: <Widget>[
+                Container(
+                  width: 34,
+                  height: 34,
+                  decoration: BoxDecoration(
+                    color: Theme.of(
+                      context,
+                    ).colorScheme.surfaceContainerHighest,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Icon(icon, size: 20),
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  category,
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                ),
+                const SizedBox(width: 8),
+                const Spacer(),
+                const Text(
+                  '¥',
+                  style: TextStyle(fontSize: 24, fontWeight: FontWeight.w500),
+                ),
+                const SizedBox(width: 6),
+                SizedBox(
+                  width: 150,
+                  child: TextField(
+                    controller: controller,
+                    autofocus: false,
+                    autocorrect: false,
+                    enableSuggestions: false,
+                    textAlign: TextAlign.right,
+                    keyboardType: TextInputType.text,
+                    inputFormatters: <TextInputFormatter>[
+                      LengthLimitingTextInputFormatter(80),
+                      FilteringTextInputFormatter.allow(
+                        RegExp(r'[0-9０-９.+\-*/×✕÷（）()＋－−—＊／xX\s]'),
+                      ),
+                    ],
+                    style: const TextStyle(
+                      fontSize: 30,
+                      fontWeight: FontWeight.w600,
+                    ),
+                    decoration: const InputDecoration(
+                      hintText: '0.00',
+                      border: InputBorder.none,
+                      isDense: true,
+                      filled: false,
+                    ),
+                  ),
+                ),
+              ],
             ),
-          ),
-        ),
-      ],
+            if (showResult)
+              Align(
+                alignment: Alignment.centerRight,
+                child: Padding(
+                  padding: const EdgeInsets.only(top: 4, right: 2),
+                  child: Text(
+                    result == null
+                        ? '算式未完成'
+                        : '= ¥${result.toStringAsFixed(2)}',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: result == null
+                          ? Theme.of(context).colorScheme.error
+                          : AppTheme.green,
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        );
+      },
     ),
   );
 }
