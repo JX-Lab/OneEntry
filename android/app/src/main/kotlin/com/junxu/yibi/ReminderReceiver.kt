@@ -15,26 +15,12 @@ class ReminderReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         NotificationScheduler.createChannel(context)
         when (intent.action) {
-            NotificationScheduler.ACTION_DAILY -> try {
-                notifyDaily(context)
-            } finally {
-                NotificationScheduler.scheduleNextDaily(context)
-            }
             NotificationScheduler.ACTION_RECURRING -> try {
                 notifyRecurringIfNeeded(context)
             } finally {
                 NotificationScheduler.scheduleRecurringCheck(context)
             }
         }
-    }
-
-    fun showTest(context: Context): Boolean {
-        NotificationScheduler.createChannel(context)
-        return show(context, 3199, "记账提醒测试成功", "之后会在设定时间提醒你记账")
-    }
-
-    private fun notifyDaily(context: Context) {
-        show(context, 3101, "记账时间到了", "打开一笔，记录今天的收支吧")
     }
 
     private fun notifyRecurringIfNeeded(context: Context) {

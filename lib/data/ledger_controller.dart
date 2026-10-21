@@ -17,9 +17,6 @@ class LedgerController extends ChangeNotifier {
   final Map<String, double> categoryBudgets = <String, double>{};
 
   double monthlyBudget = 0;
-  bool dailyReminderEnabled = false;
-  int dailyReminderHour = 20;
-  int dailyReminderMinute = 0;
   bool multiEnabled = true;
   String splitMode = 'equal';
   String themeMode = 'system';
@@ -50,9 +47,6 @@ class LedgerController extends ChangeNotifier {
       ..clear()
       ..addAll(snapshot.categoryBudgets);
     monthlyBudget = snapshot.monthlyBudget;
-    dailyReminderEnabled = snapshot.dailyReminderEnabled;
-    dailyReminderHour = snapshot.dailyReminderHour;
-    dailyReminderMinute = snapshot.dailyReminderMinute;
     multiEnabled = snapshot.multiEnabled;
     splitMode = snapshot.splitMode;
     themeMode = snapshot.themeMode;
@@ -304,22 +298,6 @@ class LedgerController extends ChangeNotifier {
   Future<void> clearAllData() async {
     await _repository.clearAllData();
     await initialize();
-  }
-
-  Future<void> setDailyReminder({
-    required bool enabled,
-    required int hour,
-    required int minute,
-  }) async {
-    await _repository.setDailyReminder(
-      enabled: enabled,
-      hour: hour,
-      minute: minute,
-    );
-    dailyReminderEnabled = enabled;
-    dailyReminderHour = hour;
-    dailyReminderMinute = minute;
-    notifyListeners();
   }
 
   Future<void> setPreference(String key, String value) async {

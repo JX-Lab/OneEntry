@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../data/ledger_controller.dart';
 import '../../models/ledger_models.dart';
+import '../../services/notification_service.dart';
 import '../../theme/app_theme.dart';
 
 class RecurringRulesPage extends StatelessWidget {
@@ -39,9 +40,7 @@ class RecurringRulesPage extends StatelessWidget {
                     rule: rule,
                     onTap: () => _edit(context, rule),
                     onDelete: () => _delete(context, rule),
-                    onToggle: (value) => controller.saveRecurringRule(
-                      _copy(rule, enabled: value),
-                    ),
+                    onToggle: (value) => _toggle(context, rule, value),
                   ),
                 ),
               ],
@@ -195,19 +194,51 @@ class RecurringRulesPage extends StatelessWidget {
     final String title = name.text.trim();
     final double value = double.tryParse(amount.text) ?? 0;
     if (save != true || title.isEmpty || value <= 0) return;
-    await controller.saveRecurringRule(
-      RecurringRule(
-        id: rule?.id ?? 0,
-        name: title,
-        type: type,
-        amount: value,
-        frequency: frequency,
-        anchorDate: rule?.anchorDate ?? DateTime.now(),
-        accountId: null,
-        category: category,
-        enabled: rule?.enabled ?? true,
+    final RecurringRule next = RecurringRule(
+      id: rule?.id ?? 0,
+      name: title,
+      type: type,
+      amount: value,
+      frequency: frequency,
+      anchorDate: rule?.anchorDate ?? DateTime.now(),
+      accountId: null,
+      category: category,
+      enabled: rule?.enabled ?? true,
+    );
+    await controller.saveRecurringRule(next);
+    await NotificationService.scheduleRecurringCheck();
+    if (next.enabled && context.mounted) {
+      await _ensureNotificationAccess(context);
+    }
+  }
+
+  Future<void> _toggle(
+    BuildContext context,
+    RecurringRule rule,
+    bool enabled,
+  ) async {
+    await controller.saveRecurringRule(_copy(rule, enabled: enabled));
+    await NotificationService.scheduleRecurringCheck();
+    if (enabled && context.mounted) {
+      await _ensureNotificationAccess(context);
+    }
+  }
+
+  Future<bool> _ensureNotificationAccess(BuildContext context) async {
+    if (await NotificationService.requestPermission()) return true;
+    if (!context.mounted) return false;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: const Text('周期账目已保存，但系统通知尚未开启'),
+        action: SnackBarAction(
+          label: '打开设置',
+          onPressed: () {
+            NotificationService.openSettings();
+          },
+        ),
       ),
     );
+    return false;
   }
 
   Future<void> _delete(BuildContext context, RecurringRule rule) async {
@@ -227,7 +258,10 @@ class RecurringRulesPage extends StatelessWidget {
         ],
       ),
     );
-    if (confirmed == true) await controller.deleteRecurringRule(rule.id);
+    if (confirmed == true) {
+      await controller.deleteRecurringRule(rule.id);
+      await NotificationService.scheduleRecurringCheck();
+    }
   }
 
   RecurringRule _copy(RecurringRule rule, {required bool enabled}) =>

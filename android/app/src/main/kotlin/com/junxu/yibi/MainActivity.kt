@@ -24,6 +24,7 @@ class MainActivity : FlutterActivity() {
             when (call.method) {
                 "initialize" -> {
                     NotificationScheduler.createChannel(this)
+                    NotificationScheduler.cancelLegacyDailyReminder(this)
                     result.success(null)
                 }
                 "requestPermission" -> requestNotificationPermission(result)
@@ -31,29 +32,12 @@ class MainActivity : FlutterActivity() {
                     NotificationScheduler.createChannel(this)
                     result.success(NotificationScheduler.notificationsEnabled(this))
                 }
-                "canScheduleExactAlarms" -> result.success(
-                    NotificationScheduler.canScheduleExactAlarms(this),
-                )
-                "scheduleDaily" -> {
-                    NotificationScheduler.scheduleDaily(
-                        this,
-                        call.argument<Boolean>("enabled") ?: false,
-                        call.argument<Int>("hour") ?: 20,
-                        call.argument<Int>("minute") ?: 0,
-                    )
-                    result.success(null)
-                }
                 "scheduleRecurringCheck" -> {
                     NotificationScheduler.scheduleRecurringCheck(this)
                     result.success(null)
                 }
-                "showTestNotification" -> result.success(ReminderReceiver().showTest(this))
                 "openNotificationSettings" -> {
                     openNotificationSettings()
-                    result.success(null)
-                }
-                "openExactAlarmSettings" -> {
-                    openExactAlarmSettings()
                     result.success(null)
                 }
                 else -> result.notImplemented()
@@ -112,20 +96,6 @@ class MainActivity : FlutterActivity() {
             }
         }
         startActivity(intent)
-    }
-
-    private fun openExactAlarmSettings() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return
-        val intent = Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM).apply {
-            data = Uri.parse("package:$packageName")
-        }
-        try {
-            startActivity(intent)
-        } catch (_: Exception) {
-            startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
-                data = Uri.parse("package:$packageName")
-            })
-        }
     }
 
     private fun openFile(mimeTypes: List<String>, result: MethodChannel.Result) {

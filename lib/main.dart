@@ -46,11 +46,6 @@ class _OneEntryBootstrapState extends State<OneEntryBootstrap> {
       await controller.initialize();
       try {
         await NotificationService.initialize();
-        await NotificationService.scheduleDaily(
-          enabled: controller.dailyReminderEnabled,
-          hour: controller.dailyReminderHour,
-          minute: controller.dailyReminderMinute,
-        );
         await NotificationService.scheduleRecurringCheck();
       } catch (error, stackTrace) {
         // A device-specific notification failure must never block bookkeeping.
