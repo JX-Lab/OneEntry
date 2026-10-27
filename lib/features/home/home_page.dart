@@ -122,6 +122,7 @@ class _HomePageState extends State<HomePage> {
             .fold(0.0, (sum, entry) => sum + entry.amount);
         final List<_HomeRow> rows = _homeRows(entries);
         return Scaffold(
+          extendBody: true,
           appBar: AppBar(
             centerTitle: true,
             leading: _selecting
@@ -269,58 +270,64 @@ class _HomePageState extends State<HomePage> {
           ),
           bottomNavigationBar: _selecting
               ? _selectionBar(entries)
-              : SafeArea(
-                  minimum: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-                  child: Row(
-                    children: <Widget>[
-                      _VoiceButton(
-                        state: _voiceState,
-                        onTap: _voiceState == _VoiceState.processing
-                            ? null
-                            : _toggleVoiceRecognition,
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: InkWell(
-                          borderRadius: BorderRadius.circular(28),
-                          onTap: widget.onAddEntry,
-                          child: Ink(
-                            height: 50,
-                            decoration: BoxDecoration(
-                              gradient: const LinearGradient(
-                                colors: <Color>[
-                                  AppTheme.green,
-                                  AppTheme.greenLight,
+              : Material(
+                  type: MaterialType.transparency,
+                  child: SafeArea(
+                    minimum: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+                    child: Row(
+                      children: <Widget>[
+                        _VoiceButton(
+                          state: _voiceState,
+                          onTap: _voiceState == _VoiceState.processing
+                              ? null
+                              : _toggleVoiceRecognition,
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(28),
+                            onTap: widget.onAddEntry,
+                            child: Ink(
+                              height: 50,
+                              decoration: BoxDecoration(
+                                gradient: const LinearGradient(
+                                  colors: <Color>[
+                                    AppTheme.green,
+                                    AppTheme.greenLight,
+                                  ],
+                                ),
+                                borderRadius: BorderRadius.circular(28),
+                                boxShadow: const <BoxShadow>[
+                                  BoxShadow(
+                                    color: Color(0x420EB078),
+                                    blurRadius: 18,
+                                    offset: Offset(0, 8),
+                                  ),
                                 ],
                               ),
-                              borderRadius: BorderRadius.circular(28),
-                              boxShadow: const <BoxShadow>[
-                                BoxShadow(
-                                  color: Color(0x420EB078),
-                                  blurRadius: 18,
-                                  offset: Offset(0, 8),
-                                ),
-                              ],
-                            ),
-                            child: const Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: <Widget>[
-                                Icon(Icons.edit_outlined, color: Colors.white),
-                                SizedBox(width: 8),
-                                Text(
-                                  '记一笔',
-                                  style: TextStyle(
+                              child: const Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: <Widget>[
+                                  Icon(
+                                    Icons.edit_outlined,
                                     color: Colors.white,
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.w600,
                                   ),
-                                ),
-                              ],
+                                  SizedBox(width: 8),
+                                  Text(
+                                    '记一笔',
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
                           ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
           floatingActionButton: _showEdgeButton
@@ -350,6 +357,8 @@ class _HomePageState extends State<HomePage> {
         _showVoiceMessage('需要麦克风权限才能语音记账');
         return;
       }
+      await Future<void>.delayed(const Duration(milliseconds: 400));
+      if (!mounted) return;
       if (!await SpeechRecognitionService.isAvailable()) {
         _showVoiceMessage('当前设备没有可用的语音识别服务');
         return;

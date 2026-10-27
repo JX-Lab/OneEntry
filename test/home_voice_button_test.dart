@@ -33,5 +33,6 @@ void main() {
     expect(tester.takeException(), isNull);
     expect(find.byIcon(Icons.mic_none_rounded), findsOneWidget);
     expect(find.text('记一笔'), findsOneWidget);
+    expect(tester.widget<Scaffold>(find.byType(Scaffold)).extendBody, isTrue);
   });
 }

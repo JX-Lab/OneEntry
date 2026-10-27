@@ -75,6 +75,7 @@ class MainActivity : FlutterActivity() {
                     }
                     "cancel" -> {
                         speechRecognizer?.cancel()
+                        releaseSpeechRecognizer()
                         sendSpeechEvent("idle")
                         result.success(null)
                     }
@@ -143,10 +144,8 @@ class MainActivity : FlutterActivity() {
         val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
             putExtra(RecognizerIntent.EXTRA_LANGUAGE, "zh-CN")
-            putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, "zh-CN")
             putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
             putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3)
-            putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true)
         }
         return try {
             speechRecognizer?.startListening(intent)
@@ -160,15 +159,7 @@ class MainActivity : FlutterActivity() {
 
     private fun ensureSpeechRecognizer() {
         if (speechRecognizer != null) return
-        val recognizer = if (
-            Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
-            SpeechRecognizer.isOnDeviceRecognitionAvailable(this)
-        ) {
-            SpeechRecognizer.createOnDeviceSpeechRecognizer(this)
-        } else {
-            SpeechRecognizer.createSpeechRecognizer(this)
-        }
-        speechRecognizer = recognizer.apply {
+        speechRecognizer = SpeechRecognizer.createSpeechRecognizer(this).apply {
             setRecognitionListener(object : RecognitionListener {
                 override fun onReadyForSpeech(params: Bundle?) = sendSpeechEvent("listening")
                 override fun onBeginningOfSpeech() = sendSpeechEvent("listening")
@@ -178,6 +169,7 @@ class MainActivity : FlutterActivity() {
 
                 override fun onError(error: Int) {
                     sendSpeechEvent("error", message = speechErrorMessage(error))
+                    releaseSpeechRecognizer()
                 }
 
                 override fun onResults(results: Bundle?) {
@@ -188,6 +180,7 @@ class MainActivity : FlutterActivity() {
                     } else {
                         sendSpeechEvent("result", text = text)
                     }
+                    releaseSpeechRecognizer()
                 }
 
                 override fun onPartialResults(partialResults: Bundle?) = Unit
@@ -203,9 +196,14 @@ class MainActivity : FlutterActivity() {
         )
     }
 
+    private fun releaseSpeechRecognizer() {
+        speechRecognizer?.destroy()
+        speechRecognizer = null
+    }
+
     private fun speechErrorMessage(error: Int): String = when (error) {
         SpeechRecognizer.ERROR_AUDIO -> "麦克风录音失败"
-        SpeechRecognizer.ERROR_CLIENT -> "语音识别已取消"
+        SpeechRecognizer.ERROR_CLIENT -> "系统语音服务启动失败，请检查手机的语音输入服务"
         SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> "需要麦克风权限"
         SpeechRecognizer.ERROR_NETWORK, SpeechRecognizer.ERROR_NETWORK_TIMEOUT -> "语音识别网络不可用"
         SpeechRecognizer.ERROR_NO_MATCH -> "没有听清，请再试一次"
@@ -296,8 +294,7 @@ class MainActivity : FlutterActivity() {
     }
 
     override fun onDestroy() {
-        speechRecognizer?.destroy()
-        speechRecognizer = null
+        releaseSpeechRecognizer()
         speechChannel = null
         super.onDestroy()
     }
