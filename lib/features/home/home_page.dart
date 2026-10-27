@@ -4,16 +4,21 @@ import 'package:flutter/material.dart';
 
 import '../../data/ledger_controller.dart';
 import '../../models/ledger_models.dart';
+import '../../services/speech_recognition_service.dart';
+import '../../services/voice_entry_parser.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/swipe_action_tile.dart';
 import '../entry/entry_detail_sheet.dart';
 import '../entry/entry_sheet.dart' show categoryIconFromKey;
 import 'period_picker_sheet.dart';
 
+enum _VoiceState { idle, listening, processing }
+
 class HomePage extends StatefulWidget {
   const HomePage({
     required this.controller,
     required this.onAddEntry,
+    required this.onVoiceEntry,
     required this.onEditEntry,
     required this.onDeleteEntry,
     required this.onOpenStatistics,
@@ -26,6 +31,7 @@ class HomePage extends StatefulWidget {
 
   final LedgerController controller;
   final VoidCallback onAddEntry;
+  final ValueChanged<LedgerEntry> onVoiceEntry;
   final ValueChanged<LedgerEntry> onEditEntry;
   final ValueChanged<LedgerEntry> onDeleteEntry;
   final VoidCallback onOpenStatistics;
@@ -51,11 +57,17 @@ class _HomePageState extends State<HomePage> {
   bool _edgeToBottom = true;
   double _lastScrollOffset = 0;
   Timer? _edgeButtonTimer;
+  StreamSubscription<SpeechRecognitionEvent>? _speechSubscription;
+  _VoiceState _voiceState = _VoiceState.idle;
 
   @override
   void initState() {
     super.initState();
     _scrollController.addListener(_handleScroll);
+    SpeechRecognitionService.initialize();
+    _speechSubscription = SpeechRecognitionService.events.listen(
+      _handleSpeechEvent,
+    );
   }
 
   @override
@@ -65,6 +77,10 @@ class _HomePageState extends State<HomePage> {
       ..removeListener(_handleScroll)
       ..dispose();
     _edgeButtonTimer?.cancel();
+    _speechSubscription?.cancel();
+    if (_voiceState != _VoiceState.idle) {
+      SpeechRecognitionService.cancel();
+    }
     super.dispose();
   }
 
@@ -255,40 +271,56 @@ class _HomePageState extends State<HomePage> {
               ? _selectionBar(entries)
               : SafeArea(
                   minimum: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-                  child: InkWell(
-                    borderRadius: BorderRadius.circular(28),
-                    onTap: widget.onAddEntry,
-                    child: Ink(
-                      height: 50,
-                      decoration: BoxDecoration(
-                        gradient: const LinearGradient(
-                          colors: <Color>[AppTheme.green, AppTheme.greenLight],
-                        ),
-                        borderRadius: BorderRadius.circular(28),
-                        boxShadow: const <BoxShadow>[
-                          BoxShadow(
-                            color: Color(0x420EB078),
-                            blurRadius: 18,
-                            offset: Offset(0, 8),
-                          ),
-                        ],
+                  child: Row(
+                    children: <Widget>[
+                      _VoiceButton(
+                        state: _voiceState,
+                        onTap: _voiceState == _VoiceState.processing
+                            ? null
+                            : _toggleVoiceRecognition,
                       ),
-                      child: const Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: <Widget>[
-                          Icon(Icons.edit_outlined, color: Colors.white),
-                          SizedBox(width: 8),
-                          Text(
-                            '记一笔',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 16,
-                              fontWeight: FontWeight.w600,
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(28),
+                          onTap: widget.onAddEntry,
+                          child: Ink(
+                            height: 50,
+                            decoration: BoxDecoration(
+                              gradient: const LinearGradient(
+                                colors: <Color>[
+                                  AppTheme.green,
+                                  AppTheme.greenLight,
+                                ],
+                              ),
+                              borderRadius: BorderRadius.circular(28),
+                              boxShadow: const <BoxShadow>[
+                                BoxShadow(
+                                  color: Color(0x420EB078),
+                                  blurRadius: 18,
+                                  offset: Offset(0, 8),
+                                ),
+                              ],
+                            ),
+                            child: const Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: <Widget>[
+                                Icon(Icons.edit_outlined, color: Colors.white),
+                                SizedBox(width: 8),
+                                Text(
+                                  '记一笔',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
-                        ],
+                        ),
                       ),
-                    ),
+                    ],
                   ),
                 ),
           floatingActionButton: _showEdgeButton
@@ -305,6 +337,65 @@ class _HomePageState extends State<HomePage> {
         );
       },
     );
+  }
+
+  Future<void> _toggleVoiceRecognition() async {
+    if (_voiceState == _VoiceState.listening) {
+      setState(() => _voiceState = _VoiceState.processing);
+      await SpeechRecognitionService.stop();
+      return;
+    }
+    try {
+      if (!await SpeechRecognitionService.requestPermission()) {
+        _showVoiceMessage('需要麦克风权限才能语音记账');
+        return;
+      }
+      if (!await SpeechRecognitionService.isAvailable()) {
+        _showVoiceMessage('当前设备没有可用的语音识别服务');
+        return;
+      }
+      if (await SpeechRecognitionService.start() && mounted) {
+        setState(() => _voiceState = _VoiceState.listening);
+      }
+    } on Object catch (error) {
+      _showVoiceMessage('无法启动语音识别：$error');
+    }
+  }
+
+  void _handleSpeechEvent(SpeechRecognitionEvent event) {
+    if (!mounted) return;
+    switch (event.status) {
+      case SpeechRecognitionStatus.listening:
+        setState(() => _voiceState = _VoiceState.listening);
+      case SpeechRecognitionStatus.processing:
+        setState(() => _voiceState = _VoiceState.processing);
+      case SpeechRecognitionStatus.result:
+        setState(() => _voiceState = _VoiceState.idle);
+        final String transcript = event.text?.trim() ?? '';
+        final LedgerEntry? draft = parseVoiceEntry(
+          transcript,
+          widget.controller,
+        );
+        if (draft == null) {
+          _showVoiceMessage(
+            transcript.isEmpty ? '没有识别到记账内容' : '已听到「$transcript」，但没有找到金额',
+          );
+        } else {
+          widget.onVoiceEntry(draft);
+        }
+      case SpeechRecognitionStatus.error:
+        setState(() => _voiceState = _VoiceState.idle);
+        _showVoiceMessage(event.message ?? '语音识别失败');
+      case SpeechRecognitionStatus.idle:
+        setState(() => _voiceState = _VoiceState.idle);
+    }
+  }
+
+  void _showVoiceMessage(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 
   Future<void> _openPeriodPicker() async {
@@ -1164,6 +1255,71 @@ class _SummaryValue extends StatelessWidget {
           ),
         ),
       ],
+    ),
+  );
+}
+
+class _VoiceButton extends StatelessWidget {
+  const _VoiceButton({required this.state, required this.onTap});
+
+  final _VoiceState state;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) => Tooltip(
+    message: switch (state) {
+      _VoiceState.idle => '语音记账',
+      _VoiceState.listening => '停止并识别',
+      _VoiceState.processing => '正在识别',
+    },
+    child: Material(
+      color: Colors.transparent,
+      shape: const CircleBorder(),
+      child: InkWell(
+        customBorder: const CircleBorder(),
+        onTap: onTap,
+        child: Ink(
+          width: 50,
+          height: 50,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: state == _VoiceState.listening
+                ? AppTheme.expense
+                : AppTheme.green,
+            boxShadow: <BoxShadow>[
+              BoxShadow(
+                color:
+                    (state == _VoiceState.listening
+                            ? AppTheme.expense
+                            : AppTheme.green)
+                        .withValues(alpha: .28),
+                blurRadius: 16,
+                offset: const Offset(0, 7),
+              ),
+            ],
+          ),
+          child: Center(
+            child: switch (state) {
+              _VoiceState.idle => const Icon(
+                Icons.mic_none_rounded,
+                color: Colors.white,
+              ),
+              _VoiceState.listening => const Icon(
+                Icons.close_rounded,
+                color: Colors.white,
+              ),
+              _VoiceState.processing => const SizedBox(
+                width: 21,
+                height: 21,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2.4,
+                  color: Colors.white,
+                ),
+              ),
+            },
+          ),
+        ),
+      ),
     ),
   );
 }

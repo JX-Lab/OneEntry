@@ -7,16 +7,23 @@ import android.content.pm.PackageManager
 import android.database.Cursor
 import android.net.Uri
 import android.os.Build
+import android.os.Bundle
 import android.provider.OpenableColumns
 import android.provider.Settings
+import android.speech.RecognitionListener
+import android.speech.RecognizerIntent
+import android.speech.SpeechRecognizer
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 
 class MainActivity : FlutterActivity() {
     private var permissionResult: MethodChannel.Result? = null
+    private var speechPermissionResult: MethodChannel.Result? = null
     private var fileResult: MethodChannel.Result? = null
     private var pendingSaveBytes: ByteArray? = null
+    private var speechChannel: MethodChannel? = null
+    private var speechRecognizer: SpeechRecognizer? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -55,6 +62,26 @@ class MainActivity : FlutterActivity() {
                 else -> result.notImplemented()
             }
         }
+        speechChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, SPEECH_CHANNEL).also { channel ->
+            channel.setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "requestPermission" -> requestSpeechPermission(result)
+                    "isAvailable" -> result.success(SpeechRecognizer.isRecognitionAvailable(this))
+                    "start" -> result.success(startSpeechRecognition())
+                    "stop" -> {
+                        sendSpeechEvent("processing")
+                        speechRecognizer?.stopListening()
+                        result.success(null)
+                    }
+                    "cancel" -> {
+                        speechRecognizer?.cancel()
+                        sendSpeechEvent("idle")
+                        result.success(null)
+                    }
+                    else -> result.notImplemented()
+                }
+            }
+        }
     }
 
     private fun requestNotificationPermission(result: MethodChannel.Result) {
@@ -82,6 +109,110 @@ class MainActivity : FlutterActivity() {
             permissionResult?.success(granted && NotificationScheduler.notificationsEnabled(this))
             permissionResult = null
         }
+        if (requestCode == REQUEST_RECORD_AUDIO) {
+            speechPermissionResult?.success(
+                grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED,
+            )
+            speechPermissionResult = null
+        }
+    }
+
+    private fun requestSpeechPermission(result: MethodChannel.Result) {
+        if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+            result.success(true)
+            return
+        }
+        if (speechPermissionResult != null) {
+            result.error("permission_in_progress", "A microphone permission request is already active", null)
+            return
+        }
+        speechPermissionResult = result
+        requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), REQUEST_RECORD_AUDIO)
+    }
+
+    private fun startSpeechRecognition(): Boolean {
+        if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            sendSpeechEvent("error", message = "需要麦克风权限")
+            return false
+        }
+        if (!SpeechRecognizer.isRecognitionAvailable(this)) {
+            sendSpeechEvent("error", message = "当前设备没有可用的语音识别服务")
+            return false
+        }
+        ensureSpeechRecognizer()
+        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE, "zh-CN")
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, "zh-CN")
+            putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
+            putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3)
+            putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true)
+        }
+        return try {
+            speechRecognizer?.startListening(intent)
+            sendSpeechEvent("listening")
+            true
+        } catch (error: Exception) {
+            sendSpeechEvent("error", message = error.message ?: "无法启动语音识别")
+            false
+        }
+    }
+
+    private fun ensureSpeechRecognizer() {
+        if (speechRecognizer != null) return
+        val recognizer = if (
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+            SpeechRecognizer.isOnDeviceRecognitionAvailable(this)
+        ) {
+            SpeechRecognizer.createOnDeviceSpeechRecognizer(this)
+        } else {
+            SpeechRecognizer.createSpeechRecognizer(this)
+        }
+        speechRecognizer = recognizer.apply {
+            setRecognitionListener(object : RecognitionListener {
+                override fun onReadyForSpeech(params: Bundle?) = sendSpeechEvent("listening")
+                override fun onBeginningOfSpeech() = sendSpeechEvent("listening")
+                override fun onRmsChanged(rmsdB: Float) = Unit
+                override fun onBufferReceived(buffer: ByteArray?) = Unit
+                override fun onEndOfSpeech() = sendSpeechEvent("processing")
+
+                override fun onError(error: Int) {
+                    sendSpeechEvent("error", message = speechErrorMessage(error))
+                }
+
+                override fun onResults(results: Bundle?) {
+                    val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+                    val text = matches?.firstOrNull()?.trim().orEmpty()
+                    if (text.isEmpty()) {
+                        sendSpeechEvent("error", message = "没有听清，请再试一次")
+                    } else {
+                        sendSpeechEvent("result", text = text)
+                    }
+                }
+
+                override fun onPartialResults(partialResults: Bundle?) = Unit
+                override fun onEvent(eventType: Int, params: Bundle?) = Unit
+            })
+        }
+    }
+
+    private fun sendSpeechEvent(status: String, text: String? = null, message: String? = null) {
+        speechChannel?.invokeMethod(
+            "speechEvent",
+            mapOf("status" to status, "text" to text, "message" to message),
+        )
+    }
+
+    private fun speechErrorMessage(error: Int): String = when (error) {
+        SpeechRecognizer.ERROR_AUDIO -> "麦克风录音失败"
+        SpeechRecognizer.ERROR_CLIENT -> "语音识别已取消"
+        SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> "需要麦克风权限"
+        SpeechRecognizer.ERROR_NETWORK, SpeechRecognizer.ERROR_NETWORK_TIMEOUT -> "语音识别网络不可用"
+        SpeechRecognizer.ERROR_NO_MATCH -> "没有听清，请再试一次"
+        SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> "语音识别正在忙，请稍后重试"
+        SpeechRecognizer.ERROR_SERVER -> "语音识别服务暂时不可用"
+        SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "没有听到语音"
+        else -> "语音识别失败（$error）"
     }
 
     private fun openNotificationSettings() {
@@ -164,11 +295,20 @@ class MainActivity : FlutterActivity() {
         }
     }
 
+    override fun onDestroy() {
+        speechRecognizer?.destroy()
+        speechRecognizer = null
+        speechChannel = null
+        super.onDestroy()
+    }
+
     companion object {
         private const val CHANNEL = "com.junxu.yibi/notifications"
         private const val FILE_CHANNEL = "com.junxu.yibi/files"
+        private const val SPEECH_CHANNEL = "com.junxu.yibi/speech"
         private const val REQUEST_NOTIFICATIONS = 901
         private const val REQUEST_OPEN_FILE = 902
         private const val REQUEST_SAVE_FILE = 903
+        private const val REQUEST_RECORD_AUDIO = 904
     }
 }

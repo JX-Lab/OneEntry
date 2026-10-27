@@ -6,10 +6,16 @@ import '../../theme/app_theme.dart';
 import '../../utils/amount_expression.dart';
 
 class EntrySheet extends StatefulWidget {
-  const EntrySheet({required this.controller, this.initial, super.key});
+  const EntrySheet({
+    required this.controller,
+    this.initial,
+    this.draft,
+    super.key,
+  });
 
   final LedgerController controller;
   final LedgerEntry? initial;
+  final LedgerEntry? draft;
 
   @override
   State<EntrySheet> createState() => _EntrySheetState();
@@ -48,20 +54,20 @@ class _EntrySheetState extends State<EntrySheet> {
       );
       if (expense.isNotEmpty) _category = expense.first.name;
     }
-    final LedgerEntry? initial = widget.initial;
-    if (initial != null) {
-      _type = initial.type;
-      _category = initial.category;
-      _accountId = initial.accountId;
-      _toAccountId = initial.toAccountId;
+    final LedgerEntry? source = widget.initial ?? widget.draft;
+    if (source != null) {
+      _type = source.type;
+      _category = source.category;
+      _accountId = source.accountId;
+      _toAccountId = source.toAccountId;
       _members
         ..clear()
-        ..addAll(initial.memberIds);
-      _recurring = initial.recurring;
-      _frequency = initial.recurringFrequency;
-      _occurredAt = initial.occurredAt;
-      _amountController.text = initial.amount.toStringAsFixed(2);
-      _noteController.text = initial.note;
+        ..addAll(source.memberIds);
+      _recurring = source.recurring;
+      _frequency = source.recurringFrequency;
+      _occurredAt = source.occurredAt;
+      _amountController.text = source.amount.toStringAsFixed(2);
+      _noteController.text = source.note;
     }
   }
 
@@ -730,7 +736,10 @@ class _AmountBox extends StatelessWidget {
             autocorrect: false,
             enableSuggestions: false,
             textAlign: TextAlign.right,
-            keyboardType: TextInputType.visiblePassword,
+            keyboardType: const TextInputType.numberWithOptions(
+              decimal: true,
+              signed: true,
+            ),
             style: const TextStyle(fontSize: 34, fontWeight: FontWeight.w600),
             decoration: const InputDecoration(
               hintText: '0.00',
