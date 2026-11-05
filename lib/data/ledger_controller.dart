@@ -18,6 +18,9 @@ class LedgerController extends ChangeNotifier {
 
   double monthlyBudget = 0;
   DateTime budgetMonth = DateTime(DateTime.now().year, DateTime.now().month);
+  bool dailyReminderEnabled = false;
+  int dailyReminderHour = 20;
+  int dailyReminderMinute = 0;
   bool multiEnabled = true;
   String splitMode = 'equal';
   String themeMode = 'system';
@@ -51,6 +54,9 @@ class LedgerController extends ChangeNotifier {
       ..clear()
       ..addAll(snapshot.categoryBudgets);
     monthlyBudget = snapshot.monthlyBudget;
+    dailyReminderEnabled = snapshot.dailyReminderEnabled;
+    dailyReminderHour = snapshot.dailyReminderHour;
+    dailyReminderMinute = snapshot.dailyReminderMinute;
     multiEnabled = snapshot.multiEnabled;
     splitMode = snapshot.splitMode;
     themeMode = snapshot.themeMode;
@@ -157,6 +163,22 @@ class LedgerController extends ChangeNotifier {
   Future<void> setMonthlyBudget(DateTime month, double amount) async {
     await _repository.setMonthlyBudget(month, amount);
     if (isBudgetMonth(month)) monthlyBudget = amount;
+    notifyListeners();
+  }
+
+  Future<void> setDailyReminder({
+    required bool enabled,
+    required int hour,
+    required int minute,
+  }) async {
+    await _repository.setDailyReminder(
+      enabled: enabled,
+      hour: hour,
+      minute: minute,
+    );
+    dailyReminderEnabled = enabled;
+    dailyReminderHour = hour.clamp(0, 23).toInt();
+    dailyReminderMinute = minute.clamp(0, 59).toInt();
     notifyListeners();
   }
 

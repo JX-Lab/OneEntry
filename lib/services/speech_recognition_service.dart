@@ -51,6 +51,12 @@ class SpeechRecognitionService {
   static Future<bool> requestPermission() async =>
       await _channel.invokeMethod<bool>('requestPermission') ?? false;
 
+  static Future<bool> hasPermission() async =>
+      await _channel.invokeMethod<bool>('hasPermission') ?? false;
+
+  static Future<void> openSettings() =>
+      _channel.invokeMethod<void>('openPermissionSettings');
+
   static Future<bool> isAvailable() async =>
       await _channel.invokeMethod<bool>('isAvailable') ?? false;
 

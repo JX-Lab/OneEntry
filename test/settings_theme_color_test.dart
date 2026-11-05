@@ -19,6 +19,14 @@ void main() {
         home: SettingsPage(controller: controller),
       ),
     );
+    expect(find.text('每日记账提醒'), findsOneWidget);
+    expect(find.text('通知权限'), findsOneWidget);
+    expect(find.text('麦克风权限'), findsOneWidget);
+    await tester.scrollUntilVisible(
+      find.text('主题色'),
+      280,
+      scrollable: find.byType(Scrollable).first,
+    );
     await tester.tap(find.text('主题色'));
     await tester.pumpAndSettle();
 

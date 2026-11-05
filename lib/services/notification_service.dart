@@ -19,8 +19,24 @@ class NotificationService {
     return await _channel.invokeMethod<bool>('notificationsEnabled') ?? false;
   }
 
+  static Future<void> scheduleDaily({
+    required bool enabled,
+    required int hour,
+    required int minute,
+  }) async {
+    await _channel.invokeMethod<void>('scheduleDaily', <String, Object?>{
+      'enabled': enabled,
+      'hour': hour,
+      'minute': minute,
+    });
+  }
+
   static Future<void> scheduleRecurringCheck() async {
     await _channel.invokeMethod<void>('scheduleRecurringCheck');
+  }
+
+  static Future<bool> showTestNotification() async {
+    return await _channel.invokeMethod<bool>('showTestNotification') ?? false;
   }
 
   static Future<void> openSettings() async {

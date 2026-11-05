@@ -2,6 +2,7 @@ package com.junxu.yibi
 
 import android.Manifest
 import android.app.Activity
+import android.content.ComponentName
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.database.Cursor
@@ -12,7 +13,9 @@ import android.provider.OpenableColumns
 import android.provider.Settings
 import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
+import android.speech.RecognitionService
 import android.speech.SpeechRecognizer
+import android.util.Log
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -31,7 +34,6 @@ class MainActivity : FlutterActivity() {
             when (call.method) {
                 "initialize" -> {
                     NotificationScheduler.createChannel(this)
-                    NotificationScheduler.cancelLegacyDailyReminder(this)
                     result.success(null)
                 }
                 "requestPermission" -> requestNotificationPermission(result)
@@ -43,6 +45,16 @@ class MainActivity : FlutterActivity() {
                     NotificationScheduler.scheduleRecurringCheck(this)
                     result.success(null)
                 }
+                "scheduleDaily" -> {
+                    NotificationScheduler.scheduleDaily(
+                        this,
+                        call.argument<Boolean>("enabled") ?: false,
+                        call.argument<Int>("hour") ?: 20,
+                        call.argument<Int>("minute") ?: 0,
+                    )
+                    result.success(null)
+                }
+                "showTestNotification" -> result.success(ReminderReceiver().showTest(this))
                 "openNotificationSettings" -> {
                     openNotificationSettings()
                     result.success(null)
@@ -66,6 +78,13 @@ class MainActivity : FlutterActivity() {
             channel.setMethodCallHandler { call, result ->
                 when (call.method) {
                     "requestPermission" -> requestSpeechPermission(result)
+                    "hasPermission" -> result.success(
+                        checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED,
+                    )
+                    "openPermissionSettings" -> {
+                        openAppPermissionSettings()
+                        result.success(null)
+                    }
                     "isAvailable" -> result.success(SpeechRecognizer.isRecognitionAvailable(this))
                     "start" -> result.success(startSpeechRecognition())
                     "stop" -> {
@@ -146,6 +165,7 @@ class MainActivity : FlutterActivity() {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE, "zh-CN")
             putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
             putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3)
+            putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true)
         }
         return try {
             speechRecognizer?.startListening(intent)
@@ -159,7 +179,14 @@ class MainActivity : FlutterActivity() {
 
     private fun ensureSpeechRecognizer() {
         if (speechRecognizer != null) return
-        speechRecognizer = SpeechRecognizer.createSpeechRecognizer(this).apply {
+        val service = preferredRecognitionService()
+        Log.i(SPEECH_LOG_TAG, "Using recognition service: ${service?.flattenToShortString() ?: "system default"}")
+        val recognizer = if (service == null) {
+            SpeechRecognizer.createSpeechRecognizer(this)
+        } else {
+            SpeechRecognizer.createSpeechRecognizer(this, service)
+        }
+        speechRecognizer = recognizer.apply {
             setRecognitionListener(object : RecognitionListener {
                 override fun onReadyForSpeech(params: Bundle?) = sendSpeechEvent("listening")
                 override fun onBeginningOfSpeech() = sendSpeechEvent("listening")
@@ -168,6 +195,7 @@ class MainActivity : FlutterActivity() {
                 override fun onEndOfSpeech() = sendSpeechEvent("processing")
 
                 override fun onError(error: Int) {
+                    Log.w(SPEECH_LOG_TAG, "Speech recognition error: $error")
                     sendSpeechEvent("error", message = speechErrorMessage(error))
                     releaseSpeechRecognizer()
                 }
@@ -178,6 +206,7 @@ class MainActivity : FlutterActivity() {
                     if (text.isEmpty()) {
                         sendSpeechEvent("error", message = "没有听清，请再试一次")
                     } else {
+                        Log.i(SPEECH_LOG_TAG, "Speech recognition result received")
                         sendSpeechEvent("result", text = text)
                     }
                     releaseSpeechRecognizer()
@@ -186,6 +215,35 @@ class MainActivity : FlutterActivity() {
                 override fun onPartialResults(partialResults: Bundle?) = Unit
                 override fun onEvent(eventType: Int, params: Bundle?) = Unit
             })
+        }
+    }
+
+    private fun preferredRecognitionService(): ComponentName? {
+        val googleService = ComponentName(
+            "com.google.android.googlequicksearchbox",
+            "com.google.android.voicesearch.serviceapi.GoogleRecognitionService",
+        )
+        val googleAvailable = runCatching {
+            packageManager.getServiceInfo(googleService, PackageManager.MATCH_ALL)
+        }.isSuccess
+        if (googleAvailable) return googleService
+
+        val services = packageManager.queryIntentServices(
+            Intent(RecognitionService.SERVICE_INTERFACE),
+            PackageManager.MATCH_ALL,
+        ).mapNotNull { resolveInfo ->
+            val info = resolveInfo.serviceInfo ?: return@mapNotNull null
+            ComponentName(info.packageName, info.name)
+        }
+        Log.i(
+            SPEECH_LOG_TAG,
+            "Visible recognition services: ${services.joinToString { it.flattenToShortString() }}",
+        )
+        return services.firstOrNull {
+            it.packageName == "com.google.android.googlequicksearchbox"
+        } ?: services.firstOrNull {
+            val name = it.className.lowercase()
+            !name.contains("wakeup") && !name.contains("copilot")
         }
     }
 
@@ -225,6 +283,14 @@ class MainActivity : FlutterActivity() {
             }
         }
         startActivity(intent)
+    }
+
+    private fun openAppPermissionSettings() {
+        startActivity(
+            Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                data = Uri.parse("package:$packageName")
+            },
+        )
     }
 
     private fun openFile(mimeTypes: List<String>, result: MethodChannel.Result) {
@@ -307,5 +373,6 @@ class MainActivity : FlutterActivity() {
         private const val REQUEST_OPEN_FILE = 902
         private const val REQUEST_SAVE_FILE = 903
         private const val REQUEST_RECORD_AUDIO = 904
+        private const val SPEECH_LOG_TAG = "OneEntrySpeech"
     }
 }

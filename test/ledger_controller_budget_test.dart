@@ -6,6 +6,10 @@ import 'package:yibi/data/ledger_repository.dart';
 class _FakeLedgerRepository extends LedgerRepository {
   _FakeLedgerRepository() : super(AppDatabase());
 
+  bool? savedDailyEnabled;
+  int? savedDailyHour;
+  int? savedDailyMinute;
+
   @override
   Future<({Map<String, double> categories, double total})> loadBudget(
     DateTime month,
@@ -16,6 +20,17 @@ class _FakeLedgerRepository extends LedgerRepository {
 
   @override
   Future<void> setPreference(String key, String value) async {}
+
+  @override
+  Future<void> setDailyReminder({
+    required bool enabled,
+    required int hour,
+    required int minute,
+  }) async {
+    savedDailyEnabled = enabled;
+    savedDailyHour = hour;
+    savedDailyMinute = minute;
+  }
 }
 
 void main() {
@@ -41,5 +56,18 @@ void main() {
     await controller.setPreference('theme_color', 'purple');
 
     expect(controller.themeColor, 'purple');
+  });
+
+  test('每日提醒设置会保存并更新控制器', () async {
+    final _FakeLedgerRepository repository = _FakeLedgerRepository();
+    final LedgerController controller = LedgerController(repository);
+    addTearDown(controller.dispose);
+
+    await controller.setDailyReminder(enabled: true, hour: 21, minute: 30);
+
+    expect(controller.dailyReminderEnabled, isTrue);
+    expect(controller.dailyReminderHour, 21);
+    expect(controller.dailyReminderMinute, 30);
+    expect(repository.savedDailyEnabled, isTrue);
   });
 }

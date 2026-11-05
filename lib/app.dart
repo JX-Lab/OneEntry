@@ -10,6 +10,7 @@ import 'features/members/members_page.dart';
 import 'features/settings/settings_page.dart';
 import 'features/statistics/statistics_page.dart';
 import 'models/ledger_models.dart';
+import 'services/notification_service.dart';
 import 'theme/app_theme.dart';
 
 class OneEntryApp extends StatefulWidget {
@@ -45,6 +46,7 @@ class _OneEntryAppState extends State<OneEntryApp> {
         );
     if (result != null) {
       await widget.controller.addEntry(result);
+      await _handleRecurringNotification(result);
     }
   }
 
@@ -58,7 +60,29 @@ class _OneEntryAppState extends State<OneEntryApp> {
         );
     if (result != null) {
       await widget.controller.addEntry(result);
+      await _handleRecurringNotification(result);
     }
+  }
+
+  Future<void> _handleRecurringNotification(LedgerEntry entry) async {
+    if (!entry.recurring) return;
+    try {
+      await NotificationService.scheduleRecurringCheck();
+      if (await NotificationService.requestPermission()) return;
+    } on Object {
+      // Saving an entry must not fail because a device notification API failed.
+    }
+    final BuildContext? notificationContext = _navigatorKey.currentContext;
+    if (!mounted || notificationContext == null) return;
+    ScaffoldMessenger.of(notificationContext).showSnackBar(
+      const SnackBar(
+        content: Text('周期账目已保存，但系统通知尚未开启'),
+        action: SnackBarAction(
+          label: '打开设置',
+          onPressed: NotificationService.openSettings,
+        ),
+      ),
+    );
   }
 
   Future<void> _editEntry(LedgerEntry entry) async {

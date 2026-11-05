@@ -6,6 +6,7 @@ import '../categories/categories_page.dart';
 import '../recurring/recurring_rules_page.dart';
 import '../../services/backup_service.dart';
 import '../../services/notification_service.dart';
+import '../../services/speech_recognition_service.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({required this.controller, super.key});
@@ -16,7 +17,29 @@ class SettingsPage extends StatefulWidget {
   State<SettingsPage> createState() => _SettingsPageState();
 }
 
-class _SettingsPageState extends State<SettingsPage> {
+class _SettingsPageState extends State<SettingsPage>
+    with WidgetsBindingObserver {
+  bool? _notificationsEnabled;
+  bool? _microphoneGranted;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _refreshPermissionStatus();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) _refreshPermissionStatus();
+  }
+
   @override
   Widget build(BuildContext context) => AnimatedBuilder(
     animation: widget.controller,
@@ -62,8 +85,40 @@ class _SettingsPageState extends State<SettingsPage> {
                   ],
                 ),
                 _Section(
-                  title: '周期账目',
+                  title: '提醒与权限',
                   children: <Widget>[
+                    SwitchListTile(
+                      title: const Text('每日记账提醒'),
+                      subtitle: const Text('每天在设定时间提醒记账'),
+                      value: widget.controller.dailyReminderEnabled,
+                      onChanged: _toggleDailyReminder,
+                    ),
+                    if (widget.controller.dailyReminderEnabled)
+                      ListTile(
+                        title: const Text('提醒时间'),
+                        trailing: Text(
+                          '${widget.controller.dailyReminderHour.toString().padLeft(2, '0')}:${widget.controller.dailyReminderMinute.toString().padLeft(2, '0')}  ›',
+                        ),
+                        onTap: _pickReminderTime,
+                      ),
+                    ListTile(
+                      title: const Text('通知权限'),
+                      subtitle: const Text('每日提醒与周期账目使用'),
+                      trailing: Text(_permissionLabel(_notificationsEnabled)),
+                      onTap: _handleNotificationPermission,
+                    ),
+                    ListTile(
+                      title: const Text('麦克风权限'),
+                      subtitle: const Text('语音记账使用'),
+                      trailing: Text(_permissionLabel(_microphoneGranted)),
+                      onTap: _handleMicrophonePermission,
+                    ),
+                    ListTile(
+                      title: const Text('测试通知'),
+                      subtitle: const Text('立即发送一条记账提醒'),
+                      trailing: const Icon(Icons.notifications_active_outlined),
+                      onTap: _testNotification,
+                    ),
                     ListTile(
                       title: const Text('周期账目管理'),
                       subtitle: const Text('按天、周、月或年管理重复账目'),
@@ -182,6 +237,141 @@ class _SettingsPageState extends State<SettingsPage> {
     if (widget.controller.textScale >= 1.3) return '特大';
     if (widget.controller.textScale >= 1.15) return '较大';
     return '标准';
+  }
+
+  String _permissionLabel(bool? granted) => switch (granted) {
+    true => '已允许',
+    false => '未开启  ›',
+    null => '检查中…',
+  };
+
+  Future<void> _refreshPermissionStatus() async {
+    bool? notifications;
+    bool? microphone;
+    try {
+      notifications = await NotificationService.notificationsEnabled();
+    } on Object {
+      notifications = null;
+    }
+    try {
+      microphone = await SpeechRecognitionService.hasPermission();
+    } on Object {
+      microphone = null;
+    }
+    if (!mounted) return;
+    setState(() {
+      _notificationsEnabled = notifications;
+      _microphoneGranted = microphone;
+    });
+  }
+
+  Future<void> _toggleDailyReminder(bool enabled) async {
+    if (enabled && !await NotificationService.requestPermission()) {
+      if (mounted) _showNotificationSettingsMessage();
+      await _refreshPermissionStatus();
+      return;
+    }
+    await _applyDailyReminder(enabled: enabled);
+    await _refreshPermissionStatus();
+  }
+
+  Future<void> _applyDailyReminder({
+    required bool enabled,
+    int? hour,
+    int? minute,
+  }) async {
+    final int nextHour = hour ?? widget.controller.dailyReminderHour;
+    final int nextMinute = minute ?? widget.controller.dailyReminderMinute;
+    await widget.controller.setDailyReminder(
+      enabled: enabled,
+      hour: nextHour,
+      minute: nextMinute,
+    );
+    await NotificationService.scheduleDaily(
+      enabled: enabled,
+      hour: nextHour,
+      minute: nextMinute,
+    );
+  }
+
+  Future<void> _pickReminderTime() async {
+    final TimeOfDay? selected = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay(
+        hour: widget.controller.dailyReminderHour,
+        minute: widget.controller.dailyReminderMinute,
+      ),
+    );
+    if (selected == null) return;
+    await _applyDailyReminder(
+      enabled: true,
+      hour: selected.hour,
+      minute: selected.minute,
+    );
+  }
+
+  Future<void> _handleNotificationPermission() async {
+    if (_notificationsEnabled == true) {
+      await NotificationService.openSettings();
+      return;
+    }
+    if (!await NotificationService.requestPermission() && mounted) {
+      _showNotificationSettingsMessage();
+    }
+    await _refreshPermissionStatus();
+  }
+
+  Future<void> _handleMicrophonePermission() async {
+    if (_microphoneGranted == true) {
+      await SpeechRecognitionService.openSettings();
+      return;
+    }
+    if (!await SpeechRecognitionService.requestPermission() && mounted) {
+      _showMicrophoneSettingsMessage();
+    }
+    await _refreshPermissionStatus();
+  }
+
+  Future<void> _testNotification() async {
+    if (!await NotificationService.requestPermission()) {
+      if (mounted) _showNotificationSettingsMessage();
+      await _refreshPermissionStatus();
+      return;
+    }
+    final bool shown = await NotificationService.showTestNotification();
+    if (!mounted) return;
+    if (!shown) {
+      _showNotificationSettingsMessage();
+      return;
+    }
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('测试通知已发送，请查看系统通知栏')));
+    await _refreshPermissionStatus();
+  }
+
+  void _showNotificationSettingsMessage() {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('通知权限或「记账提醒」通知渠道已关闭'),
+        action: SnackBarAction(
+          label: '打开设置',
+          onPressed: NotificationService.openSettings,
+        ),
+      ),
+    );
+  }
+
+  void _showMicrophoneSettingsMessage() {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('需要麦克风权限才能语音记账'),
+        action: SnackBarAction(
+          label: '打开设置',
+          onPressed: SpeechRecognitionService.openSettings,
+        ),
+      ),
+    );
   }
 
   Future<void> _pickSplitMode() async {

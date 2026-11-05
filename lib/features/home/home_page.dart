@@ -313,6 +313,20 @@ class _HomePageState extends State<HomePage> {
                     ),
                   ),
                 ),
+                if (_searching)
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+                      child: Text(
+                        '共 ${entries.length} 笔',
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ),
                 if (entries.isEmpty)
                   SliverToBoxAdapter(
                     child: Padding(
@@ -476,7 +490,7 @@ class _HomePageState extends State<HomePage> {
     }
     try {
       if (!await SpeechRecognitionService.requestPermission()) {
-        _showVoiceMessage('需要麦克风权限才能语音记账');
+        _showMicrophonePermissionMessage();
         return;
       }
       await Future<void>.delayed(const Duration(milliseconds: 400));
@@ -527,6 +541,19 @@ class _HomePageState extends State<HomePage> {
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  void _showMicrophonePermissionMessage() {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('需要麦克风权限才能语音记账'),
+        action: SnackBarAction(
+          label: '打开设置',
+          onPressed: SpeechRecognitionService.openSettings,
+        ),
+      ),
+    );
   }
 
   Future<void> _openPeriodPicker() async {

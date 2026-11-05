@@ -43,7 +43,7 @@ void main() {
       LedgerRepository(AppDatabase()),
     );
     addTearDown(controller.dispose);
-    controller.entries.add(
+    controller.entries.addAll(<LedgerEntry>[
       LedgerEntry(
         id: 1,
         type: EntryType.expense,
@@ -53,7 +53,16 @@ void main() {
         note: '跨年搜索目标',
         accountId: 1,
       ),
-    );
+      LedgerEntry(
+        id: 2,
+        type: EntryType.income,
+        amount: 200,
+        category: '其他',
+        occurredAt: DateTime(2001, 2, 3),
+        note: '另一笔历史账目',
+        accountId: 1,
+      ),
+    ]);
 
     await tester.pumpWidget(
       MaterialApp(
@@ -75,6 +84,7 @@ void main() {
     expect(find.text('跨年搜索目标'), findsNothing);
     await tester.tap(find.byIcon(Icons.search));
     await tester.pump();
+    expect(find.text('共 2 笔'), findsOneWidget);
     await tester.enterText(find.byType(TextField), '跨年搜索目标');
     await tester.pump();
 
@@ -82,6 +92,7 @@ void main() {
       find.descendant(of: find.byType(ListTile), matching: find.text('跨年搜索目标')),
       findsOneWidget,
     );
+    expect(find.text('共 1 笔'), findsOneWidget);
   });
 
   testWidgets('首页有明确的多选图标入口', (WidgetTester tester) async {

@@ -10,6 +10,9 @@ class LedgerSnapshot {
     required this.members,
     required this.entries,
     required this.monthlyBudget,
+    required this.dailyReminderEnabled,
+    required this.dailyReminderHour,
+    required this.dailyReminderMinute,
     required this.categoryBudgets,
     required this.recurringRules,
     required this.categories,
@@ -27,6 +30,9 @@ class LedgerSnapshot {
   final List<LedgerMember> members;
   final List<LedgerEntry> entries;
   final double monthlyBudget;
+  final bool dailyReminderEnabled;
+  final int dailyReminderHour;
+  final int dailyReminderMinute;
   final Map<String, double> categoryBudgets;
   final List<RecurringRule> recurringRules;
   final List<LedgerCategory> categories;
@@ -139,6 +145,11 @@ class LedgerRepository {
       members: members,
       entries: entries,
       monthlyBudget: budget,
+      dailyReminderEnabled: settings['daily_reminder_enabled'] == '1',
+      dailyReminderHour:
+          int.tryParse(settings['daily_reminder_hour'] ?? '') ?? 20,
+      dailyReminderMinute:
+          int.tryParse(settings['daily_reminder_minute'] ?? '') ?? 0,
       categoryBudgets: categoryBudgets,
       recurringRules: ruleRows.map(_ruleFromRow).toList(),
       categories: categoryRows.map(_categoryFromRow).toList(),
@@ -1002,6 +1013,28 @@ class LedgerRepository {
       'value': value,
       'updated_at': DateTime.now().millisecondsSinceEpoch,
     }, conflictAlgorithm: ConflictAlgorithm.replace);
+  }
+
+  Future<void> setDailyReminder({
+    required bool enabled,
+    required int hour,
+    required int minute,
+  }) async {
+    final Database db = await _appDatabase.database;
+    final int now = DateTime.now().millisecondsSinceEpoch;
+    final Batch batch = db.batch();
+    for (final MapEntry<String, String> entry in <String, String>{
+      'daily_reminder_enabled': enabled ? '1' : '0',
+      'daily_reminder_hour': '${hour.clamp(0, 23)}',
+      'daily_reminder_minute': '${minute.clamp(0, 59)}',
+    }.entries) {
+      batch.insert('settings', <String, Object?>{
+        'key': entry.key,
+        'value': entry.value,
+        'updated_at': now,
+      }, conflictAlgorithm: ConflictAlgorithm.replace);
+    }
+    await batch.commit(noResult: true);
   }
 
   Future<Map<String, Object?>> exportBackup() async {

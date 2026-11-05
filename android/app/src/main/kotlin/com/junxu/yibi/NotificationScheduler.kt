@@ -10,15 +10,16 @@ import android.os.Build
 import java.util.Calendar
 
 object NotificationScheduler {
+    const val ACTION_DAILY = "com.junxu.yibi.DAILY_REMINDER"
     const val ACTION_RECURRING = "com.junxu.yibi.RECURRING_REMINDER"
     const val CHANNEL_ID = "ledger_reminders"
-    private const val LEGACY_ACTION_DAILY = "com.junxu.yibi.DAILY_REMINDER"
+    private const val PREFS = "oneentry_reminders"
 
     fun createChannel(context: Context) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         val manager = context.getSystemService(NotificationManager::class.java)
-        val channel = NotificationChannel(CHANNEL_ID, "周期账目提醒", NotificationManager.IMPORTANCE_DEFAULT).apply {
-            description = "周期账目到期提醒"
+        val channel = NotificationChannel(CHANNEL_ID, "记账提醒", NotificationManager.IMPORTANCE_DEFAULT).apply {
+            description = "每日记账与周期账目提醒"
             enableVibration(true)
         }
         manager.createNotificationChannel(channel)
@@ -45,17 +46,40 @@ object NotificationScheduler {
         setOneShot(alarm, nextTime(8, 0), pending)
     }
 
-    fun cancelLegacyDailyReminder(context: Context) {
-        val alarm = context.getSystemService(AlarmManager::class.java)
-        alarm.cancel(pendingIntent(context, LEGACY_ACTION_DAILY, 2101))
-        context.getSharedPreferences("oneentry_reminders", Context.MODE_PRIVATE)
-            .edit()
-            .clear()
+    fun scheduleDaily(context: Context, enabled: Boolean, hour: Int, minute: Int) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+            .putBoolean("daily_enabled", enabled)
+            .putInt("daily_hour", hour.coerceIn(0, 23))
+            .putInt("daily_minute", minute.coerceIn(0, 59))
             .apply()
+        val alarm = context.getSystemService(AlarmManager::class.java)
+        val pending = pendingIntent(context, ACTION_DAILY, 2101)
+        alarm.cancel(pending)
+        if (enabled) setOneShot(alarm, nextTime(hour, minute), pending)
+    }
+
+    fun scheduleNextDaily(context: Context) {
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        if (!prefs.getBoolean("daily_enabled", false)) return
+        val alarm = context.getSystemService(AlarmManager::class.java)
+        setOneShot(
+            alarm,
+            nextTime(
+                prefs.getInt("daily_hour", 20),
+                prefs.getInt("daily_minute", 0),
+            ),
+            pendingIntent(context, ACTION_DAILY, 2101),
+        )
     }
 
     fun reschedule(context: Context) {
-        cancelLegacyDailyReminder(context)
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        scheduleDaily(
+            context,
+            prefs.getBoolean("daily_enabled", false),
+            prefs.getInt("daily_hour", 20),
+            prefs.getInt("daily_minute", 0),
+        )
         scheduleRecurringCheck(context)
     }
 
