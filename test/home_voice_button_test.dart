@@ -83,7 +83,7 @@ void main() {
     );
   });
 
-  testWidgets('首页有明确的多选入口', (WidgetTester tester) async {
+  testWidgets('首页有明确的多选图标入口', (WidgetTester tester) async {
     await tester.binding.setSurfaceSize(const Size(360, 800));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     final LedgerController controller = LedgerController(
@@ -108,12 +108,13 @@ void main() {
       ),
     );
 
-    expect(find.text('多选'), findsOneWidget);
-    await tester.tap(find.text('多选'));
-    await tester.pump();
+    expect(find.byTooltip('多选'), findsOneWidget);
+    await tester.tap(find.byTooltip('多选'));
+    await tester.pumpAndSettle();
 
     expect(find.text('条件'), findsOneWidget);
     expect(find.text('全选'), findsOneWidget);
+    expect(find.text('本月预算 ¥0.00'), findsNothing);
     final Object? layoutException = tester.takeException();
     expect(
       layoutException,
@@ -122,6 +123,52 @@ void main() {
           ? layoutException.toStringDeep()
           : '$layoutException',
     );
+  });
+
+  testWidgets('首页卡片和主按钮使用纵向渐变', (WidgetTester tester) async {
+    final LedgerController controller = LedgerController(
+      LedgerRepository(AppDatabase()),
+    );
+    addTearDown(controller.dispose);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: HomePage(
+          controller: controller,
+          onAddEntry: () {},
+          onVoiceEntry: (_) {},
+          onEditEntry: (_) {},
+          onDeleteEntry: (_) {},
+          onOpenStatistics: () {},
+          onOpenSettings: () {},
+          onOpenAccounts: () {},
+          onOpenMembers: () {},
+          onOpenBudget: (_) {},
+        ),
+      ),
+    );
+
+    final Iterable<LinearGradient> boxGradients = tester
+        .widgetList<DecoratedBox>(find.byType(DecoratedBox))
+        .map((DecoratedBox box) => box.decoration)
+        .whereType<BoxDecoration>()
+        .map((BoxDecoration decoration) => decoration.gradient)
+        .whereType<LinearGradient>();
+    final Iterable<LinearGradient> inkGradients = tester
+        .widgetList<Ink>(find.byType(Ink))
+        .map((Ink ink) => ink.decoration)
+        .whereType<BoxDecoration>()
+        .map((BoxDecoration decoration) => decoration.gradient)
+        .whereType<LinearGradient>();
+    bool isVertical(LinearGradient gradient) =>
+        gradient.begin == Alignment.topCenter &&
+        gradient.end == Alignment.bottomCenter;
+
+    final int verticalBoxCount = boxGradients.where(isVertical).length;
+    final int verticalInkCount = inkGradients.where(isVertical).length;
+
+    expect(verticalBoxCount, greaterThanOrEqualTo(1));
+    expect(verticalInkCount, greaterThanOrEqualTo(1));
   });
 
   testWidgets('四位数月预算在手机宽度下不溢出', (WidgetTester tester) async {

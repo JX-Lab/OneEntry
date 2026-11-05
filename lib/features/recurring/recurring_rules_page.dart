@@ -307,7 +307,7 @@ class _RuleTile extends StatelessWidget {
         ),
       ),
       title: Text(rule.name),
-      subtitle: Text('${_frequencyName(rule.frequency)} · ${rule.category}'),
+      subtitle: Text('${_frequencyName(rule.frequency)}（${rule.category}）'),
       trailing: Row(
         mainAxisSize: MainAxisSize.min,
         children: <Widget>[

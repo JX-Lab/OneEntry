@@ -213,7 +213,7 @@ class _EntrySheetState extends State<EntrySheet> {
               ],
               if (widget.controller.multiEnabled)
                 _PickerField(
-                  title: _type == EntryType.transfer ? '操作者 · 可多选' : '成员 · 可多选',
+                  title: _type == EntryType.transfer ? '操作者（可多选）' : '成员（可多选）',
                   value: _memberSummary(members),
                   onTap: () => _pickMembers(members),
                 ),

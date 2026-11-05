@@ -202,13 +202,10 @@ class _HomePageState extends State<HomePage> {
               actions: <Widget>[
                 if (!_selecting) ...<Widget>[
                   if (!_searching)
-                    TextButton(
+                    IconButton(
+                      tooltip: '多选',
                       onPressed: _startSelection,
-                      style: TextButton.styleFrom(
-                        minimumSize: const Size(44, 48),
-                        padding: const EdgeInsets.symmetric(horizontal: 8),
-                      ),
-                      child: const Text('多选'),
+                      icon: const Icon(Icons.checklist_rounded),
                     ),
                   IconButton(
                     tooltip: _searching ? '关闭搜索' : '搜索',
@@ -226,85 +223,94 @@ class _HomePageState extends State<HomePage> {
             body: CustomScrollView(
               controller: _scrollController,
               slivers: <Widget>[
-                SliverPadding(
-                  padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
-                  sliver: SliverList.list(
-                    children: <Widget>[
-                      if (!_searching && !_selecting) ...<Widget>[
-                        _SummaryCard(
-                          income: income,
-                          expense: expense,
-                          spent: expense,
-                          budget: widget.controller.monthlyBudget,
-                          monthlyPeriod: monthlyPeriod,
-                          loadingBudget: _budgetLoading,
-                          onBudgetTap: monthlyPeriod
-                              ? () => widget.onOpenBudget(
-                                  DateTime(_year!, _month!),
-                                )
-                              : null,
-                        ),
-                        const SizedBox(height: 10),
-                        Row(
-                          children: <Widget>[
-                            if (widget.controller.multiEnabled) ...<Widget>[
-                              Expanded(
-                                child: _QuickButton(
-                                  icon: Icons.people_outline,
-                                  label: '成员',
-                                  onTap: widget.onOpenMembers,
+                SliverToBoxAdapter(
+                  child: ClipRect(
+                    child: AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 280),
+                      reverseDuration: const Duration(milliseconds: 240),
+                      switchInCurve: Curves.easeOutCubic,
+                      switchOutCurve: Curves.easeInCubic,
+                      transitionBuilder:
+                          (Widget child, Animation<double> animation) {
+                            final Animation<double> curved = CurvedAnimation(
+                              parent: animation,
+                              curve: Curves.easeOutCubic,
+                              reverseCurve: Curves.easeInCubic,
+                            );
+                            return SizeTransition(
+                              sizeFactor: curved,
+                              axisAlignment: -1,
+                              child: SlideTransition(
+                                position: Tween<Offset>(
+                                  begin: const Offset(0, -.14),
+                                  end: Offset.zero,
+                                ).animate(curved),
+                                child: FadeTransition(
+                                  opacity: curved,
+                                  child: child,
                                 ),
                               ),
-                              const SizedBox(width: 10),
-                            ],
-                            Expanded(
-                              child: _QuickButton(
-                                icon: Icons.account_balance_wallet_outlined,
-                                label: '账户',
-                                onTap: widget.onOpenAccounts,
-                              ),
-                            ),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: _QuickButton(
-                                icon: Icons.insights_outlined,
-                                label: '统计',
-                                onTap: widget.onOpenStatistics,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ] else
-                        Padding(
-                          padding: const EdgeInsets.fromLTRB(4, 2, 4, 0),
-                          child: Row(
-                            children: <Widget>[
-                              Icon(
-                                _searching
-                                    ? Icons.public_rounded
-                                    : Icons.touch_app_outlined,
-                                size: 18,
-                                color: Theme.of(context).colorScheme.primary,
-                              ),
-                              const SizedBox(width: 7),
-                              Expanded(
-                                child: Text(
-                                  _searching
-                                      ? '全局搜索 · ${entries.length} 笔结果'
-                                      : '当前范围：${_periodLabel()} · 点击账目选择',
-                                  style: TextStyle(
-                                    color: Theme.of(
-                                      context,
-                                    ).colorScheme.onSurfaceVariant,
-                                    fontWeight: FontWeight.w600,
+                            );
+                          },
+                      child: !_searching && !_selecting
+                          ? Padding(
+                              key: const ValueKey<String>('dashboard'),
+                              padding: const EdgeInsets.fromLTRB(12, 8, 12, 16),
+                              child: Column(
+                                children: <Widget>[
+                                  _SummaryCard(
+                                    income: income,
+                                    expense: expense,
+                                    spent: expense,
+                                    budget: widget.controller.monthlyBudget,
+                                    monthlyPeriod: monthlyPeriod,
+                                    loadingBudget: _budgetLoading,
+                                    onBudgetTap: monthlyPeriod
+                                        ? () => widget.onOpenBudget(
+                                            DateTime(_year!, _month!),
+                                          )
+                                        : null,
                                   ),
-                                ),
+                                  const SizedBox(height: 10),
+                                  Row(
+                                    children: <Widget>[
+                                      if (widget
+                                          .controller
+                                          .multiEnabled) ...<Widget>[
+                                        Expanded(
+                                          child: _QuickButton(
+                                            icon: Icons.people_outline,
+                                            label: '成员',
+                                            onTap: widget.onOpenMembers,
+                                          ),
+                                        ),
+                                        const SizedBox(width: 10),
+                                      ],
+                                      Expanded(
+                                        child: _QuickButton(
+                                          icon: Icons
+                                              .account_balance_wallet_outlined,
+                                          label: '账户',
+                                          onTap: widget.onOpenAccounts,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 10),
+                                      Expanded(
+                                        child: _QuickButton(
+                                          icon: Icons.insights_outlined,
+                                          label: '统计',
+                                          onTap: widget.onOpenStatistics,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ],
                               ),
-                            ],
-                          ),
-                        ),
-                      const SizedBox(height: 16),
-                    ],
+                            )
+                          : const SizedBox(
+                              key: ValueKey<String>('dashboard-hidden'),
+                            ),
+                    ),
                   ),
                 ),
                 if (entries.isEmpty)
@@ -343,70 +349,98 @@ class _HomePageState extends State<HomePage> {
                 const SliverToBoxAdapter(child: SizedBox(height: 92)),
               ],
             ),
-            bottomNavigationBar: _selecting
-                ? _selectionBar(entries)
-                : Material(
-                    type: MaterialType.transparency,
-                    child: SafeArea(
-                      minimum: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-                      child: Row(
-                        children: <Widget>[
-                          _VoiceButton(
-                            state: _voiceState,
-                            onTap: _voiceState == _VoiceState.processing
-                                ? null
-                                : _toggleVoiceRecognition,
+            bottomNavigationBar: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 240),
+              reverseDuration: const Duration(milliseconds: 220),
+              transitionBuilder: (Widget child, Animation<double> animation) =>
+                  SlideTransition(
+                    position:
+                        Tween<Offset>(
+                          begin: const Offset(0, 1),
+                          end: Offset.zero,
+                        ).animate(
+                          CurvedAnimation(
+                            parent: animation,
+                            curve: Curves.easeOutCubic,
+                            reverseCurve: Curves.easeInCubic,
                           ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: InkWell(
-                              borderRadius: BorderRadius.circular(28),
-                              onTap: widget.onAddEntry,
-                              child: Ink(
-                                height: 50,
-                                decoration: BoxDecoration(
-                                  gradient: LinearGradient(
-                                    colors: <Color>[
-                                      AppTheme.accentOf(context).primary,
-                                      AppTheme.accentOf(context).secondary,
-                                    ],
-                                  ),
+                        ),
+                    child: FadeTransition(opacity: animation, child: child),
+                  ),
+              child: _selecting
+                  ? KeyedSubtree(
+                      key: const ValueKey<String>('selection-bar'),
+                      child: _selectionBar(entries),
+                    )
+                  : KeyedSubtree(
+                      key: const ValueKey<String>('entry-bar'),
+                      child: Material(
+                        type: MaterialType.transparency,
+                        child: SafeArea(
+                          minimum: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+                          child: Row(
+                            children: <Widget>[
+                              _VoiceButton(
+                                state: _voiceState,
+                                onTap: _voiceState == _VoiceState.processing
+                                    ? null
+                                    : _toggleVoiceRecognition,
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: InkWell(
                                   borderRadius: BorderRadius.circular(28),
-                                  boxShadow: <BoxShadow>[
-                                    BoxShadow(
-                                      color: AppTheme.accentOf(
-                                        context,
-                                      ).primary.withValues(alpha: .26),
-                                      blurRadius: 18,
-                                      offset: const Offset(0, 8),
-                                    ),
-                                  ],
-                                ),
-                                child: const Row(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: <Widget>[
-                                    Icon(
-                                      Icons.edit_outlined,
-                                      color: Colors.white,
-                                    ),
-                                    SizedBox(width: 8),
-                                    Text(
-                                      '记一笔',
-                                      style: TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.w600,
+                                  onTap: widget.onAddEntry,
+                                  child: Ink(
+                                    height: 50,
+                                    decoration: BoxDecoration(
+                                      gradient: LinearGradient(
+                                        begin: Alignment.topCenter,
+                                        end: Alignment.bottomCenter,
+                                        colors: <Color>[
+                                          AppTheme.accentOf(context).primary,
+                                          AppTheme.accentOf(context).secondary,
+                                        ],
                                       ),
+                                      borderRadius: BorderRadius.circular(28),
+                                      boxShadow: <BoxShadow>[
+                                        BoxShadow(
+                                          color: AppTheme.accentOf(
+                                            context,
+                                          ).primary.withValues(alpha: .26),
+                                          blurRadius: 18,
+                                          offset: const Offset(0, 8),
+                                        ),
+                                      ],
                                     ),
-                                  ],
+                                    child: const Row(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.center,
+                                      children: <Widget>[
+                                        Icon(
+                                          Icons.edit_outlined,
+                                          color: Colors.white,
+                                        ),
+                                        SizedBox(width: 8),
+                                        Text(
+                                          '记一笔',
+                                          style: TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 16,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
                                 ),
                               ),
-                            ),
+                            ],
                           ),
-                        ],
+                        ),
                       ),
                     ),
-                  ),
+            ),
             floatingActionButton: _showEdgeButton
                 ? FloatingActionButton.small(
                     heroTag: 'home-edge-scroll',
@@ -753,7 +787,7 @@ class _HomePageState extends State<HomePage> {
                               ),
                             ],
                           ),
-                          const _FilterTitle('按标签分类 · 可多选'),
+                          const _FilterTitle('按标签分类（可多选）'),
                           Wrap(
                             spacing: 8,
                             runSpacing: 6,
@@ -771,7 +805,7 @@ class _HomePageState extends State<HomePage> {
                                 )
                                 .toList(),
                           ),
-                          const _FilterTitle('按账户 · 可多选'),
+                          const _FilterTitle('按账户（可多选）'),
                           Wrap(
                             spacing: 8,
                             runSpacing: 6,
@@ -789,7 +823,7 @@ class _HomePageState extends State<HomePage> {
                                 )
                                 .toList(),
                           ),
-                          const _FilterTitle('按成员 · 可多选'),
+                          const _FilterTitle('按成员（可多选）'),
                           Wrap(
                             spacing: 8,
                             runSpacing: 6,
@@ -1273,6 +1307,8 @@ class _SummaryCard extends StatelessWidget {
     return Container(
       decoration: BoxDecoration(
         gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
           colors: <Color>[
             AppTheme.accentOf(context).primary,
             AppTheme.accentOf(context).secondary,

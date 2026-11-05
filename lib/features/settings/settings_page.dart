@@ -236,6 +236,8 @@ class _SettingsPageState extends State<SettingsPage> {
                           height: 36,
                           decoration: BoxDecoration(
                             gradient: LinearGradient(
+                              begin: Alignment.topCenter,
+                              end: Alignment.bottomCenter,
                               colors: <Color>[accent.primary, accent.secondary],
                             ),
                             shape: BoxShape.circle,
@@ -249,7 +251,7 @@ class _SettingsPageState extends State<SettingsPage> {
                               : null,
                         ),
                         title: Text(accent.label),
-                        subtitle: const Text('亮色渐变 · 关键操作自动增强对比度'),
+                        subtitle: const Text('亮色渐变（关键操作自动增强对比度）'),
                         trailing: widget.controller.themeColor == accent.key
                             ? const Icon(Icons.radio_button_checked)
                             : const Icon(Icons.radio_button_unchecked),

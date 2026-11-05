@@ -414,7 +414,7 @@ class _AccountDetailPage extends StatelessWidget {
                         Icon(_accountIcon(account.icon), size: 28),
                         const SizedBox(width: 10),
                         Text(
-                          '${account.name}${account.archived ? ' · 已归档' : ''}',
+                          '${account.name}${account.archived ? '（已归档）' : ''}',
                           style: const TextStyle(fontWeight: FontWeight.w700),
                         ),
                       ],

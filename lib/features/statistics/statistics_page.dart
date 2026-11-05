@@ -811,7 +811,7 @@ class _InteractiveLineChart extends StatelessWidget {
                   Duration(days: index * days ~/ buckets),
                 );
                 onPoint(
-                  '${date.month}月${date.day}日 · 收入 ¥${income[index].toStringAsFixed(2)} · 支出 ¥${expense[index].toStringAsFixed(2)}',
+                  '${date.month}月${date.day}日（收入 ¥${income[index].toStringAsFixed(2)}，支出 ¥${expense[index].toStringAsFixed(2)}）',
                 );
               },
               child: CustomPaint(

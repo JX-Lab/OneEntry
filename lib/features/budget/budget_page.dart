@@ -425,7 +425,7 @@ class _CategoryBudget extends StatelessWidget {
               child: Align(
                 alignment: Alignment.centerLeft,
                 child: Text(
-                  '超支 ¥${(spent - budget).toStringAsFixed(0)} · ${(progress * 100).toStringAsFixed(1)}%',
+                  '超支 ¥${(spent - budget).toStringAsFixed(0)}（${(progress * 100).toStringAsFixed(1)}%）',
                   style: const TextStyle(color: AppTheme.expense, fontSize: 12),
                 ),
               ),

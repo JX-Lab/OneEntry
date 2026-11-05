@@ -220,9 +220,7 @@ class _MembersPageState extends State<MembersPage> {
               ),
             ),
             title: Text(member.name),
-            subtitle: Text(
-              member.archived ? '已归档 · $count 笔' : '参与 $count 笔账目',
-            ),
+            subtitle: Text(member.archived ? '已归档（$count 笔）' : '参与 $count 笔账目'),
             trailing: const Icon(Icons.chevron_right),
           ),
         ),
@@ -555,7 +553,7 @@ class _MemberDetailPage extends StatelessWidget {
                         ),
                         const SizedBox(width: 12),
                         Text(
-                          '${member.name}${member.archived ? ' · 已归档' : ''}',
+                          '${member.name}${member.archived ? '（已归档）' : ''}',
                           style: const TextStyle(
                             fontSize: 18,
                             fontWeight: FontWeight.w700,
