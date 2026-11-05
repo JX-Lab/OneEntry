@@ -1438,13 +1438,13 @@ class _VoiceButton extends StatelessWidget {
             shape: BoxShape.circle,
             color: state == _VoiceState.listening
                 ? AppTheme.expense
-                : AppTheme.accentOf(context).primary,
+                : AppTheme.accentOf(context).action,
             boxShadow: <BoxShadow>[
               BoxShadow(
                 color:
                     (state == _VoiceState.listening
                             ? AppTheme.expense
-                            : AppTheme.accentOf(context).primary)
+                            : AppTheme.accentOf(context).action)
                         .withValues(alpha: .28),
                 blurRadius: 16,
                 offset: const Offset(0, 7),

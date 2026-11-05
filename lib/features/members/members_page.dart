@@ -188,7 +188,7 @@ class _MembersPageState extends State<MembersPage> {
         key: ValueKey('member-${member.id}-${member.archived}'),
         actionLabel: member.archived ? '恢复' : '归档',
         actionColor: member.archived
-            ? AppTheme.accentOf(context).primary
+            ? AppTheme.accentOf(context).action
             : AppTheme.expense,
         onAction: () =>
             widget.controller.setMemberArchived(member.id, !member.archived),

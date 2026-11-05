@@ -174,7 +174,7 @@ class _AccountsPageState extends State<AccountsPage> {
       key: ValueKey('account-${account.id}-${account.archived}'),
       actionLabel: account.archived ? '恢复' : '归档',
       actionColor: account.archived
-          ? AppTheme.accentOf(context).primary
+          ? AppTheme.accentOf(context).action
           : AppTheme.expense,
       onAction: () =>
           widget.controller.setAccountArchived(account.id, !account.archived),

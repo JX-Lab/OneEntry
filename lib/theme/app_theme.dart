@@ -7,71 +7,86 @@ class AppAccent {
     required this.label,
     required this.primary,
     required this.secondary,
+    required this.action,
   });
 
   final String key;
   final String label;
   final Color primary;
   final Color secondary;
+  final Color action;
 }
 
 @immutable
 class AppAccentTheme extends ThemeExtension<AppAccentTheme> {
-  const AppAccentTheme({required this.primary, required this.secondary});
+  const AppAccentTheme({
+    required this.primary,
+    required this.secondary,
+    required this.action,
+  });
 
   final Color primary;
   final Color secondary;
+  final Color action;
 
   @override
-  AppAccentTheme copyWith({Color? primary, Color? secondary}) => AppAccentTheme(
-    primary: primary ?? this.primary,
-    secondary: secondary ?? this.secondary,
-  );
+  AppAccentTheme copyWith({Color? primary, Color? secondary, Color? action}) =>
+      AppAccentTheme(
+        primary: primary ?? this.primary,
+        secondary: secondary ?? this.secondary,
+        action: action ?? this.action,
+      );
 
   @override
   AppAccentTheme lerp(AppAccentTheme? other, double t) => AppAccentTheme(
     primary: Color.lerp(primary, other?.primary, t) ?? primary,
     secondary: Color.lerp(secondary, other?.secondary, t) ?? secondary,
+    action: Color.lerp(action, other?.action, t) ?? action,
   );
 }
 
 abstract final class AppTheme {
-  static const Color green = Color(0xFF087F5B);
-  static const Color greenLight = Color(0xFF0F766E);
+  static const Color green = Color(0xFF0EB078);
+  static const Color greenLight = Color(0xFF35D3A0);
   static const Color expense = Color(0xFFC62828);
   static const Color income = Color(0xFF2E7CF6);
 
-  // Both gradient endpoints keep at least 5:1 contrast against white.
+  // Gradients stay bright; action colors are the accessible white-text layer.
   static const List<AppAccent> accents = <AppAccent>[
     AppAccent(
       key: 'green',
       label: '翡翠绿',
-      primary: Color(0xFF087F5B),
-      secondary: Color(0xFF0F766E),
+      primary: Color(0xFF0EB078),
+      secondary: Color(0xFF35D3A0),
+      action: Color(0xFF087F5B),
     ),
     AppAccent(
       key: 'blue',
-      label: '湛蓝',
-      primary: Color(0xFF1D4ED8),
-      secondary: Color(0xFF2563EB),
+      label: '天空蓝',
+      primary: Color(0xFF2E7CF6),
+      secondary: Color(0xFF60A5FA),
+      action: Color(0xFF1D4ED8),
     ),
     AppAccent(
       key: 'purple',
-      label: '紫罗兰',
-      primary: Color(0xFF6D28D9),
-      secondary: Color(0xFF7C3AED),
+      label: '薰衣紫',
+      primary: Color(0xFF7C4DFF),
+      secondary: Color(0xFFA78BFA),
+      action: Color(0xFF6D28D9),
     ),
     AppAccent(
       key: 'orange',
-      label: '暖橙',
-      primary: Color(0xFF9A3412),
-      secondary: Color(0xFFC2410C),
+      label: '琥珀橙',
+      primary: Color(0xFFF59E0B),
+      secondary: Color(0xFFFBBF24),
+      action: Color(0xFFB45309),
     ),
     AppAccent(
       key: 'rose',
-      label: '玫红',
-      primary: Color(0xFF9F1239),
-      secondary: Color(0xFFBE123C),
+      label: '莓果红',
+      primary: Color(0xFFE11D48),
+      secondary: Color(0xFFFB7185),
+      action: Color(0xFFBE123C),
     ),
   ];
 
@@ -82,7 +97,11 @@ abstract final class AppTheme {
 
   static AppAccentTheme accentOf(BuildContext context) =>
       Theme.of(context).extension<AppAccentTheme>() ??
-      const AppAccentTheme(primary: green, secondary: greenLight);
+      const AppAccentTheme(
+        primary: green,
+        secondary: greenLight,
+        action: Color(0xFF087F5B),
+      );
 
   static double contrastRatio(Color first, Color second) {
     final double firstLuminance = first.computeLuminance();
@@ -126,10 +145,7 @@ abstract final class AppTheme {
       surface: dark ? const Color(0xFF1A1F27) : const Color(0xFFFFFFFF),
     );
     if (!dark) {
-      colors = colors.copyWith(
-        primary: accent.primary,
-        onPrimary: Colors.white,
-      );
+      colors = colors.copyWith(primary: accent.action, onPrimary: Colors.white);
     }
     return ThemeData(
       useMaterial3: true,
@@ -168,7 +184,11 @@ abstract final class AppTheme {
       ),
       bottomSheetTheme: const BottomSheetThemeData(showDragHandle: true),
       extensions: <ThemeExtension<dynamic>>[
-        AppAccentTheme(primary: accent.primary, secondary: accent.secondary),
+        AppAccentTheme(
+          primary: accent.primary,
+          secondary: accent.secondary,
+          action: accent.action,
+        ),
       ],
     );
   }
