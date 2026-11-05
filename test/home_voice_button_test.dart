@@ -35,6 +35,7 @@ void main() {
     expect(find.byIcon(Icons.mic_none_rounded), findsOneWidget);
     expect(find.text('记一笔'), findsOneWidget);
     expect(tester.widget<Scaffold>(find.byType(Scaffold)).extendBody, isTrue);
+    expect(tester.widget<AppBar>(find.byType(AppBar)).centerTitle, isFalse);
   });
 
   testWidgets('搜索不受当前时间范围限制', (WidgetTester tester) async {

@@ -156,7 +156,7 @@ class _HomePageState extends State<HomePage> {
           child: Scaffold(
             extendBody: true,
             appBar: AppBar(
-              centerTitle: true,
+              centerTitle: false,
               leading: _selecting
                   ? IconButton(
                       onPressed: _exitSelection,
