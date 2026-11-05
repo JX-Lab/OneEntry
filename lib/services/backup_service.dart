@@ -242,7 +242,10 @@ class BackupService {
       ]),
       _Sheet('预算', <List<Object?>>[
         <Object?>['月份', '总预算'],
-        <Object?>['当前月份', controller.monthlyBudget],
+        <Object?>[
+          '${controller.budgetMonth.year}-${controller.budgetMonth.month.toString().padLeft(2, '0')}',
+          controller.monthlyBudget,
+        ],
       ]),
     ];
     final Archive archive = Archive();

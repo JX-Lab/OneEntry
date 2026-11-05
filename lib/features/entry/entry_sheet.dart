@@ -484,14 +484,15 @@ class _EntrySheetState extends State<EntrySheet> {
                             child: Container(
                               decoration: BoxDecoration(
                                 color: selected
-                                    ? AppTheme.green.withValues(alpha: .12)
+                                    ? Theme.of(context).colorScheme.primary
+                                          .withValues(alpha: .12)
                                     : Theme.of(
                                         context,
                                       ).colorScheme.surfaceContainerHighest,
                                 borderRadius: BorderRadius.circular(12),
                                 border: Border.all(
                                   color: selected
-                                      ? AppTheme.green
+                                      ? Theme.of(context).colorScheme.primary
                                       : Colors.transparent,
                                   width: 2,
                                 ),
@@ -587,6 +588,7 @@ class _EntrySheetState extends State<EntrySheet> {
   }
 
   Future<void> _pickDateTime() async {
+    FocusManager.instance.primaryFocus?.unfocus();
     final DateTime now = DateTime.now();
     final DateTime? date = await showDatePicker(
       context: context,
@@ -599,14 +601,18 @@ class _EntrySheetState extends State<EntrySheet> {
       lastDate: DateTime(now.year, now.month, now.day),
       initialEntryMode: DatePickerEntryMode.calendar,
     );
-    if (date == null || !mounted) return;
+    if (!mounted) return;
+    FocusManager.instance.primaryFocus?.unfocus();
+    if (date == null) return;
     final TimeOfDay? time = await showTimePicker(
       context: context,
       initialTime: TimeOfDay.fromDateTime(_occurredAt),
       initialEntryMode: TimePickerEntryMode.dial,
       helpText: '选择时分',
     );
-    if (time == null || !mounted) return;
+    if (!mounted) return;
+    FocusManager.instance.primaryFocus?.unfocus();
+    if (time == null) return;
     DateTime selected = DateTime(
       date.year,
       date.month,
@@ -621,6 +627,9 @@ class _EntrySheetState extends State<EntrySheet> {
       ).showSnackBar(const SnackBar(content: Text('时间不能超过当前时间，已设为现在')));
     }
     setState(() => _occurredAt = selected);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      FocusManager.instance.primaryFocus?.unfocus();
+    });
   }
 }
 
@@ -823,11 +832,15 @@ class _CategoryGrid extends StatelessWidget {
                 height: 44,
                 decoration: BoxDecoration(
                   color: active
-                      ? AppTheme.green.withValues(alpha: .10)
+                      ? Theme.of(
+                          context,
+                        ).colorScheme.primary.withValues(alpha: .10)
                       : Theme.of(context).colorScheme.surfaceContainerHighest,
                   borderRadius: BorderRadius.circular(14),
                   border: Border.all(
-                    color: active ? AppTheme.green : Colors.transparent,
+                    color: active
+                        ? Theme.of(context).colorScheme.primary
+                        : Colors.transparent,
                     width: 2,
                   ),
                 ),
@@ -1245,7 +1258,11 @@ class _SelectorRow extends StatelessWidget {
     ),
     subtitle: subtitle == null ? null : Text(subtitle!),
     trailing: selected
-        ? const Icon(Icons.check, color: AppTheme.green, size: 20)
+        ? Icon(
+            Icons.check,
+            color: Theme.of(context).colorScheme.primary,
+            size: 20,
+          )
         : const SizedBox(width: 20),
   );
 }

@@ -16,6 +16,7 @@ class LedgerSnapshot {
     required this.multiEnabled,
     required this.splitMode,
     required this.themeMode,
+    required this.themeColor,
     required this.textScale,
     required this.highContrast,
     required this.readerHints,
@@ -32,6 +33,7 @@ class LedgerSnapshot {
   final bool multiEnabled;
   final String splitMode;
   final String themeMode;
+  final String themeColor;
   final double textScale;
   final bool highContrast;
   final bool readerHints;
@@ -55,7 +57,7 @@ class LedgerRepository {
     'import_jobs',
   ];
 
-  Future<LedgerSnapshot> load() async {
+  Future<LedgerSnapshot> load({DateTime? budgetMonth}) async {
     final Database db = await _appDatabase.database;
     final List<LedgerAccount> accounts = (await db.query(
       'accounts',
@@ -90,7 +92,7 @@ class LedgerRepository {
           ),
         )
         .toList();
-    final DateTime now = DateTime.now();
+    final DateTime now = budgetMonth ?? DateTime.now();
     final String period = '${now.year}-${now.month.toString().padLeft(2, '0')}';
     final List<Map<String, Object?>> budgetRows = await db.query(
       'budgets',
@@ -143,10 +145,45 @@ class LedgerRepository {
       multiEnabled: settings['multi_enabled'] != '0',
       splitMode: settings['split_mode'] ?? 'equal',
       themeMode: settings['theme_mode'] ?? 'system',
+      themeColor: settings['theme_color'] ?? 'green',
       textScale: double.tryParse(settings['text_scale'] ?? '') ?? 1,
       highContrast: settings['high_contrast'] == '1',
       readerHints: settings['reader_hints'] != '0',
       haptics: settings['haptics'] != '0',
+    );
+  }
+
+  Future<({double total, Map<String, double> categories})> loadBudget(
+    DateTime month,
+  ) async {
+    final Database db = await _appDatabase.database;
+    final String period =
+        '${month.year}-${month.month.toString().padLeft(2, '0')}';
+    final List<Map<String, Object?>> totalRows = await db.query(
+      'budgets',
+      columns: <String>['amount_minor'],
+      where: 'period = ? AND category_id IS NULL',
+      whereArgs: <Object?>[period],
+      limit: 1,
+    );
+    final List<Map<String, Object?>> categoryRows = await db.rawQuery(
+      '''
+      SELECT c.name, b.amount_minor
+      FROM budgets b
+      JOIN categories c ON c.id = b.category_id
+      WHERE b.period = ?
+      ORDER BY c.sort_order, c.id
+      ''',
+      <Object?>[period],
+    );
+    return (
+      total: totalRows.isEmpty
+          ? 0.0
+          : (totalRows.first['amount_minor'] as int) / 100,
+      categories: <String, double>{
+        for (final Map<String, Object?> row in categoryRows)
+          row['name'] as String: (row['amount_minor'] as int) / 100,
+      },
     );
   }
 

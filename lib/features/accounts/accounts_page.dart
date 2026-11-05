@@ -173,7 +173,9 @@ class _AccountsPageState extends State<AccountsPage> {
     child: SwipeActionTile(
       key: ValueKey('account-${account.id}-${account.archived}'),
       actionLabel: account.archived ? '恢复' : '归档',
-      actionColor: account.archived ? AppTheme.green : AppTheme.expense,
+      actionColor: account.archived
+          ? AppTheme.accentOf(context).primary
+          : AppTheme.expense,
       onAction: () =>
           widget.controller.setAccountArchived(account.id, !account.archived),
       onTap: () => Navigator.of(context).push(
@@ -293,14 +295,15 @@ class _AccountsPageState extends State<AccountsPage> {
                                 height: 46,
                                 decoration: BoxDecoration(
                                   color: icon == item
-                                      ? AppTheme.green.withValues(alpha: .12)
+                                      ? Theme.of(context).colorScheme.primary
+                                            .withValues(alpha: .12)
                                       : Theme.of(
                                           context,
                                         ).colorScheme.surfaceContainerHighest,
                                   borderRadius: BorderRadius.circular(12),
                                   border: Border.all(
                                     color: icon == item
-                                        ? AppTheme.green
+                                        ? Theme.of(context).colorScheme.primary
                                         : Colors.transparent,
                                     width: 2,
                                   ),
@@ -589,7 +592,10 @@ class _AccountDetailPage extends StatelessWidget {
             child: const Text('取消'),
           ),
           FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: AppTheme.expense),
+            style: FilledButton.styleFrom(
+              backgroundColor: AppTheme.expense,
+              foregroundColor: Colors.white,
+            ),
             onPressed: () => Navigator.pop(context, true),
             child: const Text('永久删除'),
           ),

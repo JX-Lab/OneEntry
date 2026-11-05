@@ -176,7 +176,7 @@ class _PeriodPickerSheetState extends State<PeriodPickerSheet> {
     selectionOverlay: Container(
       margin: const EdgeInsets.symmetric(horizontal: 4),
       decoration: BoxDecoration(
-        color: const Color(0xFF0EB078).withValues(alpha: .10),
+        color: Theme.of(context).colorScheme.primary.withValues(alpha: .10),
         borderRadius: BorderRadius.circular(9),
       ),
     ),

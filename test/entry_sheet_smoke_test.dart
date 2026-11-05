@@ -21,4 +21,35 @@ void main() {
     expect(find.text('记一笔'), findsOneWidget);
     expect(find.byType(TextField), findsWidgets);
   });
+
+  testWidgets('选择时间前会清除输入框焦点', (WidgetTester tester) async {
+    final LedgerController controller = LedgerController(
+      LedgerRepository(AppDatabase()),
+    );
+    addTearDown(controller.dispose);
+
+    await tester.pumpWidget(
+      MaterialApp(home: EntrySheet(controller: controller)),
+    );
+    final Finder noteField = find.byType(TextField).last;
+    final Finder noteInput = find.descendant(
+      of: noteField,
+      matching: find.byType(EditableText),
+    );
+
+    await tester.tap(noteField);
+    await tester.pump();
+    expect(tester.widget<EditableText>(noteInput).focusNode.hasFocus, isTrue);
+    tester.testTextInput.hide();
+    await tester.pump();
+
+    await tester.tap(find.text('时间'));
+    await tester.pumpAndSettle();
+    expect(find.byType(DatePickerDialog), findsOneWidget);
+    Navigator.of(tester.element(find.byType(DatePickerDialog))).pop();
+    await tester.pumpAndSettle();
+
+    expect(tester.widget<EditableText>(noteInput).focusNode.hasFocus, isFalse);
+    expect(tester.testTextInput.isVisible, isFalse);
+  });
 }

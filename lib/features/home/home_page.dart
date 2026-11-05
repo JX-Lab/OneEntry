@@ -38,7 +38,7 @@ class HomePage extends StatefulWidget {
   final VoidCallback onOpenSettings;
   final VoidCallback onOpenAccounts;
   final VoidCallback onOpenMembers;
-  final VoidCallback onOpenBudget;
+  final ValueChanged<DateTime> onOpenBudget;
 
   @override
   State<HomePage> createState() => _HomePageState();
@@ -53,6 +53,7 @@ class _HomePageState extends State<HomePage> {
   int? _day;
   bool _searching = false;
   bool _selecting = false;
+  bool _budgetLoading = false;
   bool _showEdgeButton = false;
   bool _edgeToBottom = true;
   double _lastScrollOffset = 0;
@@ -98,7 +99,10 @@ class _HomePageState extends State<HomePage> {
                   (_day == null || entry.occurredAt.day == _day),
             )
             .toList();
-        final List<LedgerEntry> entries = periodEntries.where((
+        final List<LedgerEntry> searchScope = _searching
+            ? widget.controller.entries
+            : periodEntries;
+        final List<LedgerEntry> entries = searchScope.where((
           LedgerEntry entry,
         ) {
           if (query.isEmpty) return true;
@@ -110,7 +114,23 @@ class _HomePageState extends State<HomePage> {
                     .join(),
               )
               .join(' ');
-          return '${entry.category} ${entry.note} $members ${entry.occurredAt.year}-${entry.occurredAt.month}-${entry.occurredAt.day}'
+          final String accounts = widget.controller.accounts
+              .where(
+                (account) =>
+                    account.id == entry.accountId ||
+                    account.id == entry.toAccountId,
+              )
+              .map((account) => account.name)
+              .join(' ');
+          final String type = switch (entry.type) {
+            EntryType.expense => '支出',
+            EntryType.income => '收入',
+            EntryType.transfer => '转账',
+            EntryType.adjustment => '调整',
+          };
+          final String date =
+              '${entry.occurredAt.year}-${entry.occurredAt.month.toString().padLeft(2, '0')}-${entry.occurredAt.day.toString().padLeft(2, '0')}';
+          return '${entry.category} ${entry.note} $members $accounts $type $date ${entry.amount.toStringAsFixed(2)}'
               .toLowerCase()
               .contains(query);
         }).toList();
@@ -120,230 +140,298 @@ class _HomePageState extends State<HomePage> {
         final double expense = periodEntries
             .where((entry) => entry.type == EntryType.expense)
             .fold(0.0, (sum, entry) => sum + entry.amount);
+        final bool monthlyPeriod =
+            _year != null && _month != null && _day == null;
         final List<_HomeRow> rows = _homeRows(entries);
-        return Scaffold(
-          extendBody: true,
-          appBar: AppBar(
-            centerTitle: true,
-            leading: _selecting
-                ? IconButton(
-                    onPressed: _exitSelection,
-                    icon: const Icon(Icons.close),
-                  )
-                : null,
-            title: _selecting
-                ? Text('已选 ${_selectedEntryIds.length} 笔')
-                : _searching
-                ? TextField(
-                    controller: _searchController,
-                    autofocus: false,
-                    decoration: const InputDecoration(
-                      hintText: '搜索标签、成员、备注或日期',
-                      isDense: true,
-                    ),
-                    onChanged: (_) => setState(() {}),
-                  )
-                : InkWell(
-                    borderRadius: BorderRadius.circular(8),
-                    onTap: _openPeriodPicker,
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 6,
+        return PopScope<void>(
+          canPop: !_searching && !_selecting,
+          onPopInvokedWithResult: (bool didPop, void result) {
+            if (didPop) return;
+            if (_selecting) {
+              _exitSelection();
+            } else if (_searching) {
+              _toggleSearch();
+            }
+          },
+          child: Scaffold(
+            extendBody: true,
+            appBar: AppBar(
+              centerTitle: true,
+              leading: _selecting
+                  ? IconButton(
+                      onPressed: _exitSelection,
+                      icon: const Icon(Icons.close),
+                    )
+                  : null,
+              title: _selecting
+                  ? Text('已选 ${_selectedEntryIds.length} 笔')
+                  : _searching
+                  ? TextField(
+                      controller: _searchController,
+                      autofocus: true,
+                      decoration: const InputDecoration(
+                        hintText: '全局搜索标签、成员、备注或日期',
+                        isDense: true,
                       ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: <Widget>[
-                          Text(
-                            _periodLabel(),
-                            style: const TextStyle(
-                              fontSize: 17,
-                              fontWeight: FontWeight.w600,
+                      onChanged: (_) => setState(() {}),
+                    )
+                  : InkWell(
+                      borderRadius: BorderRadius.circular(8),
+                      onTap: _openPeriodPicker,
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 6,
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: <Widget>[
+                            Text(
+                              _periodLabel(),
+                              style: const TextStyle(
+                                fontSize: 17,
+                                fontWeight: FontWeight.w600,
+                              ),
                             ),
-                          ),
-                          const SizedBox(width: 4),
-                          const Icon(Icons.arrow_drop_down, size: 18),
-                        ],
+                            const SizedBox(width: 4),
+                            const Icon(Icons.arrow_drop_down, size: 18),
+                          ],
+                        ),
                       ),
+                    ),
+              actions: <Widget>[
+                if (!_selecting) ...<Widget>[
+                  if (!_searching)
+                    TextButton(
+                      onPressed: _startSelection,
+                      style: TextButton.styleFrom(
+                        minimumSize: const Size(44, 48),
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                      ),
+                      child: const Text('多选'),
+                    ),
+                  IconButton(
+                    tooltip: _searching ? '关闭搜索' : '搜索',
+                    onPressed: _toggleSearch,
+                    icon: Icon(_searching ? Icons.close : Icons.search),
+                  ),
+                  IconButton(
+                    tooltip: '设置',
+                    onPressed: widget.onOpenSettings,
+                    icon: const Icon(Icons.settings_outlined),
+                  ),
+                ],
+              ],
+            ),
+            body: CustomScrollView(
+              controller: _scrollController,
+              slivers: <Widget>[
+                SliverPadding(
+                  padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+                  sliver: SliverList.list(
+                    children: <Widget>[
+                      if (!_searching && !_selecting) ...<Widget>[
+                        _SummaryCard(
+                          income: income,
+                          expense: expense,
+                          spent: expense,
+                          budget: widget.controller.monthlyBudget,
+                          monthlyPeriod: monthlyPeriod,
+                          loadingBudget: _budgetLoading,
+                          onBudgetTap: monthlyPeriod
+                              ? () => widget.onOpenBudget(
+                                  DateTime(_year!, _month!),
+                                )
+                              : null,
+                        ),
+                        const SizedBox(height: 10),
+                        Row(
+                          children: <Widget>[
+                            if (widget.controller.multiEnabled) ...<Widget>[
+                              Expanded(
+                                child: _QuickButton(
+                                  icon: Icons.people_outline,
+                                  label: '成员',
+                                  onTap: widget.onOpenMembers,
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                            ],
+                            Expanded(
+                              child: _QuickButton(
+                                icon: Icons.account_balance_wallet_outlined,
+                                label: '账户',
+                                onTap: widget.onOpenAccounts,
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: _QuickButton(
+                                icon: Icons.insights_outlined,
+                                label: '统计',
+                                onTap: widget.onOpenStatistics,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ] else
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(4, 2, 4, 0),
+                          child: Row(
+                            children: <Widget>[
+                              Icon(
+                                _searching
+                                    ? Icons.public_rounded
+                                    : Icons.touch_app_outlined,
+                                size: 18,
+                                color: Theme.of(context).colorScheme.primary,
+                              ),
+                              const SizedBox(width: 7),
+                              Expanded(
+                                child: Text(
+                                  _searching
+                                      ? '全局搜索 · ${entries.length} 笔结果'
+                                      : '当前范围：${_periodLabel()} · 点击账目选择',
+                                  style: TextStyle(
+                                    color: Theme.of(
+                                      context,
+                                    ).colorScheme.onSurfaceVariant,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      const SizedBox(height: 16),
+                    ],
+                  ),
+                ),
+                if (entries.isEmpty)
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 72),
+                      child: Center(
+                        child: Text(_searching ? '全部账目中没有匹配结果' : '当前时间范围还没有账目'),
+                      ),
+                    ),
+                  )
+                else
+                  SliverPadding(
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    sliver: SliverList.builder(
+                      itemCount: rows.length,
+                      itemBuilder: (BuildContext context, int index) {
+                        final _HomeRow row = rows[index];
+                        final List<LedgerEntry>? group = row.group;
+                        if (group != null) return _groupHeader(group);
+                        final LedgerEntry item = row.entry!;
+                        return _EntryTile(
+                          key: ValueKey<int>(item.id),
+                          entry: item,
+                          controller: widget.controller,
+                          onEdit: () => widget.onEditEntry(item),
+                          onDelete: () => widget.onDeleteEntry(item),
+                          selectionMode: _selecting,
+                          selected: _selectedEntryIds.contains(item.id),
+                          onToggleSelection: () => _toggleEntry(item),
+                          onEnterSelection: () => _enterSelection(item),
+                        );
+                      },
                     ),
                   ),
-            actions: <Widget>[
-              if (!_selecting) ...<Widget>[
-                IconButton(
-                  tooltip: _searching ? '关闭搜索' : '搜索',
-                  onPressed: () => setState(() {
-                    _searching = !_searching;
-                    if (!_searching) _searchController.clear();
-                  }),
-                  icon: Icon(_searching ? Icons.close : Icons.search),
-                ),
-                IconButton(
-                  tooltip: '设置',
-                  onPressed: widget.onOpenSettings,
-                  icon: const Icon(Icons.settings_outlined),
-                ),
+                const SliverToBoxAdapter(child: SizedBox(height: 92)),
               ],
-            ],
-          ),
-          body: CustomScrollView(
-            controller: _scrollController,
-            slivers: <Widget>[
-              SliverPadding(
-                padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
-                sliver: SliverList.list(
-                  children: <Widget>[
-                    _SummaryCard(
-                      income: income,
-                      expense: expense,
-                      spent: expense,
-                      budget: widget.controller.monthlyBudget,
-                      showBudget: _year != null && _month != null,
-                      onBudgetTap: widget.onOpenBudget,
-                    ),
-                    const SizedBox(height: 10),
-                    Row(
-                      children: <Widget>[
-                        if (widget.controller.multiEnabled) ...<Widget>[
-                          Expanded(
-                            child: _QuickButton(
-                              icon: Icons.people_outline,
-                              label: '成员',
-                              onTap: widget.onOpenMembers,
-                            ),
+            ),
+            bottomNavigationBar: _selecting
+                ? _selectionBar(entries)
+                : Material(
+                    type: MaterialType.transparency,
+                    child: SafeArea(
+                      minimum: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+                      child: Row(
+                        children: <Widget>[
+                          _VoiceButton(
+                            state: _voiceState,
+                            onTap: _voiceState == _VoiceState.processing
+                                ? null
+                                : _toggleVoiceRecognition,
                           ),
                           const SizedBox(width: 10),
-                        ],
-                        Expanded(
-                          child: _QuickButton(
-                            icon: Icons.account_balance_wallet_outlined,
-                            label: '账户',
-                            onTap: widget.onOpenAccounts,
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: _QuickButton(
-                            icon: Icons.insights_outlined,
-                            label: '统计',
-                            onTap: widget.onOpenStatistics,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 16),
-                  ],
-                ),
-              ),
-              if (entries.isEmpty)
-                const SliverToBoxAdapter(
-                  child: Padding(
-                    padding: EdgeInsets.symmetric(vertical: 72),
-                    child: Center(child: Text('当前时间范围还没有匹配的账目')),
-                  ),
-                )
-              else
-                SliverPadding(
-                  padding: const EdgeInsets.symmetric(horizontal: 12),
-                  sliver: SliverList.builder(
-                    itemCount: rows.length,
-                    itemBuilder: (BuildContext context, int index) {
-                      final _HomeRow row = rows[index];
-                      final List<LedgerEntry>? group = row.group;
-                      if (group != null) return _groupHeader(group);
-                      final LedgerEntry item = row.entry!;
-                      return _EntryTile(
-                        key: ValueKey<int>(item.id),
-                        entry: item,
-                        controller: widget.controller,
-                        onEdit: () => widget.onEditEntry(item),
-                        onDelete: () => widget.onDeleteEntry(item),
-                        selectionMode: _selecting,
-                        selected: _selectedEntryIds.contains(item.id),
-                        onToggleSelection: () => _toggleEntry(item),
-                        onEnterSelection: () => _enterSelection(item),
-                      );
-                    },
-                  ),
-                ),
-              const SliverToBoxAdapter(child: SizedBox(height: 92)),
-            ],
-          ),
-          bottomNavigationBar: _selecting
-              ? _selectionBar(entries)
-              : Material(
-                  type: MaterialType.transparency,
-                  child: SafeArea(
-                    minimum: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-                    child: Row(
-                      children: <Widget>[
-                        _VoiceButton(
-                          state: _voiceState,
-                          onTap: _voiceState == _VoiceState.processing
-                              ? null
-                              : _toggleVoiceRecognition,
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: InkWell(
-                            borderRadius: BorderRadius.circular(28),
-                            onTap: widget.onAddEntry,
-                            child: Ink(
-                              height: 50,
-                              decoration: BoxDecoration(
-                                gradient: const LinearGradient(
-                                  colors: <Color>[
-                                    AppTheme.green,
-                                    AppTheme.greenLight,
+                          Expanded(
+                            child: InkWell(
+                              borderRadius: BorderRadius.circular(28),
+                              onTap: widget.onAddEntry,
+                              child: Ink(
+                                height: 50,
+                                decoration: BoxDecoration(
+                                  gradient: LinearGradient(
+                                    colors: <Color>[
+                                      AppTheme.accentOf(context).primary,
+                                      AppTheme.accentOf(context).secondary,
+                                    ],
+                                  ),
+                                  borderRadius: BorderRadius.circular(28),
+                                  boxShadow: <BoxShadow>[
+                                    BoxShadow(
+                                      color: AppTheme.accentOf(
+                                        context,
+                                      ).primary.withValues(alpha: .26),
+                                      blurRadius: 18,
+                                      offset: const Offset(0, 8),
+                                    ),
                                   ],
                                 ),
-                                borderRadius: BorderRadius.circular(28),
-                                boxShadow: const <BoxShadow>[
-                                  BoxShadow(
-                                    color: Color(0x420EB078),
-                                    blurRadius: 18,
-                                    offset: Offset(0, 8),
-                                  ),
-                                ],
-                              ),
-                              child: const Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: <Widget>[
-                                  Icon(
-                                    Icons.edit_outlined,
-                                    color: Colors.white,
-                                  ),
-                                  SizedBox(width: 8),
-                                  Text(
-                                    '记一笔',
-                                    style: TextStyle(
+                                child: const Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: <Widget>[
+                                    Icon(
+                                      Icons.edit_outlined,
                                       color: Colors.white,
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.w600,
                                     ),
-                                  ),
-                                ],
+                                    SizedBox(width: 8),
+                                    Text(
+                                      '记一笔',
+                                      style: TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ],
+                                ),
                               ),
                             ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
                   ),
-                ),
-          floatingActionButton: _showEdgeButton
-              ? FloatingActionButton.small(
-                  heroTag: 'home-edge-scroll',
-                  onPressed: _jumpToEdge,
-                  child: Icon(
-                    _edgeToBottom
-                        ? Icons.keyboard_arrow_down
-                        : Icons.keyboard_arrow_up,
-                  ),
-                )
-              : null,
+            floatingActionButton: _showEdgeButton
+                ? FloatingActionButton.small(
+                    heroTag: 'home-edge-scroll',
+                    onPressed: _jumpToEdge,
+                    child: Icon(
+                      _edgeToBottom
+                          ? Icons.keyboard_arrow_down
+                          : Icons.keyboard_arrow_up,
+                    ),
+                  )
+                : null,
+          ),
         );
       },
     );
+  }
+
+  void _toggleSearch() {
+    setState(() {
+      _searching = !_searching;
+      if (!_searching) _searchController.clear();
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_scrollController.hasClients) _scrollController.jumpTo(0);
+    });
   }
 
   Future<void> _toggleVoiceRecognition() async {
@@ -423,7 +511,16 @@ class _HomePageState extends State<HomePage> {
       _year = selected.year;
       _month = selected.month;
       _day = selected.day;
+      _budgetLoading =
+          selected.year != null &&
+          selected.month != null &&
+          selected.day == null;
     });
+    if (!_budgetLoading) return;
+    await widget.controller.loadBudgetForMonth(
+      DateTime(selected.year!, selected.month!),
+    );
+    if (mounted) setState(() => _budgetLoading = false);
   }
 
   String _periodLabel() {
@@ -513,38 +610,43 @@ class _HomePageState extends State<HomePage> {
         minimum: const EdgeInsets.fromLTRB(8, 8, 8, 10),
         child: Row(
           children: <Widget>[
-            InkWell(
-              borderRadius: BorderRadius.circular(10),
-              onTap: () => _toggleAll(periodEntries),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 4),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: <Widget>[
-                    Checkbox(
-                      value: allSelected,
-                      onChanged: (_) => _toggleAll(periodEntries),
-                    ),
-                    const Text('全选'),
-                  ],
+            Expanded(
+              child: TextButton.icon(
+                onPressed: () => _toggleAll(periodEntries),
+                icon: Icon(
+                  allSelected
+                      ? Icons.check_box_rounded
+                      : Icons.check_box_outline_blank_rounded,
+                  size: 20,
                 ),
+                label: const Text('全选'),
               ),
             ),
-            IconButton(
-              tooltip: '筛选选择',
-              onPressed: () => _showSelectionFilter(periodEntries),
-              icon: const Icon(Icons.filter_alt_outlined),
+            const SizedBox(width: 4),
+            Expanded(
+              child: TextButton.icon(
+                onPressed: () => _showSelectionFilter(periodEntries),
+                icon: const Icon(Icons.filter_alt_outlined, size: 20),
+                label: const Text('条件'),
+              ),
             ),
-            const Spacer(),
-            FilledButton.tonal(
-              onPressed: hasSelection ? _batchEdit : null,
-              child: const Text('编辑'),
+            const SizedBox(width: 4),
+            Expanded(
+              child: FilledButton.tonal(
+                onPressed: hasSelection ? _batchEdit : null,
+                child: const Text('编辑'),
+              ),
             ),
-            const SizedBox(width: 8),
-            FilledButton(
-              onPressed: hasSelection ? _batchDelete : null,
-              style: FilledButton.styleFrom(backgroundColor: AppTheme.expense),
-              child: const Text('删除'),
+            const SizedBox(width: 4),
+            Expanded(
+              child: FilledButton(
+                onPressed: hasSelection ? _batchDelete : null,
+                style: FilledButton.styleFrom(
+                  backgroundColor: AppTheme.expense,
+                  foregroundColor: Colors.white,
+                ),
+                child: const Text('删除'),
+              ),
             ),
           ],
         ),
@@ -555,6 +657,11 @@ class _HomePageState extends State<HomePage> {
   void _enterSelection(LedgerEntry entry) => setState(() {
     _selecting = true;
     _selectedEntryIds.add(entry.id);
+  });
+
+  void _startSelection() => setState(() {
+    _selecting = true;
+    _selectedEntryIds.clear();
   });
 
   void _exitSelection() => setState(() {
@@ -618,7 +725,7 @@ class _HomePageState extends State<HomePage> {
                 child: Column(
                   children: <Widget>[
                     _SheetHeader(
-                      title: '筛选账目',
+                      title: '按条件选择账目',
                       onCancel: () => Navigator.pop(context, false),
                       onConfirm: () => Navigator.pop(context, true),
                     ),
@@ -999,7 +1106,10 @@ class _HomePageState extends State<HomePage> {
             child: const Text('取消'),
           ),
           FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: AppTheme.expense),
+            style: FilledButton.styleFrom(
+              backgroundColor: AppTheme.expense,
+              foregroundColor: Colors.white,
+            ),
             onPressed: () => Navigator.pop(context, true),
             child: const Text('删除'),
           ),
@@ -1145,30 +1255,35 @@ class _SummaryCard extends StatelessWidget {
     required this.expense,
     required this.spent,
     required this.budget,
-    required this.showBudget,
+    required this.monthlyPeriod,
+    required this.loadingBudget,
     required this.onBudgetTap,
   });
   final double income;
   final double expense;
   final double spent;
   final double budget;
-  final bool showBudget;
-  final VoidCallback onBudgetTap;
+  final bool monthlyPeriod;
+  final bool loadingBudget;
+  final VoidCallback? onBudgetTap;
 
   @override
   Widget build(BuildContext context) {
     final bool over = spent > budget;
     return Container(
       decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: <Color>[AppTheme.green, AppTheme.greenLight],
+        gradient: LinearGradient(
+          colors: <Color>[
+            AppTheme.accentOf(context).primary,
+            AppTheme.accentOf(context).secondary,
+          ],
         ),
         borderRadius: BorderRadius.circular(16),
-        boxShadow: const <BoxShadow>[
+        boxShadow: <BoxShadow>[
           BoxShadow(
-            color: Color(0x330EB078),
+            color: AppTheme.accentOf(context).primary.withValues(alpha: .20),
             blurRadius: 22,
-            offset: Offset(0, 10),
+            offset: const Offset(0, 10),
           ),
         ],
       ),
@@ -1189,46 +1304,75 @@ class _SummaryCard extends StatelessWidget {
               ],
             ),
           ),
-          if (showBudget)
-            Material(
-              color: Colors.black.withValues(alpha: .14),
-              child: InkWell(
-                onTap: onBudgetTap,
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 18,
-                    vertical: 9,
-                  ),
-                  child: Row(
-                    children: <Widget>[
-                      Text(
-                        '本月预算 ¥${budget.toStringAsFixed(2)}',
-                        style: const TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.white,
-                        ),
-                      ),
-                      const Spacer(),
-                      Text(
-                        over
-                            ? '超支 ¥${(spent - budget).toStringAsFixed(2)}'
-                            : '剩余 ¥${(budget - spent).toStringAsFixed(2)}',
-                        style: TextStyle(
-                          fontSize: 13,
-                          color: over ? const Color(0xFFFFD5D5) : Colors.white,
-                        ),
-                      ),
-                      const Icon(
-                        Icons.chevron_right,
-                        size: 20,
-                        color: Colors.white,
-                      ),
-                    ],
-                  ),
+          Material(
+            color: Colors.black.withValues(alpha: .14),
+            child: InkWell(
+              onTap: onBudgetTap,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 18,
+                  vertical: 9,
                 ),
+                child: monthlyPeriod
+                    ? Row(
+                        children: <Widget>[
+                          Expanded(
+                            child: Text(
+                              loadingBudget
+                                  ? '正在读取预算…'
+                                  : '本月预算 ¥${budget.toStringAsFixed(2)}',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ),
+                          if (!loadingBudget) ...<Widget>[
+                            const SizedBox(width: 10),
+                            Flexible(
+                              child: Text(
+                                over
+                                    ? '超支 ¥${(spent - budget).toStringAsFixed(2)}'
+                                    : '剩余 ¥${(budget - spent).toStringAsFixed(2)}',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                textAlign: TextAlign.right,
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  color: over
+                                      ? const Color(0xFFFFD5D5)
+                                      : Colors.white,
+                                ),
+                              ),
+                            ),
+                            const Icon(
+                              Icons.chevron_right,
+                              size: 20,
+                              color: Colors.white,
+                            ),
+                          ],
+                        ],
+                      )
+                    : const Row(
+                        children: <Widget>[
+                          Icon(
+                            Icons.info_outline_rounded,
+                            size: 17,
+                            color: Colors.white,
+                          ),
+                          SizedBox(width: 7),
+                          Text(
+                            '预算仅按月设置',
+                            style: TextStyle(fontSize: 13, color: Colors.white),
+                          ),
+                        ],
+                      ),
               ),
             ),
+          ),
         ],
       ),
     );
@@ -1294,13 +1438,13 @@ class _VoiceButton extends StatelessWidget {
             shape: BoxShape.circle,
             color: state == _VoiceState.listening
                 ? AppTheme.expense
-                : AppTheme.green,
+                : AppTheme.accentOf(context).primary,
             boxShadow: <BoxShadow>[
               BoxShadow(
                 color:
                     (state == _VoiceState.listening
                             ? AppTheme.expense
-                            : AppTheme.green)
+                            : AppTheme.accentOf(context).primary)
                         .withValues(alpha: .28),
                 blurRadius: 16,
                 offset: const Offset(0, 7),

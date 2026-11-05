@@ -182,6 +182,7 @@ class _CategoriesPageState extends State<CategoriesPage> {
                               : _archiveSelected,
                           style: FilledButton.styleFrom(
                             backgroundColor: AppTheme.expense,
+                            foregroundColor: Colors.white,
                           ),
                           child: const Text('移除'),
                         ),

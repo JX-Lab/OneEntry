@@ -187,7 +187,9 @@ class _MembersPageState extends State<MembersPage> {
       child: SwipeActionTile(
         key: ValueKey('member-${member.id}-${member.archived}'),
         actionLabel: member.archived ? '恢复' : '归档',
-        actionColor: member.archived ? AppTheme.green : AppTheme.expense,
+        actionColor: member.archived
+            ? AppTheme.accentOf(context).primary
+            : AppTheme.expense,
         onAction: () =>
             widget.controller.setMemberArchived(member.id, !member.archived),
         onTap: () => Navigator.of(context).push(
@@ -708,7 +710,10 @@ class _MemberDetailPage extends StatelessWidget {
             child: const Text('取消'),
           ),
           FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: AppTheme.expense),
+            style: FilledButton.styleFrom(
+              backgroundColor: AppTheme.expense,
+              foregroundColor: Colors.white,
+            ),
             onPressed: () => Navigator.pop(context, true),
             child: const Text('永久删除'),
           ),

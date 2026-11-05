@@ -86,8 +86,14 @@ class _OneEntryAppState extends State<OneEntryApp> {
         locale: const Locale('zh', 'CN'),
         supportedLocales: const <Locale>[Locale('zh', 'CN')],
         localizationsDelegates: GlobalMaterialLocalizations.delegates,
-        theme: AppTheme.light(highContrast: widget.controller.highContrast),
-        darkTheme: AppTheme.dark(highContrast: widget.controller.highContrast),
+        theme: AppTheme.light(
+          highContrast: widget.controller.highContrast,
+          accentKey: widget.controller.themeColor,
+        ),
+        darkTheme: AppTheme.dark(
+          highContrast: widget.controller.highContrast,
+          accentKey: widget.controller.themeColor,
+        ),
         themeMode: switch (widget.controller.themeMode) {
           'light' => ThemeMode.light,
           'dark' => ThemeMode.dark,
@@ -116,7 +122,8 @@ class _OneEntryAppState extends State<OneEntryApp> {
               _push(AccountsPage(controller: widget.controller)),
           onOpenMembers: () =>
               _push(MembersPage(controller: widget.controller)),
-          onOpenBudget: () => _push(BudgetPage(controller: widget.controller)),
+          onOpenBudget: (DateTime month) =>
+              _push(BudgetPage(controller: widget.controller, month: month)),
         ),
       ),
     );

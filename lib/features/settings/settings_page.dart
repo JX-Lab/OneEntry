@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../data/ledger_controller.dart';
+import '../../theme/app_theme.dart';
 import '../categories/categories_page.dart';
 import '../recurring/recurring_rules_page.dart';
 import '../../services/backup_service.dart';
@@ -86,10 +87,31 @@ class _SettingsPageState extends State<SettingsPage> {
                       trailing: Text('${_themeName()}  ›'),
                       onTap: _pickTheme,
                     ),
-                    const ListTile(
-                      title: Text('语言'),
-                      trailing: Text('简体中文  ›'),
+                    ListTile(
+                      title: const Text('主题色'),
+                      subtitle: const Text('按钮、选中态与重点信息颜色'),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: <Widget>[
+                          Container(
+                            width: 22,
+                            height: 22,
+                            decoration: BoxDecoration(
+                              color: AppTheme.accentFor(
+                                widget.controller.themeColor,
+                              ).primary,
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            '${AppTheme.accentFor(widget.controller.themeColor).label}  ›',
+                          ),
+                        ],
+                      ),
+                      onTap: _pickThemeColor,
                     ),
+                    const ListTile(title: Text('语言'), trailing: Text('简体中文')),
                   ],
                 ),
                 _Section(
@@ -115,7 +137,6 @@ class _SettingsPageState extends State<SettingsPage> {
                     const ListTile(
                       title: Text('数据保存位置'),
                       subtitle: Text('主数据库保存在应用内部'),
-                      trailing: Icon(Icons.chevron_right),
                     ),
                     ListTile(
                       title: const Text('数据导出'),
@@ -132,12 +153,12 @@ class _SettingsPageState extends State<SettingsPage> {
                     ListTile(
                       title: const Text(
                         '清除全部数据',
-                        style: TextStyle(color: Color(0xFFFA5151)),
+                        style: TextStyle(color: AppTheme.expense),
                       ),
                       subtitle: const Text('删除全部本地记账数据'),
                       trailing: const Icon(
                         Icons.chevron_right,
-                        color: Color(0xFFFA5151),
+                        color: AppTheme.expense,
                       ),
                       onTap: _clearAllData,
                     ),
@@ -186,6 +207,65 @@ class _SettingsPageState extends State<SettingsPage> {
     );
     if (value != null)
       await widget.controller.setPreference('theme_mode', value);
+  }
+
+  Future<void> _pickThemeColor() async {
+    final String? value = await showModalBottomSheet<String>(
+      context: context,
+      useSafeArea: true,
+      isScrollControlled: true,
+      builder: (BuildContext context) => FractionallySizedBox(
+        heightFactor: .72,
+        child: Column(
+          children: <Widget>[
+            const Padding(
+              padding: EdgeInsets.fromLTRB(20, 8, 20, 10),
+              child: Text(
+                '选择主题色',
+                style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
+              ),
+            ),
+            Expanded(
+              child: ListView(
+                padding: const EdgeInsets.only(bottom: 12),
+                children: AppTheme.accents
+                    .map(
+                      (AppAccent accent) => ListTile(
+                        leading: Container(
+                          width: 36,
+                          height: 36,
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              colors: <Color>[accent.primary, accent.secondary],
+                            ),
+                            shape: BoxShape.circle,
+                          ),
+                          child: widget.controller.themeColor == accent.key
+                              ? const Icon(
+                                  Icons.check,
+                                  color: Colors.white,
+                                  size: 20,
+                                )
+                              : null,
+                        ),
+                        title: Text(accent.label),
+                        subtitle: const Text('已优化白色文字对比度'),
+                        trailing: widget.controller.themeColor == accent.key
+                            ? const Icon(Icons.radio_button_checked)
+                            : const Icon(Icons.radio_button_unchecked),
+                        onTap: () => Navigator.pop(context, accent.key),
+                      ),
+                    )
+                    .toList(),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (value != null) {
+      await widget.controller.setPreference('theme_color', value);
+    }
   }
 
   Future<void> _pickTextScale() async {
@@ -400,7 +480,8 @@ class _SettingsPageState extends State<SettingsPage> {
           ),
           FilledButton(
             style: FilledButton.styleFrom(
-              backgroundColor: const Color(0xFFFA5151),
+              backgroundColor: AppTheme.expense,
+              foregroundColor: Colors.white,
             ),
             onPressed: () => Navigator.pop(context, true),
             child: const Text('永久清除'),

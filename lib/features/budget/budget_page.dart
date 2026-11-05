@@ -6,8 +6,9 @@ import '../../theme/app_theme.dart';
 import '../../widgets/swipe_action_tile.dart';
 
 class BudgetPage extends StatefulWidget {
-  const BudgetPage({required this.controller, super.key});
+  const BudgetPage({required this.controller, required this.month, super.key});
   final LedgerController controller;
+  final DateTime month;
 
   @override
   State<BudgetPage> createState() => _BudgetPageState();
@@ -16,19 +17,32 @@ class BudgetPage extends StatefulWidget {
 class _BudgetPageState extends State<BudgetPage> {
   LedgerController get controller => widget.controller;
   bool _editing = false;
+  late final DateTime _month = DateTime(widget.month.year, widget.month.month);
+  late bool _loading =
+      !controller.initialized || !controller.isBudgetMonth(_month);
+
+  @override
+  void initState() {
+    super.initState();
+    if (_loading) _loadBudget();
+  }
+
+  Future<void> _loadBudget() async {
+    await controller.loadBudgetForMonth(_month);
+    if (mounted) setState(() => _loading = false);
+  }
 
   @override
   Widget build(BuildContext context) => AnimatedBuilder(
     animation: controller,
     builder: (BuildContext context, Widget? child) {
-      final DateTime now = DateTime.now();
-      final double spent = controller.expenseForMonth(now);
+      final double spent = controller.expenseForMonth(_month);
       final double budget = controller.monthlyBudget;
       final double progress = budget == 0 ? 0 : spent / budget;
       final Map<String, double> categorySpent = <String, double>{};
       for (final LedgerEntry entry
           in controller
-              .entriesForMonth(now)
+              .entriesForMonth(_month)
               .where((item) => item.type == EntryType.expense)) {
         categorySpent.update(
           entry.category,
@@ -47,69 +61,77 @@ class _BudgetPageState extends State<BudgetPage> {
             ),
           ],
         ),
-        body: ListView(
-          padding: const EdgeInsets.fromLTRB(12, 8, 12, 32),
-          children: <Widget>[
-            _BudgetHero(
-              month: now,
-              spent: spent,
-              budget: budget,
-              progress: progress,
-              editing: _editing,
-              onTap: _editing ? () => _editTotal(context, now) : null,
-            ),
-            const Padding(
-              padding: EdgeInsets.fromLTRB(4, 16, 4, 8),
-              child: Text(
-                '消费分类',
-                style: TextStyle(fontSize: 12, color: Color(0xFF8A9099)),
-              ),
-            ),
-            if (controller.categoryBudgets.isEmpty)
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 24),
-                child: Center(
-                  child: Text(
-                    '还没有分类预算',
-                    style: TextStyle(fontSize: 16, color: Color(0xFF8A9099)),
+        body: _loading
+            ? const Center(child: CircularProgressIndicator())
+            : ListView(
+                padding: const EdgeInsets.fromLTRB(12, 8, 12, 32),
+                children: <Widget>[
+                  _BudgetHero(
+                    month: _month,
+                    spent: spent,
+                    budget: budget,
+                    progress: progress,
+                    editing: _editing,
+                    onTap: _editing ? () => _editTotal(context, _month) : null,
                   ),
-                ),
-              )
-            else
-              ...controller.categoryBudgets.entries.map(
-                (entry) => Padding(
-                  padding: const EdgeInsets.only(bottom: 9),
-                  child: SwipeActionTile(
-                    actionLabel: '删除',
-                    onAction: () =>
-                        controller.setCategoryBudget(now, entry.key, 0),
-                    onTap: _editing
-                        ? () => _editCategory(
-                            context,
-                            now,
-                            entry.key,
-                            entry.value,
-                          )
-                        : null,
-                    child: _CategoryBudget(
-                      name: entry.key,
-                      spent: categorySpent[entry.key] ?? 0,
-                      budget: entry.value,
-                      editing: _editing,
+                  const Padding(
+                    padding: EdgeInsets.fromLTRB(4, 16, 4, 8),
+                    child: Text(
+                      '消费分类',
+                      style: TextStyle(fontSize: 12, color: Color(0xFF8A9099)),
                     ),
                   ),
-                ),
+                  if (controller.categoryBudgets.isEmpty)
+                    const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 24),
+                      child: Center(
+                        child: Text(
+                          '还没有分类预算',
+                          style: TextStyle(
+                            fontSize: 16,
+                            color: Color(0xFF8A9099),
+                          ),
+                        ),
+                      ),
+                    )
+                  else
+                    ...controller.categoryBudgets.entries.map(
+                      (entry) => Padding(
+                        padding: const EdgeInsets.only(bottom: 9),
+                        child: SwipeActionTile(
+                          actionLabel: '删除',
+                          onAction: () => controller.setCategoryBudget(
+                            _month,
+                            entry.key,
+                            0,
+                          ),
+                          onTap: _editing
+                              ? () => _editCategory(
+                                  context,
+                                  _month,
+                                  entry.key,
+                                  entry.value,
+                                )
+                              : null,
+                          child: _CategoryBudget(
+                            name: entry.key,
+                            spent: categorySpent[entry.key] ?? 0,
+                            budget: entry.value,
+                            editing: _editing,
+                          ),
+                        ),
+                      ),
+                    ),
+                  if (_editing)
+                    OutlinedButton.icon(
+                      onPressed: budget <= 0
+                          ? null
+                          : () => _addCategory(context, _month),
+                      icon: const Icon(Icons.add),
+                      label: const Text('添加分类预算'),
+                    ),
+                ],
               ),
-            if (_editing)
-              OutlinedButton.icon(
-                onPressed: budget <= 0
-                    ? null
-                    : () => _addCategory(context, now),
-                icon: const Icon(Icons.add),
-                label: const Text('添加分类预算'),
-              ),
-          ],
-        ),
       );
     },
   );
@@ -308,7 +330,9 @@ class _BudgetHero extends StatelessWidget {
           LinearProgressIndicator(
             value: progress.clamp(0, 1),
             minHeight: 11,
-            color: progress > 1 ? AppTheme.expense : AppTheme.green,
+            color: progress > 1
+                ? AppTheme.expense
+                : Theme.of(context).colorScheme.primary,
             borderRadius: BorderRadius.circular(99),
           ),
           const SizedBox(height: 8),
@@ -390,7 +414,9 @@ class _CategoryBudget extends StatelessWidget {
           LinearProgressIndicator(
             value: progress.clamp(0, 1),
             minHeight: 9,
-            color: progress > 1 ? AppTheme.expense : AppTheme.green,
+            color: progress > 1
+                ? AppTheme.expense
+                : Theme.of(context).colorScheme.primary,
             borderRadius: BorderRadius.circular(99),
           ),
           if (progress > 1)

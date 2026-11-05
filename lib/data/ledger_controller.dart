@@ -17,9 +17,11 @@ class LedgerController extends ChangeNotifier {
   final Map<String, double> categoryBudgets = <String, double>{};
 
   double monthlyBudget = 0;
+  DateTime budgetMonth = DateTime(DateTime.now().year, DateTime.now().month);
   bool multiEnabled = true;
   String splitMode = 'equal';
   String themeMode = 'system';
+  String themeColor = 'green';
   double textScale = 1;
   bool highContrast = false;
   bool readerHints = true;
@@ -27,7 +29,9 @@ class LedgerController extends ChangeNotifier {
   bool initialized = false;
 
   Future<void> initialize() async {
-    final LedgerSnapshot snapshot = await _repository.load();
+    final LedgerSnapshot snapshot = await _repository.load(
+      budgetMonth: budgetMonth,
+    );
     accounts
       ..clear()
       ..addAll(snapshot.accounts);
@@ -50,6 +54,7 @@ class LedgerController extends ChangeNotifier {
     multiEnabled = snapshot.multiEnabled;
     splitMode = snapshot.splitMode;
     themeMode = snapshot.themeMode;
+    themeColor = snapshot.themeColor;
     textScale = snapshot.textScale;
     highContrast = snapshot.highContrast;
     readerHints = snapshot.readerHints;
@@ -151,7 +156,22 @@ class LedgerController extends ChangeNotifier {
 
   Future<void> setMonthlyBudget(DateTime month, double amount) async {
     await _repository.setMonthlyBudget(month, amount);
-    monthlyBudget = amount;
+    if (isBudgetMonth(month)) monthlyBudget = amount;
+    notifyListeners();
+  }
+
+  bool isBudgetMonth(DateTime month) =>
+      budgetMonth.year == month.year && budgetMonth.month == month.month;
+
+  Future<void> loadBudgetForMonth(DateTime month) async {
+    final DateTime normalized = DateTime(month.year, month.month);
+    if (isBudgetMonth(normalized) && initialized) return;
+    final result = await _repository.loadBudget(normalized);
+    budgetMonth = normalized;
+    monthlyBudget = result.total;
+    categoryBudgets
+      ..clear()
+      ..addAll(result.categories);
     notifyListeners();
   }
 
@@ -160,6 +180,7 @@ class LedgerController extends ChangeNotifier {
     String category,
     double amount,
   ) async {
+    if (!isBudgetMonth(month)) await loadBudgetForMonth(month);
     final double existing = categoryBudgets[category] ?? 0;
     final double nextTotal =
         categoryBudgets.values.fold(0.0, (sum, value) => sum + value) -
@@ -311,6 +332,9 @@ class LedgerController extends ChangeNotifier {
         break;
       case 'theme_mode':
         themeMode = value;
+        break;
+      case 'theme_color':
+        themeColor = value;
         break;
       case 'text_scale':
         textScale = double.tryParse(value) ?? 1;
