@@ -8,6 +8,8 @@ import 'package:yibi/theme/app_theme.dart';
 
 void main() {
   testWidgets('设置页可以打开主题色选择', (WidgetTester tester) async {
+    await tester.binding.setSurfaceSize(const Size(800, 1000));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
     final LedgerController controller = LedgerController(
       LedgerRepository(AppDatabase()),
     );
@@ -20,8 +22,10 @@ void main() {
       ),
     );
     expect(find.text('每日记账提醒'), findsOneWidget);
-    expect(find.text('通知权限'), findsOneWidget);
-    expect(find.text('麦克风权限'), findsOneWidget);
+    expect(find.text('周期账目管理'), findsOneWidget);
+    expect(find.text('通知权限'), findsNothing);
+    expect(find.text('麦克风权限'), findsNothing);
+    expect(find.text('测试通知'), findsNothing);
     await tester.scrollUntilVisible(
       find.text('主题色'),
       280,

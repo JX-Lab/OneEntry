@@ -6,7 +6,6 @@ import '../categories/categories_page.dart';
 import '../recurring/recurring_rules_page.dart';
 import '../../services/backup_service.dart';
 import '../../services/notification_service.dart';
-import '../../services/speech_recognition_service.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({required this.controller, super.key});
@@ -19,8 +18,6 @@ class SettingsPage extends StatefulWidget {
 
 class _SettingsPageState extends State<SettingsPage>
     with WidgetsBindingObserver {
-  bool? _notificationsEnabled;
-  bool? _microphoneGranted;
   bool? _exactAlarmAllowed;
   bool _waitingForExactAlarmPermission = false;
   int? _pendingReminderHour;
@@ -30,7 +27,7 @@ class _SettingsPageState extends State<SettingsPage>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _refreshPermissionStatus();
+    _refreshExactAlarmAccess();
   }
 
   @override
@@ -46,7 +43,7 @@ class _SettingsPageState extends State<SettingsPage>
       _waitingForExactAlarmPermission = false;
       _finishExactAlarmPermissionRequest();
     } else {
-      _refreshPermissionStatus();
+      _refreshExactAlarmAccess();
     }
   }
 
@@ -95,7 +92,7 @@ class _SettingsPageState extends State<SettingsPage>
                   ],
                 ),
                 _Section(
-                  title: '提醒与权限',
+                  title: '提醒',
                   children: <Widget>[
                     SwitchListTile(
                       title: const Text('每日记账提醒'),
@@ -125,24 +122,6 @@ class _SettingsPageState extends State<SettingsPage>
                           minute: widget.controller.dailyReminderMinute,
                         ),
                       ),
-                    ListTile(
-                      title: const Text('通知权限'),
-                      subtitle: const Text('每日提醒与周期账目使用'),
-                      trailing: Text(_permissionLabel(_notificationsEnabled)),
-                      onTap: _handleNotificationPermission,
-                    ),
-                    ListTile(
-                      title: const Text('麦克风权限'),
-                      subtitle: const Text('语音记账使用'),
-                      trailing: Text(_permissionLabel(_microphoneGranted)),
-                      onTap: _handleMicrophonePermission,
-                    ),
-                    ListTile(
-                      title: const Text('测试通知'),
-                      subtitle: const Text('立即发送一条记账提醒'),
-                      trailing: const Icon(Icons.notifications_active_outlined),
-                      onTap: _testNotification,
-                    ),
                     ListTile(
                       title: const Text('周期账目管理'),
                       subtitle: const Text('按天、周、月或年管理重复账目'),
@@ -263,43 +242,21 @@ class _SettingsPageState extends State<SettingsPage>
     return '标准';
   }
 
-  String _permissionLabel(bool? granted) => switch (granted) {
-    true => '已允许',
-    false => '未开启  ›',
-    null => '检查中…',
-  };
-
-  Future<void> _refreshPermissionStatus() async {
-    bool? notifications;
-    bool? microphone;
+  Future<void> _refreshExactAlarmAccess() async {
     bool? exactAlarm;
-    try {
-      notifications = await NotificationService.notificationsEnabled();
-    } on Object {
-      notifications = null;
-    }
-    try {
-      microphone = await SpeechRecognitionService.hasPermission();
-    } on Object {
-      microphone = null;
-    }
     try {
       exactAlarm = await NotificationService.canScheduleExactAlarms();
     } on Object {
       exactAlarm = null;
     }
     if (!mounted) return;
-    setState(() {
-      _notificationsEnabled = notifications;
-      _microphoneGranted = microphone;
-      _exactAlarmAllowed = exactAlarm;
-    });
+    setState(() => _exactAlarmAllowed = exactAlarm);
   }
 
   Future<void> _toggleDailyReminder(bool enabled) async {
     if (enabled && !await NotificationService.requestPermission()) {
       if (mounted) _showNotificationSettingsMessage();
-      await _refreshPermissionStatus();
+      await _refreshExactAlarmAccess();
       return;
     }
     if (enabled && !await NotificationService.canScheduleExactAlarms()) {
@@ -311,7 +268,7 @@ class _SettingsPageState extends State<SettingsPage>
       return;
     }
     await _applyDailyReminder(enabled: enabled);
-    await _refreshPermissionStatus();
+    await _refreshExactAlarmAccess();
   }
 
   Future<void> _applyDailyReminder({
@@ -390,46 +347,6 @@ class _SettingsPageState extends State<SettingsPage>
     }
   }
 
-  Future<void> _handleNotificationPermission() async {
-    if (_notificationsEnabled == true) {
-      await NotificationService.openSettings();
-      return;
-    }
-    if (!await NotificationService.requestPermission() && mounted) {
-      _showNotificationSettingsMessage();
-    }
-    await _refreshPermissionStatus();
-  }
-
-  Future<void> _handleMicrophonePermission() async {
-    if (_microphoneGranted == true) {
-      await SpeechRecognitionService.openSettings();
-      return;
-    }
-    if (!await SpeechRecognitionService.requestPermission() && mounted) {
-      _showMicrophoneSettingsMessage();
-    }
-    await _refreshPermissionStatus();
-  }
-
-  Future<void> _testNotification() async {
-    if (!await NotificationService.requestPermission()) {
-      if (mounted) _showNotificationSettingsMessage();
-      await _refreshPermissionStatus();
-      return;
-    }
-    final bool shown = await NotificationService.showTestNotification();
-    if (!mounted) return;
-    if (!shown) {
-      _showNotificationSettingsMessage();
-      return;
-    }
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text('测试通知已发送，请查看系统通知栏')));
-    await _refreshPermissionStatus();
-  }
-
   void _showNotificationSettingsMessage() {
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
@@ -437,18 +354,6 @@ class _SettingsPageState extends State<SettingsPage>
         action: SnackBarAction(
           label: '打开设置',
           onPressed: NotificationService.openSettings,
-        ),
-      ),
-    );
-  }
-
-  void _showMicrophoneSettingsMessage() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('需要麦克风权限才能语音记账'),
-        action: SnackBarAction(
-          label: '打开设置',
-          onPressed: SpeechRecognitionService.openSettings,
         ),
       ),
     );
