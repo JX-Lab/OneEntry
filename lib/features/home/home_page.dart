@@ -58,6 +58,7 @@ class _HomePageState extends State<HomePage> {
   bool _edgeToBottom = true;
   double _lastScrollOffset = 0;
   Timer? _edgeButtonTimer;
+  Timer? _voiceTimeoutTimer;
   StreamSubscription<SpeechRecognitionEvent>? _speechSubscription;
   _VoiceState _voiceState = _VoiceState.idle;
 
@@ -78,6 +79,7 @@ class _HomePageState extends State<HomePage> {
       ..removeListener(_handleScroll)
       ..dispose();
     _edgeButtonTimer?.cancel();
+    _voiceTimeoutTimer?.cancel();
     _speechSubscription?.cancel();
     if (_voiceState != _VoiceState.idle) {
       SpeechRecognitionService.cancel();
@@ -501,6 +503,7 @@ class _HomePageState extends State<HomePage> {
       }
       if (await SpeechRecognitionService.start() && mounted) {
         setState(() => _voiceState = _VoiceState.listening);
+        _startVoiceTimeout();
       }
     } on Object catch (error) {
       _showVoiceMessage('无法启动语音识别：$error');
@@ -515,6 +518,7 @@ class _HomePageState extends State<HomePage> {
       case SpeechRecognitionStatus.processing:
         setState(() => _voiceState = _VoiceState.processing);
       case SpeechRecognitionStatus.result:
+        _cancelVoiceTimeout();
         setState(() => _voiceState = _VoiceState.idle);
         final String transcript = event.text?.trim() ?? '';
         final LedgerEntry? draft = parseVoiceEntry(
@@ -529,9 +533,11 @@ class _HomePageState extends State<HomePage> {
           widget.onVoiceEntry(draft);
         }
       case SpeechRecognitionStatus.error:
+        _cancelVoiceTimeout();
         setState(() => _voiceState = _VoiceState.idle);
         _showVoiceMessage(event.message ?? '语音识别失败');
       case SpeechRecognitionStatus.idle:
+        _cancelVoiceTimeout();
         setState(() => _voiceState = _VoiceState.idle);
     }
   }
@@ -541,6 +547,23 @@ class _HomePageState extends State<HomePage> {
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  void _startVoiceTimeout() {
+    _cancelVoiceTimeout();
+    _voiceTimeoutTimer = Timer(const Duration(seconds: 15), () async {
+      if (!mounted || _voiceState == _VoiceState.idle) return;
+      _voiceTimeoutTimer = null;
+      await SpeechRecognitionService.cancel();
+      if (!mounted) return;
+      setState(() => _voiceState = _VoiceState.idle);
+      _showVoiceMessage('语音识别超时，请重试');
+    });
+  }
+
+  void _cancelVoiceTimeout() {
+    _voiceTimeoutTimer?.cancel();
+    _voiceTimeoutTimer = null;
   }
 
   void _showMicrophonePermissionMessage() {

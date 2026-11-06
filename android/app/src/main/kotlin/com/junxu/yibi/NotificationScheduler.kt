@@ -39,6 +39,11 @@ object NotificationScheduler {
         return true
     }
 
+    fun canScheduleExactAlarms(context: Context): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return true
+        return context.getSystemService(AlarmManager::class.java).canScheduleExactAlarms()
+    }
+
     fun scheduleRecurringCheck(context: Context) {
         val alarm = context.getSystemService(AlarmManager::class.java)
         val pending = pendingIntent(context, ACTION_RECURRING, 2102)
@@ -94,7 +99,11 @@ object NotificationScheduler {
     }
 
     private fun setOneShot(alarm: AlarmManager, triggerAtMillis: Long, pending: PendingIntent) {
-        alarm.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAtMillis, pending)
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S || alarm.canScheduleExactAlarms()) {
+            alarm.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAtMillis, pending)
+        } else {
+            alarm.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAtMillis, pending)
+        }
     }
 
     private fun nextTime(hour: Int, minute: Int): Long {

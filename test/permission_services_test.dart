@@ -44,6 +44,7 @@ void main() {
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(notifications, (MethodCall call) async {
           if (call.method == 'notificationsEnabled') return true;
+          if (call.method == 'canScheduleExactAlarms') return true;
           return null;
         });
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
@@ -53,6 +54,7 @@ void main() {
         });
 
     expect(await NotificationService.notificationsEnabled(), isTrue);
+    expect(await NotificationService.canScheduleExactAlarms(), isTrue);
     expect(await SpeechRecognitionService.hasPermission(), isTrue);
   });
 }

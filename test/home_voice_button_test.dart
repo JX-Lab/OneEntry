@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:yibi/data/app_database.dart';
 import 'package:yibi/data/ledger_controller.dart';
@@ -224,5 +225,55 @@ void main() {
 
     expect(find.text('本月预算 ¥5000.00'), findsOneWidget);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('语音识别超过 15 秒会自动取消', (WidgetTester tester) async {
+    const MethodChannel speech = MethodChannel('com.junxu.yibi/speech');
+    bool cancelled = false;
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(speech, (MethodCall call) async {
+          switch (call.method) {
+            case 'requestPermission':
+            case 'isAvailable':
+            case 'start':
+              return true;
+            case 'cancel':
+              cancelled = true;
+              return null;
+          }
+          return null;
+        });
+    addTearDown(
+      () => TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(speech, null),
+    );
+    final LedgerController controller = LedgerController(
+      LedgerRepository(AppDatabase()),
+    );
+    addTearDown(controller.dispose);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: HomePage(
+          controller: controller,
+          onAddEntry: () {},
+          onVoiceEntry: (_) {},
+          onEditEntry: (_) {},
+          onDeleteEntry: (_) {},
+          onOpenStatistics: () {},
+          onOpenSettings: () {},
+          onOpenAccounts: () {},
+          onOpenMembers: () {},
+          onOpenBudget: (_) {},
+        ),
+      ),
+    );
+    await tester.tap(find.byIcon(Icons.mic_none_rounded));
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.pump(const Duration(seconds: 15));
+    await tester.pump();
+
+    expect(cancelled, isTrue);
+    expect(find.text('语音识别超时，请重试'), findsOneWidget);
   });
 }

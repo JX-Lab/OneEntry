@@ -41,6 +41,9 @@ class MainActivity : FlutterActivity() {
                     NotificationScheduler.createChannel(this)
                     result.success(NotificationScheduler.notificationsEnabled(this))
                 }
+                "canScheduleExactAlarms" -> result.success(
+                    NotificationScheduler.canScheduleExactAlarms(this),
+                )
                 "scheduleRecurringCheck" -> {
                     NotificationScheduler.scheduleRecurringCheck(this)
                     result.success(null)
@@ -57,6 +60,10 @@ class MainActivity : FlutterActivity() {
                 "showTestNotification" -> result.success(ReminderReceiver().showTest(this))
                 "openNotificationSettings" -> {
                     openNotificationSettings()
+                    result.success(null)
+                }
+                "openExactAlarmSettings" -> {
+                    openExactAlarmSettings()
                     result.success(null)
                 }
                 else -> result.notImplemented()
@@ -291,6 +298,16 @@ class MainActivity : FlutterActivity() {
                 data = Uri.parse("package:$packageName")
             },
         )
+    }
+
+    private fun openExactAlarmSettings() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            startActivity(
+                Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM).apply {
+                    data = Uri.parse("package:$packageName")
+                },
+            )
+        }
     }
 
     private fun openFile(mimeTypes: List<String>, result: MethodChannel.Result) {
