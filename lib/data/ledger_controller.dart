@@ -25,6 +25,7 @@ class LedgerController extends ChangeNotifier {
   String splitMode = 'equal';
   String themeMode = 'system';
   String themeColor = 'green';
+  bool voiceEnabled = true;
   double textScale = 1;
   bool highContrast = false;
   bool readerHints = true;
@@ -61,6 +62,7 @@ class LedgerController extends ChangeNotifier {
     splitMode = snapshot.splitMode;
     themeMode = snapshot.themeMode;
     themeColor = snapshot.themeColor;
+    voiceEnabled = snapshot.voiceEnabled;
     textScale = snapshot.textScale;
     highContrast = snapshot.highContrast;
     readerHints = snapshot.readerHints;
@@ -357,6 +359,9 @@ class LedgerController extends ChangeNotifier {
         break;
       case 'theme_color':
         themeColor = value;
+        break;
+      case 'voice_enabled':
+        voiceEnabled = value != '0';
         break;
       case 'text_scale':
         textScale = double.tryParse(value) ?? 1;

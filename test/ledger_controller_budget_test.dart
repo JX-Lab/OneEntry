@@ -58,6 +58,17 @@ void main() {
     expect(controller.themeColor, 'purple');
   });
 
+  test('语音记账偏好会立即更新控制器', () async {
+    final LedgerController controller = LedgerController(
+      _FakeLedgerRepository(),
+    );
+    addTearDown(controller.dispose);
+
+    await controller.setPreference('voice_enabled', '0');
+
+    expect(controller.voiceEnabled, isFalse);
+  });
+
   test('每日提醒设置会保存并更新控制器', () async {
     final _FakeLedgerRepository repository = _FakeLedgerRepository();
     final LedgerController controller = LedgerController(repository);

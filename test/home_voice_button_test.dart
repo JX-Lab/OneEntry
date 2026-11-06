@@ -227,9 +227,38 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('关闭语音记账后首页不显示麦克风', (WidgetTester tester) async {
+    final LedgerController controller = LedgerController(
+      LedgerRepository(AppDatabase()),
+    );
+    controller.voiceEnabled = false;
+    addTearDown(controller.dispose);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: HomePage(
+          controller: controller,
+          onAddEntry: () {},
+          onVoiceEntry: (_) {},
+          onEditEntry: (_) {},
+          onDeleteEntry: (_) {},
+          onOpenStatistics: () {},
+          onOpenSettings: () {},
+          onOpenAccounts: () {},
+          onOpenMembers: () {},
+          onOpenBudget: (_) {},
+        ),
+      ),
+    );
+
+    expect(find.byIcon(Icons.mic_none_rounded), findsNothing);
+    expect(find.text('记一笔'), findsOneWidget);
+  });
+
   testWidgets('语音识别超过 15 秒会自动取消', (WidgetTester tester) async {
     const MethodChannel speech = MethodChannel('com.junxu.yibi/speech');
     bool cancelled = false;
+    bool stopped = false;
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(speech, (MethodCall call) async {
           switch (call.method) {
@@ -239,6 +268,9 @@ void main() {
               return true;
             case 'cancel':
               cancelled = true;
+              return null;
+            case 'stop':
+              stopped = true;
               return null;
           }
           return null;
@@ -270,7 +302,10 @@ void main() {
     );
     await tester.tap(find.byIcon(Icons.mic_none_rounded));
     await tester.pump(const Duration(milliseconds: 500));
-    await tester.pump(const Duration(seconds: 15));
+    await tester.pump(const Duration(seconds: 10));
+    await tester.pump();
+    expect(stopped, isTrue);
+    await tester.pump(const Duration(seconds: 5));
     await tester.pump();
 
     expect(cancelled, isTrue);

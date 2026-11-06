@@ -20,6 +20,7 @@ class LedgerSnapshot {
     required this.splitMode,
     required this.themeMode,
     required this.themeColor,
+    required this.voiceEnabled,
     required this.textScale,
     required this.highContrast,
     required this.readerHints,
@@ -40,6 +41,7 @@ class LedgerSnapshot {
   final String splitMode;
   final String themeMode;
   final String themeColor;
+  final bool voiceEnabled;
   final double textScale;
   final bool highContrast;
   final bool readerHints;
@@ -157,6 +159,7 @@ class LedgerRepository {
       splitMode: settings['split_mode'] ?? 'equal',
       themeMode: settings['theme_mode'] ?? 'system',
       themeColor: settings['theme_color'] ?? 'green',
+      voiceEnabled: settings['voice_enabled'] != '0',
       textScale: double.tryParse(settings['text_scale'] ?? '') ?? 1,
       highContrast: settings['high_contrast'] == '1',
       readerHints: settings['reader_hints'] != '0',

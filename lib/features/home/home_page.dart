@@ -396,13 +396,15 @@ class _HomePageState extends State<HomePage> {
                           minimum: const EdgeInsets.fromLTRB(16, 8, 16, 12),
                           child: Row(
                             children: <Widget>[
-                              _VoiceButton(
-                                state: _voiceState,
-                                onTap: _voiceState == _VoiceState.processing
-                                    ? null
-                                    : _toggleVoiceRecognition,
-                              ),
-                              const SizedBox(width: 10),
+                              if (widget.controller.voiceEnabled) ...<Widget>[
+                                _VoiceButton(
+                                  state: _voiceState,
+                                  onTap: _voiceState == _VoiceState.processing
+                                      ? null
+                                      : _toggleVoiceRecognition,
+                                ),
+                                const SizedBox(width: 10),
+                              ],
                               Expanded(
                                 child: InkWell(
                                   borderRadius: BorderRadius.circular(28),
@@ -487,6 +489,7 @@ class _HomePageState extends State<HomePage> {
   Future<void> _toggleVoiceRecognition() async {
     if (_voiceState == _VoiceState.listening) {
       setState(() => _voiceState = _VoiceState.processing);
+      _startVoiceProcessingTimeout();
       await SpeechRecognitionService.stop();
       return;
     }
@@ -503,7 +506,7 @@ class _HomePageState extends State<HomePage> {
       }
       if (await SpeechRecognitionService.start() && mounted) {
         setState(() => _voiceState = _VoiceState.listening);
-        _startVoiceTimeout();
+        _startVoiceListeningTimeout();
       }
     } on Object catch (error) {
       _showVoiceMessage('无法启动语音识别：$error');
@@ -517,6 +520,7 @@ class _HomePageState extends State<HomePage> {
         setState(() => _voiceState = _VoiceState.listening);
       case SpeechRecognitionStatus.processing:
         setState(() => _voiceState = _VoiceState.processing);
+        _startVoiceProcessingTimeout();
       case SpeechRecognitionStatus.result:
         _cancelVoiceTimeout();
         setState(() => _voiceState = _VoiceState.idle);
@@ -549,9 +553,25 @@ class _HomePageState extends State<HomePage> {
     ).showSnackBar(SnackBar(content: Text(message)));
   }
 
-  void _startVoiceTimeout() {
+  void _startVoiceListeningTimeout() {
     _cancelVoiceTimeout();
-    _voiceTimeoutTimer = Timer(const Duration(seconds: 15), () async {
+    _voiceTimeoutTimer = Timer(const Duration(seconds: 10), () async {
+      if (!mounted || _voiceState == _VoiceState.idle) return;
+      if (_voiceState == _VoiceState.processing) {
+        _startVoiceProcessingTimeout();
+        return;
+      }
+      setState(() => _voiceState = _VoiceState.processing);
+      await SpeechRecognitionService.stop();
+      if (mounted && _voiceState != _VoiceState.idle) {
+        _startVoiceProcessingTimeout();
+      }
+    });
+  }
+
+  void _startVoiceProcessingTimeout() {
+    _cancelVoiceTimeout();
+    _voiceTimeoutTimer = Timer(const Duration(seconds: 5), () async {
       if (!mounted || _voiceState == _VoiceState.idle) return;
       _voiceTimeoutTimer = null;
       await SpeechRecognitionService.cancel();

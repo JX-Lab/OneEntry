@@ -68,6 +68,13 @@ class _SettingsPageState extends State<SettingsPage>
                       onChanged: (bool value) => widget.controller
                           .setPreference('multi_enabled', value ? '1' : '0'),
                     ),
+                    SwitchListTile(
+                      title: const Text('语音记账'),
+                      subtitle: const Text('关闭后首页不显示麦克风按钮'),
+                      value: widget.controller.voiceEnabled,
+                      onChanged: (bool value) => widget.controller
+                          .setPreference('voice_enabled', value ? '1' : '0'),
+                    ),
                     ListTile(
                       title: const Text('多人统计'),
                       subtitle: const Text('选择成员金额的统计方式'),

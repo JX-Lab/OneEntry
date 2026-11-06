@@ -27,6 +27,7 @@ class MainActivity : FlutterActivity() {
     private var pendingSaveBytes: ByteArray? = null
     private var speechChannel: MethodChannel? = null
     private var speechRecognizer: SpeechRecognizer? = null
+    private var lastPartialText: String? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -167,12 +168,15 @@ class MainActivity : FlutterActivity() {
             return false
         }
         ensureSpeechRecognizer()
+        lastPartialText = null
         val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
             putExtra(RecognizerIntent.EXTRA_LANGUAGE, "zh-CN")
             putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
             putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3)
-            putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 1_500L)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 1_500L)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 1_000L)
         }
         return try {
             speechRecognizer?.startListening(intent)
@@ -203,13 +207,23 @@ class MainActivity : FlutterActivity() {
 
                 override fun onError(error: Int) {
                     Log.w(SPEECH_LOG_TAG, "Speech recognition error: $error")
-                    sendSpeechEvent("error", message = speechErrorMessage(error))
+                    val partial = lastPartialText?.trim().orEmpty()
+                    if (
+                        partial.isNotEmpty() &&
+                        (error == SpeechRecognizer.ERROR_NO_MATCH ||
+                            error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT)
+                    ) {
+                        sendSpeechEvent("result", text = partial)
+                    } else {
+                        sendSpeechEvent("error", message = speechErrorMessage(error))
+                    }
                     releaseSpeechRecognizer()
                 }
 
                 override fun onResults(results: Bundle?) {
                     val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
                     val text = matches?.firstOrNull()?.trim().orEmpty()
+                        .ifEmpty { lastPartialText?.trim().orEmpty() }
                     if (text.isEmpty()) {
                         sendSpeechEvent("error", message = "没有听清，请再试一次")
                     } else {
@@ -219,7 +233,14 @@ class MainActivity : FlutterActivity() {
                     releaseSpeechRecognizer()
                 }
 
-                override fun onPartialResults(partialResults: Bundle?) = Unit
+                override fun onPartialResults(partialResults: Bundle?) {
+                    lastPartialText = partialResults
+                        ?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+                        ?.firstOrNull()
+                        ?.trim()
+                        ?.takeIf { it.isNotEmpty() }
+                        ?: lastPartialText
+                }
                 override fun onEvent(eventType: Int, params: Bundle?) = Unit
             })
         }
@@ -264,6 +285,7 @@ class MainActivity : FlutterActivity() {
     private fun releaseSpeechRecognizer() {
         speechRecognizer?.destroy()
         speechRecognizer = null
+        lastPartialText = null
     }
 
     private fun speechErrorMessage(error: Int): String = when (error) {
