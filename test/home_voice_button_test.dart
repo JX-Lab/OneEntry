@@ -181,7 +181,7 @@ void main() {
     final int verticalInkCount = inkGradients.where(isVertical).length;
 
     expect(verticalBoxCount, greaterThanOrEqualTo(1));
-    expect(verticalInkCount, greaterThanOrEqualTo(1));
+    expect(verticalInkCount, greaterThanOrEqualTo(2));
   });
 
   testWidgets('四位数月预算在手机宽度下不溢出', (WidgetTester tester) async {

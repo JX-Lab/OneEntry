@@ -68,6 +68,20 @@ abstract final class AppTheme {
       action: Color(0xFF1D4ED8),
     ),
     AppAccent(
+      key: 'cyan',
+      label: '湖水青',
+      primary: Color(0xFF06B6D4),
+      secondary: Color(0xFF22D3EE),
+      action: Color(0xFF0E7490),
+    ),
+    AppAccent(
+      key: 'indigo',
+      label: '靛青',
+      primary: Color(0xFF4F46E5),
+      secondary: Color(0xFF818CF8),
+      action: Color(0xFF4338CA),
+    ),
+    AppAccent(
       key: 'purple',
       label: '薰衣紫',
       primary: Color(0xFF7C4DFF),

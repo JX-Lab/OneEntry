@@ -1522,15 +1522,22 @@ class _VoiceButton extends StatelessWidget {
           height: 50,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            color: state == _VoiceState.listening
-                ? AppTheme.expense
-                : AppTheme.accentOf(context).action,
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: state == _VoiceState.listening
+                  ? const <Color>[AppTheme.expense, Color(0xFFE53935)]
+                  : <Color>[
+                      AppTheme.accentOf(context).primary,
+                      AppTheme.accentOf(context).secondary,
+                    ],
+            ),
             boxShadow: <BoxShadow>[
               BoxShadow(
                 color:
                     (state == _VoiceState.listening
                             ? AppTheme.expense
-                            : AppTheme.accentOf(context).action)
+                            : AppTheme.accentOf(context).primary)
                         .withValues(alpha: .28),
                 blurRadius: 16,
                 offset: const Offset(0, 7),
