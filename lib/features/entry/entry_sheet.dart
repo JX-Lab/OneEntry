@@ -24,6 +24,7 @@ class EntrySheet extends StatefulWidget {
 class _EntrySheetState extends State<EntrySheet> {
   final TextEditingController _amountController = TextEditingController();
   final TextEditingController _noteController = TextEditingController();
+  final FocusNode _amountFocusNode = FocusNode(debugLabel: 'entry-amount');
   EntryType _type = EntryType.expense;
   String _category = '餐饮';
   int _accountId = 1;
@@ -69,12 +70,20 @@ class _EntrySheetState extends State<EntrySheet> {
       _amountController.text = source.amount.toStringAsFixed(2);
       _noteController.text = source.note;
     }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _amountController.selection = TextSelection.collapsed(
+        offset: _amountController.text.length,
+      );
+      _amountFocusNode.requestFocus();
+    });
   }
 
   @override
   void dispose() {
     _amountController.dispose();
     _noteController.dispose();
+    _amountFocusNode.dispose();
     super.dispose();
   }
 
@@ -162,6 +171,7 @@ class _EntrySheetState extends State<EntrySheet> {
               const SizedBox(height: 14),
               _AmountBox(
                 controller: _amountController,
+                focusNode: _amountFocusNode,
                 category: _type == EntryType.transfer ? '转账' : _category,
                 icon: _type == EntryType.transfer
                     ? Icons.swap_horiz
@@ -310,6 +320,7 @@ class _EntrySheetState extends State<EntrySheet> {
     required ValueChanged<int> onSelected,
     int? excludedId,
   }) async {
+    _dismissKeyboard();
     final int? result = await showModalBottomSheet<int>(
       context: context,
       isScrollControlled: true,
@@ -321,10 +332,13 @@ class _EntrySheetState extends State<EntrySheet> {
         excludedId: excludedId,
       ),
     );
-    if (result != null && mounted) onSelected(result);
+    if (!mounted) return;
+    _dismissKeyboard();
+    if (result != null) onSelected(result);
   }
 
   Future<void> _pickMembers(List<LedgerMember> members) async {
+    _dismissKeyboard();
     final Set<int>? result = await showModalBottomSheet<Set<int>>(
       context: context,
       isScrollControlled: true,
@@ -335,7 +349,9 @@ class _EntrySheetState extends State<EntrySheet> {
         selectedIds: _members,
       ),
     );
-    if (result == null || !mounted) return;
+    if (!mounted) return;
+    _dismissKeyboard();
+    if (result == null) return;
     setState(() {
       _members
         ..clear()
@@ -377,6 +393,7 @@ class _EntrySheetState extends State<EntrySheet> {
   }
 
   Future<void> _addCategory([LedgerCategory? existing]) async {
+    _dismissKeyboard();
     final TextEditingController name = TextEditingController(
       text: existing?.name ?? '',
     );
@@ -527,6 +544,7 @@ class _EntrySheetState extends State<EntrySheet> {
             ),
       ),
     );
+    if (mounted) _dismissKeyboard();
     final String value = name.text.trim();
     if (save != true || value.isEmpty) return;
     if (widget.controller.categories.any(
@@ -588,7 +606,7 @@ class _EntrySheetState extends State<EntrySheet> {
   }
 
   Future<void> _pickDateTime() async {
-    FocusManager.instance.primaryFocus?.unfocus();
+    _dismissKeyboard();
     final DateTime now = DateTime.now();
     final DateTime? date = await showDatePicker(
       context: context,
@@ -602,7 +620,7 @@ class _EntrySheetState extends State<EntrySheet> {
       initialEntryMode: DatePickerEntryMode.calendar,
     );
     if (!mounted) return;
-    FocusManager.instance.primaryFocus?.unfocus();
+    _dismissKeyboard();
     if (date == null) return;
     final TimeOfDay? time = await showTimePicker(
       context: context,
@@ -611,7 +629,7 @@ class _EntrySheetState extends State<EntrySheet> {
       helpText: '选择时分',
     );
     if (!mounted) return;
-    FocusManager.instance.primaryFocus?.unfocus();
+    _dismissKeyboard();
     if (time == null) return;
     DateTime selected = DateTime(
       date.year,
@@ -628,8 +646,13 @@ class _EntrySheetState extends State<EntrySheet> {
     }
     setState(() => _occurredAt = selected);
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      FocusManager.instance.primaryFocus?.unfocus();
+      if (mounted) _dismissKeyboard();
     });
+  }
+
+  void _dismissKeyboard() {
+    _amountFocusNode.unfocus();
+    FocusManager.instance.primaryFocus?.unfocus();
   }
 }
 
@@ -703,10 +726,12 @@ class _TypeTabs extends StatelessWidget {
 class _AmountBox extends StatelessWidget {
   const _AmountBox({
     required this.controller,
+    required this.focusNode,
     required this.category,
     required this.icon,
   });
   final TextEditingController controller;
+  final FocusNode focusNode;
   final String category;
   final IconData icon;
 
@@ -741,6 +766,7 @@ class _AmountBox extends StatelessWidget {
           width: 150,
           child: TextField(
             controller: controller,
+            focusNode: focusNode,
             autofocus: false,
             autocorrect: false,
             enableSuggestions: false,
