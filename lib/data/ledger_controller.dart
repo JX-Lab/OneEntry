@@ -28,6 +28,7 @@ class LedgerController extends ChangeNotifier {
   bool voiceEnabled = true;
   double textScale = 1;
   bool highContrast = false;
+  String colorVisionMode = 'standard';
   bool readerHints = true;
   bool haptics = true;
   bool initialized = false;
@@ -65,6 +66,7 @@ class LedgerController extends ChangeNotifier {
     voiceEnabled = snapshot.voiceEnabled;
     textScale = snapshot.textScale;
     highContrast = snapshot.highContrast;
+    colorVisionMode = snapshot.colorVisionMode;
     readerHints = snapshot.readerHints;
     haptics = snapshot.haptics;
     initialized = true;
@@ -368,6 +370,9 @@ class LedgerController extends ChangeNotifier {
         break;
       case 'high_contrast':
         highContrast = value == '1';
+        break;
+      case 'color_vision_mode':
+        colorVisionMode = value;
         break;
       case 'reader_hints':
         readerHints = value == '1';

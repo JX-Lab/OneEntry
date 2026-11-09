@@ -114,7 +114,9 @@ class _AccountsPageState extends State<AccountsPage> {
                         child: _AccountSummaryValue(
                           label: '负债',
                           value: '¥${debt.toStringAsFixed(2)}',
-                          color: debt > 0 ? AppTheme.expense : null,
+                          color: debt > 0
+                              ? AppTheme.ledgerOf(context).expense
+                              : null,
                         ),
                       ),
                     ],
@@ -208,7 +210,9 @@ class _AccountsPageState extends State<AccountsPage> {
                 '¥${account.balance.toStringAsFixed(2)}',
                 style: TextStyle(
                   fontWeight: FontWeight.w700,
-                  color: account.balance < 0 ? AppTheme.expense : null,
+                  color: account.balance < 0
+                      ? AppTheme.ledgerOf(context).expense
+                      : null,
                 ),
               ),
               const SizedBox(width: 6),
@@ -441,14 +445,14 @@ class _AccountDetailPage extends StatelessWidget {
                           child: _AccountMetric(
                             label: '流入',
                             value: income,
-                            color: AppTheme.income,
+                            color: AppTheme.ledgerOf(context).income,
                           ),
                         ),
                         Expanded(
                           child: _AccountMetric(
                             label: '流出',
                             value: expense,
-                            color: AppTheme.expense,
+                            color: AppTheme.ledgerOf(context).expense,
                           ),
                         ),
                         Expanded(
@@ -533,11 +537,11 @@ class _AccountDetailPage extends StatelessWidget {
                                     color:
                                         entry.type == EntryType.expense ||
                                             entry.adjustmentDelta < 0
-                                        ? AppTheme.expense
+                                        ? AppTheme.ledgerOf(context).expense
                                         : entry.type == EntryType.income ||
                                               entry.adjustmentDelta > 0
-                                        ? AppTheme.income
-                                        : null,
+                                        ? AppTheme.ledgerOf(context).income
+                                        : AppTheme.ledgerOf(context).transfer,
                                   ),
                                 ),
                                 Text(

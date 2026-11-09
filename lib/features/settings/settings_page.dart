@@ -194,6 +194,12 @@ class _SettingsPageState extends State<SettingsPage>
                       onChanged: (bool value) => widget.controller
                           .setPreference('high_contrast', value ? '1' : '0'),
                     ),
+                    ListTile(
+                      title: const Text('色觉模式'),
+                      subtitle: const Text('调整收入与支出的语义配色'),
+                      trailing: Text('${_colorVisionModeName()}  ›'),
+                      onTap: _pickColorVisionMode,
+                    ),
                   ],
                 ),
                 _Section(
@@ -248,6 +254,14 @@ class _SettingsPageState extends State<SettingsPage>
     if (widget.controller.textScale >= 1.15) return '较大';
     return '标准';
   }
+
+  String _colorVisionModeName() => switch (widget.controller.colorVisionMode) {
+    'protan' => '红色觉异常',
+    'deutan' => '绿色觉异常',
+    'tritan' => '蓝黄色觉异常',
+    'mono' => '全色盲',
+    _ => '标准',
+  };
 
   Future<void> _refreshExactAlarmAccess() async {
     bool? exactAlarm;
@@ -477,6 +491,20 @@ class _SettingsPageState extends State<SettingsPage>
     );
     if (value != null)
       await widget.controller.setPreference('text_scale', value);
+  }
+
+  Future<void> _pickColorVisionMode() async {
+    final String? value =
+        await _simpleChoice('色觉模式', const <MapEntry<String, String>>[
+          MapEntry('standard', '标准'),
+          MapEntry('protan', '红色觉异常'),
+          MapEntry('deutan', '绿色觉异常'),
+          MapEntry('tritan', '蓝黄色觉异常'),
+          MapEntry('mono', '全色盲'),
+        ]);
+    if (value != null) {
+      await widget.controller.setPreference('color_vision_mode', value);
+    }
   }
 
   Future<String?> _simpleChoice(

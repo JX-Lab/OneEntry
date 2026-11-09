@@ -27,6 +27,7 @@ void main() {
     expect(find.text('通知权限'), findsNothing);
     expect(find.text('麦克风权限'), findsNothing);
     expect(find.text('测试通知'), findsNothing);
+    expect(find.text('色觉模式'), findsOneWidget);
     await tester.scrollUntilVisible(
       find.text('主题色'),
       280,

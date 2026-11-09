@@ -113,10 +113,12 @@ class _OneEntryAppState extends State<OneEntryApp> {
         theme: AppTheme.light(
           highContrast: widget.controller.highContrast,
           accentKey: widget.controller.themeColor,
+          colorVisionMode: widget.controller.colorVisionMode,
         ),
         darkTheme: AppTheme.dark(
           highContrast: widget.controller.highContrast,
           accentKey: widget.controller.themeColor,
+          colorVisionMode: widget.controller.colorVisionMode,
         ),
         themeMode: switch (widget.controller.themeMode) {
           'light' => ThemeMode.light,

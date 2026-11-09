@@ -316,8 +316,8 @@ class _RuleTile extends StatelessWidget {
             style: TextStyle(
               fontWeight: FontWeight.w700,
               color: rule.type == EntryType.expense
-                  ? AppTheme.expense
-                  : AppTheme.income,
+                  ? AppTheme.ledgerOf(context).expense
+                  : AppTheme.ledgerOf(context).income,
             ),
           ),
           PopupMenuButton<String>(

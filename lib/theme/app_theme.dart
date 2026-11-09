@@ -45,6 +45,38 @@ class AppAccentTheme extends ThemeExtension<AppAccentTheme> {
   );
 }
 
+@immutable
+class LedgerSemanticColors extends ThemeExtension<LedgerSemanticColors> {
+  const LedgerSemanticColors({
+    required this.income,
+    required this.expense,
+    required this.transfer,
+  });
+
+  final Color income;
+  final Color expense;
+  final Color transfer;
+
+  @override
+  LedgerSemanticColors copyWith({
+    Color? income,
+    Color? expense,
+    Color? transfer,
+  }) => LedgerSemanticColors(
+    income: income ?? this.income,
+    expense: expense ?? this.expense,
+    transfer: transfer ?? this.transfer,
+  );
+
+  @override
+  LedgerSemanticColors lerp(LedgerSemanticColors? other, double t) =>
+      LedgerSemanticColors(
+        income: Color.lerp(income, other?.income, t) ?? income,
+        expense: Color.lerp(expense, other?.expense, t) ?? expense,
+        transfer: Color.lerp(transfer, other?.transfer, t) ?? transfer,
+      );
+}
+
 abstract final class AppTheme {
   static const Color green = Color(0xFF0EB078);
   static const Color greenLight = Color(0xFF35D3A0);
@@ -117,6 +149,14 @@ abstract final class AppTheme {
         action: Color(0xFF087F5B),
       );
 
+  static LedgerSemanticColors ledgerOf(BuildContext context) =>
+      Theme.of(context).extension<LedgerSemanticColors>() ??
+      const LedgerSemanticColors(
+        income: Color(0xFF1769AA),
+        expense: Color(0xFFB4232D),
+        transfer: Color(0xFF667085),
+      );
+
   static double contrastRatio(Color first, Color second) {
     final double firstLuminance = first.computeLuminance();
     final double secondLuminance = second.computeLuminance();
@@ -132,25 +172,30 @@ abstract final class AppTheme {
   static ThemeData light({
     bool highContrast = false,
     String accentKey = 'green',
+    String colorVisionMode = 'standard',
   }) => _theme(
     brightness: Brightness.light,
     highContrast: highContrast,
     accent: accentFor(accentKey),
+    colorVisionMode: colorVisionMode,
   );
 
   static ThemeData dark({
     bool highContrast = false,
     String accentKey = 'green',
+    String colorVisionMode = 'standard',
   }) => _theme(
     brightness: Brightness.dark,
     highContrast: highContrast,
     accent: accentFor(accentKey),
+    colorVisionMode: colorVisionMode,
   );
 
   static ThemeData _theme({
     required Brightness brightness,
     required bool highContrast,
     required AppAccent accent,
+    required String colorVisionMode,
   }) {
     final bool dark = brightness == Brightness.dark;
     ColorScheme colors = ColorScheme.fromSeed(
@@ -161,6 +206,11 @@ abstract final class AppTheme {
     if (!dark) {
       colors = colors.copyWith(primary: accent.action, onPrimary: Colors.white);
     }
+    final LedgerSemanticColors ledgerColors = _ledgerColors(
+      brightness: brightness,
+      mode: colorVisionMode,
+      highContrast: highContrast,
+    );
     return ThemeData(
       useMaterial3: true,
       colorScheme: colors,
@@ -203,7 +253,75 @@ abstract final class AppTheme {
           secondary: accent.secondary,
           action: accent.action,
         ),
+        ledgerColors,
       ],
     );
+  }
+
+  static LedgerSemanticColors _ledgerColors({
+    required Brightness brightness,
+    required String mode,
+    required bool highContrast,
+  }) {
+    final bool dark = brightness == Brightness.dark;
+    LedgerSemanticColors colors = switch (mode) {
+      'protan' || 'deutan' =>
+        dark
+            ? const LedgerSemanticColors(
+                income: Color(0xFF63B3ED),
+                expense: Color(0xFFFFC857),
+                transfer: Color(0xFFB8C0CC),
+              )
+            : const LedgerSemanticColors(
+                income: Color(0xFF005FAF),
+                expense: Color(0xFF8A5100),
+                transfer: Color(0xFF5F6670),
+              ),
+      'tritan' =>
+        dark
+            ? const LedgerSemanticColors(
+                income: Color(0xFF62D6A9),
+                expense: Color(0xFFF78ACB),
+                transfer: Color(0xFFB8C0CC),
+              )
+            : const LedgerSemanticColors(
+                income: Color(0xFF007A5E),
+                expense: Color(0xFF9C1C83),
+                transfer: Color(0xFF5F6670),
+              ),
+      'mono' =>
+        dark
+            ? const LedgerSemanticColors(
+                income: Color(0xFFAEB7C2),
+                expense: Color(0xFFFFFFFF),
+                transfer: Color(0xFF7E8793),
+              )
+            : const LedgerSemanticColors(
+                income: Color(0xFF5F6670),
+                expense: Color(0xFF20242A),
+                transfer: Color(0xFF8A929D),
+              ),
+      _ =>
+        dark
+            ? const LedgerSemanticColors(
+                income: Color(0xFF74C0FC),
+                expense: Color(0xFFFF8A8A),
+                transfer: Color(0xFFB8C0CC),
+              )
+            : const LedgerSemanticColors(
+                income: Color(0xFF1769AA),
+                expense: Color(0xFFB4232D),
+                transfer: Color(0xFF667085),
+              ),
+    };
+    if (!highContrast) return colors;
+    Color boost(Color color) =>
+        Color.lerp(color, dark ? Colors.white : Colors.black, .16) ?? color;
+    colors = colors.copyWith(
+      income: boost(colors.income),
+      expense: boost(colors.expense),
+      transfer: boost(colors.transfer),
+    );
+    return colors;
   }
 }

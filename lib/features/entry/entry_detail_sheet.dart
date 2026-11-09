@@ -51,9 +51,9 @@ Future<void> showEntryDetailSheet({
             label: '金额',
             value: '$sign¥${amount.toStringAsFixed(2)}',
             valueColor: expense
-                ? AppTheme.expense
+                ? AppTheme.ledgerOf(context).expense
                 : entry.type == EntryType.income || entry.adjustmentDelta > 0
-                ? AppTheme.income
+                ? AppTheme.ledgerOf(context).income
                 : null,
           ),
           _DetailRow(label: '账户', value: accountText),

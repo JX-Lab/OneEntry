@@ -578,14 +578,14 @@ class _MemberDetailPage extends StatelessWidget {
                           child: _MemberMetric(
                             label: '收入',
                             value: income,
-                            color: AppTheme.income,
+                            color: AppTheme.ledgerOf(context).income,
                           ),
                         ),
                         Expanded(
                           child: _MemberMetric(
                             label: '支出',
                             value: expense,
-                            color: AppTheme.expense,
+                            color: AppTheme.ledgerOf(context).expense,
                           ),
                         ),
                         Expanded(
@@ -659,10 +659,10 @@ class _MemberDetailPage extends StatelessWidget {
                                       : ''}¥${entry.amount.toStringAsFixed(2)}',
                                   style: TextStyle(
                                     color: entry.type == EntryType.expense
-                                        ? AppTheme.expense
+                                        ? AppTheme.ledgerOf(context).expense
                                         : entry.type == EntryType.income
-                                        ? AppTheme.income
-                                        : null,
+                                        ? AppTheme.ledgerOf(context).income
+                                        : AppTheme.ledgerOf(context).transfer,
                                     fontWeight: FontWeight.w600,
                                   ),
                                 ),

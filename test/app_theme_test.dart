@@ -29,4 +29,34 @@ void main() {
       greaterThanOrEqualTo(4.5),
     );
   });
+
+  test('各色觉模式的账目语义色在明暗主题中均可读', () {
+    for (final String mode in <String>[
+      'standard',
+      'protan',
+      'deutan',
+      'tritan',
+      'mono',
+    ]) {
+      for (final ThemeData theme in <ThemeData>[
+        AppTheme.light(colorVisionMode: mode),
+        AppTheme.dark(colorVisionMode: mode),
+      ]) {
+        final LedgerSemanticColors colors = theme
+            .extension<LedgerSemanticColors>()!;
+        final Color surface = theme.colorScheme.surface;
+        expect(colors.expense, isNot(colors.income), reason: mode);
+        expect(
+          AppTheme.contrastRatio(colors.expense, surface),
+          greaterThanOrEqualTo(4.5),
+          reason: '$mode expense ${theme.brightness}',
+        );
+        expect(
+          AppTheme.contrastRatio(colors.income, surface),
+          greaterThanOrEqualTo(4.5),
+          reason: '$mode income ${theme.brightness}',
+        );
+      }
+    }
+  });
 }

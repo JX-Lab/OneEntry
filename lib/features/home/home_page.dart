@@ -1779,10 +1779,10 @@ class _EntryTile extends StatelessWidget {
                     fontSize: 16,
                     fontWeight: FontWeight.w700,
                     color: expense
-                        ? AppTheme.expense
+                        ? AppTheme.ledgerOf(context).expense
                         : transfer
-                        ? null
-                        : AppTheme.income,
+                        ? AppTheme.ledgerOf(context).transfer
+                        : AppTheme.ledgerOf(context).income,
                   ),
                 ),
                 Text(

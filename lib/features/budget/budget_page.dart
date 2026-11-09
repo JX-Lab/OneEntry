@@ -331,7 +331,7 @@ class _BudgetHero extends StatelessWidget {
             value: progress.clamp(0, 1),
             minHeight: 11,
             color: progress > 1
-                ? AppTheme.expense
+                ? AppTheme.ledgerOf(context).expense
                 : Theme.of(context).colorScheme.primary,
             borderRadius: BorderRadius.circular(99),
           ),
@@ -344,7 +344,7 @@ class _BudgetHero extends StatelessWidget {
                 : '剩余 ¥${(budget - spent).toStringAsFixed(2)}',
             style: TextStyle(
               fontWeight: FontWeight.w700,
-              color: progress > 1 ? AppTheme.expense : null,
+              color: progress > 1 ? AppTheme.ledgerOf(context).expense : null,
             ),
           ),
         ],
@@ -415,7 +415,7 @@ class _CategoryBudget extends StatelessWidget {
             value: progress.clamp(0, 1),
             minHeight: 9,
             color: progress > 1
-                ? AppTheme.expense
+                ? AppTheme.ledgerOf(context).expense
                 : Theme.of(context).colorScheme.primary,
             borderRadius: BorderRadius.circular(99),
           ),
@@ -426,7 +426,10 @@ class _CategoryBudget extends StatelessWidget {
                 alignment: Alignment.centerLeft,
                 child: Text(
                   '超支 ¥${(spent - budget).toStringAsFixed(0)}（${(progress * 100).toStringAsFixed(1)}%）',
-                  style: const TextStyle(color: AppTheme.expense, fontSize: 12),
+                  style: TextStyle(
+                    color: AppTheme.ledgerOf(context).expense,
+                    fontSize: 12,
+                  ),
                 ),
               ),
             ),

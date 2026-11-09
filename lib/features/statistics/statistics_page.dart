@@ -546,8 +546,8 @@ class _StatisticsDetailPage extends StatelessWidget {
                               '${entry.type == EntryType.expense ? '-' : '+'}¥${entry.amount.toStringAsFixed(2)}',
                               style: TextStyle(
                                 color: entry.type == EntryType.expense
-                                    ? AppTheme.expense
-                                    : AppTheme.income,
+                                    ? AppTheme.ledgerOf(context).expense
+                                    : AppTheme.ledgerOf(context).income,
                                 fontWeight: FontWeight.w600,
                               ),
                             ),
@@ -821,6 +821,8 @@ class _InteractiveLineChart extends StatelessWidget {
                   expense: expense,
                   showIncome: showIncome,
                   showExpense: showExpense,
+                  incomeColor: AppTheme.ledgerOf(context).income,
+                  expenseColor: AppTheme.ledgerOf(context).expense,
                 ),
               ),
             ),
@@ -835,11 +837,15 @@ class _LinePainter extends CustomPainter {
     required this.expense,
     required this.showIncome,
     required this.showExpense,
+    required this.incomeColor,
+    required this.expenseColor,
   });
   final List<double> income;
   final List<double> expense;
   final bool showIncome;
   final bool showExpense;
+  final Color incomeColor;
+  final Color expenseColor;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -850,31 +856,63 @@ class _LinePainter extends CustomPainter {
         if (showExpense) ...expense,
       ].fold(0, math.max),
     );
-    void draw(List<double> values, Color color) {
+    void draw(List<double> values, Color color, {required bool dashed}) {
       final Path path = Path();
       final Paint line = Paint()
         ..color = color
         ..style = PaintingStyle.stroke
         ..strokeWidth = 2.2;
       final Paint point = Paint()..color = color;
+      final List<Offset> points = <Offset>[];
       for (int index = 0; index < values.length; index++) {
         final double x = values.length == 1
             ? size.width / 2
             : size.width * index / (values.length - 1);
         final double y =
             12 + (size.height - 28) * (1 - values[index] / maxValue);
+        final Offset position = Offset(x, y);
+        points.add(position);
         if (index == 0) {
           path.moveTo(x, y);
         } else {
           path.lineTo(x, y);
         }
-        canvas.drawCircle(Offset(x, y), 3, point);
+        if (dashed) {
+          canvas.drawRect(
+            Rect.fromCenter(center: position, width: 6, height: 6),
+            point,
+          );
+        } else {
+          canvas.drawCircle(position, 3, point);
+        }
       }
-      canvas.drawPath(path, line);
+      if (dashed) {
+        for (int index = 1; index < points.length; index++) {
+          _drawDashedLine(canvas, points[index - 1], points[index], line);
+        }
+      } else {
+        canvas.drawPath(path, line);
+      }
     }
 
-    if (showIncome) draw(income, AppTheme.income);
-    if (showExpense) draw(expense, AppTheme.expense);
+    if (showIncome) draw(income, incomeColor, dashed: false);
+    if (showExpense) draw(expense, expenseColor, dashed: true);
+  }
+
+  void _drawDashedLine(Canvas canvas, Offset start, Offset end, Paint paint) {
+    final double distance = (end - start).distance;
+    if (distance == 0) return;
+    final Offset direction = (end - start) / distance;
+    const double dash = 6;
+    const double gap = 4;
+    for (double offset = 0; offset < distance; offset += dash + gap) {
+      final double finish = math.min(offset + dash, distance);
+      canvas.drawLine(
+        start + direction * offset,
+        start + direction * finish,
+        paint,
+      );
+    }
   }
 
   @override

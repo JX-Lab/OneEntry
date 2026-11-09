@@ -23,6 +23,7 @@ class LedgerSnapshot {
     required this.voiceEnabled,
     required this.textScale,
     required this.highContrast,
+    required this.colorVisionMode,
     required this.readerHints,
     required this.haptics,
   });
@@ -44,6 +45,7 @@ class LedgerSnapshot {
   final bool voiceEnabled;
   final double textScale;
   final bool highContrast;
+  final String colorVisionMode;
   final bool readerHints;
   final bool haptics;
 }
@@ -162,6 +164,7 @@ class LedgerRepository {
       voiceEnabled: settings['voice_enabled'] != '0',
       textScale: double.tryParse(settings['text_scale'] ?? '') ?? 1,
       highContrast: settings['high_contrast'] == '1',
+      colorVisionMode: settings['color_vision_mode'] ?? 'standard',
       readerHints: settings['reader_hints'] != '0',
       haptics: settings['haptics'] != '0',
     );
