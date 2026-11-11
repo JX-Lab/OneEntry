@@ -45,6 +45,9 @@ class MainActivity : FlutterActivity() {
                 "canScheduleExactAlarms" -> result.success(
                     NotificationScheduler.canScheduleExactAlarms(this),
                 )
+                "dailyReminderStatus" -> result.success(
+                    NotificationScheduler.dailyStatus(this),
+                )
                 "scheduleRecurringCheck" -> {
                     NotificationScheduler.scheduleRecurringCheck(this)
                     result.success(null)

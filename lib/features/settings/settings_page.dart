@@ -6,6 +6,7 @@ import '../categories/categories_page.dart';
 import '../recurring/recurring_rules_page.dart';
 import '../../services/backup_service.dart';
 import '../../services/notification_service.dart';
+import '../../services/snapshot_service.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({required this.controller, super.key});
@@ -22,12 +23,16 @@ class _SettingsPageState extends State<SettingsPage>
   bool _waitingForExactAlarmPermission = false;
   int? _pendingReminderHour;
   int? _pendingReminderMinute;
+  List<LedgerSnapshotInfo>? _snapshots;
+  DailyReminderStatus? _dailyReminderStatus;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _refreshExactAlarmAccess();
+    _refreshSnapshots();
+    _refreshReminderStatus();
   }
 
   @override
@@ -45,6 +50,7 @@ class _SettingsPageState extends State<SettingsPage>
     } else {
       _refreshExactAlarmAccess();
     }
+    _refreshReminderStatus();
   }
 
   @override
@@ -103,7 +109,7 @@ class _SettingsPageState extends State<SettingsPage>
                   children: <Widget>[
                     SwitchListTile(
                       title: const Text('每日记账提醒'),
-                      subtitle: const Text('每天在设定时间提醒记账'),
+                      subtitle: Text(_dailyReminderSubtitle()),
                       value: widget.controller.dailyReminderEnabled,
                       onChanged: _toggleDailyReminder,
                     ),
@@ -205,6 +211,12 @@ class _SettingsPageState extends State<SettingsPage>
                 _Section(
                   title: '数据',
                   children: <Widget>[
+                    ListTile(
+                      title: const Text('数据快照'),
+                      subtitle: Text(_snapshotSummary()),
+                      trailing: const Icon(Icons.history_outlined),
+                      onTap: _showSnapshots,
+                    ),
                     const ListTile(
                       title: Text('数据保存位置'),
                       subtitle: Text('主数据库保存在应用内部'),
@@ -263,6 +275,64 @@ class _SettingsPageState extends State<SettingsPage>
     _ => '标准',
   };
 
+  String _snapshotSummary() {
+    final List<LedgerSnapshotInfo>? snapshots = _snapshots;
+    if (snapshots == null) return '正在读取…';
+    if (snapshots.isEmpty) return '暂无快照';
+    return '最近 ${_formatSnapshotTime(snapshots.first.createdAt)}（共 ${snapshots.length} 份）';
+  }
+
+  String _dailyReminderSubtitle() {
+    if (!widget.controller.dailyReminderEnabled) {
+      return '每天在设定时间提醒记账';
+    }
+    final DailyReminderStatus? status = _dailyReminderStatus;
+    if (status == null) return '正在读取提醒状态…';
+    final bool latestTriggerWasNotShown =
+        status.lastTriggeredAt != null &&
+        (status.lastShownAt == null ||
+            status.lastTriggeredAt!.isAfter(status.lastShownAt!));
+    final List<String> parts = <String>[
+      if (status.nextAt != null) '下次 ${_formatSnapshotTime(status.nextAt!)}',
+      if (latestTriggerWasNotShown)
+        '上次触发但未显示 ${_formatSnapshotTime(status.lastTriggeredAt!)}',
+      if (!latestTriggerWasNotShown && status.lastShownAt != null)
+        '上次成功 ${_formatSnapshotTime(status.lastShownAt!)}',
+    ];
+    return parts.isEmpty ? '已开启，等待系统调度' : parts.join('；');
+  }
+
+  Future<void> _refreshSnapshots() async {
+    try {
+      final List<LedgerSnapshotInfo> snapshots = await SnapshotService.list();
+      if (mounted) setState(() => _snapshots = snapshots);
+    } on Object {
+      if (mounted) setState(() => _snapshots = <LedgerSnapshotInfo>[]);
+    }
+  }
+
+  Future<void> _refreshReminderStatus() async {
+    try {
+      final DailyReminderStatus status =
+          await NotificationService.dailyReminderStatus();
+      if (mounted) setState(() => _dailyReminderStatus = status);
+    } on Object {
+      if (mounted)
+        setState(() => _dailyReminderStatus = const DailyReminderStatus());
+    }
+  }
+
+  String _formatSnapshotTime(DateTime value) {
+    final DateTime local = value.toLocal();
+    return '${local.month}月${local.day}日 ${local.hour.toString().padLeft(2, '0')}:${local.minute.toString().padLeft(2, '0')}';
+  }
+
+  String _formatSnapshotSize(int bytes) {
+    if (bytes < 1024) return '$bytes B';
+    if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
+    return '${(bytes / 1024 / 1024).toStringAsFixed(1)} MB';
+  }
+
   Future<void> _refreshExactAlarmAccess() async {
     bool? exactAlarm;
     try {
@@ -309,6 +379,7 @@ class _SettingsPageState extends State<SettingsPage>
       hour: nextHour,
       minute: nextMinute,
     );
+    await _refreshReminderStatus();
   }
 
   Future<void> _pickReminderTime() async {
@@ -540,6 +611,163 @@ class _SettingsPageState extends State<SettingsPage>
     ),
   );
 
+  Future<void> _showSnapshots() async {
+    List<LedgerSnapshotInfo> snapshots = await SnapshotService.list();
+    if (!mounted) return;
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      builder: (BuildContext sheetContext) => StatefulBuilder(
+        builder: (BuildContext context, StateSetter update) {
+          Future<void> reload() async {
+            snapshots = await SnapshotService.list();
+            if (sheetContext.mounted) update(() {});
+            if (mounted) setState(() => _snapshots = snapshots);
+          }
+
+          Future<void> createSnapshot() async {
+            await SnapshotService.create(widget.controller);
+            await reload();
+            if (sheetContext.mounted) {
+              ScaffoldMessenger.of(
+                sheetContext,
+              ).showSnackBar(const SnackBar(content: Text('已创建数据快照')));
+            }
+          }
+
+          Future<void> restoreSnapshot(LedgerSnapshotInfo snapshot) async {
+            final bool? confirmed = await showDialog<bool>(
+              context: sheetContext,
+              builder: (BuildContext dialogContext) => AlertDialog(
+                title: const Text('恢复这份快照？'),
+                content: Text(
+                  '将恢复到 ${_formatSnapshotTime(snapshot.createdAt)} 的账本状态。当前数据会先自动生成一份保护快照。',
+                ),
+                actions: <Widget>[
+                  TextButton(
+                    onPressed: () => Navigator.pop(dialogContext, false),
+                    child: const Text('取消'),
+                  ),
+                  FilledButton(
+                    onPressed: () => Navigator.pop(dialogContext, true),
+                    child: const Text('恢复'),
+                  ),
+                ],
+              ),
+            );
+            if (confirmed != true) return;
+            await SnapshotService.restore(widget.controller, snapshot);
+            await NotificationService.scheduleRecurringCheck();
+            await reload();
+            if (sheetContext.mounted) Navigator.pop(sheetContext);
+            if (mounted) {
+              ScaffoldMessenger.of(
+                this.context,
+              ).showSnackBar(const SnackBar(content: Text('已恢复数据快照')));
+            }
+          }
+
+          Future<void> deleteSnapshot(LedgerSnapshotInfo snapshot) async {
+            final bool? confirmed = await showDialog<bool>(
+              context: sheetContext,
+              builder: (BuildContext dialogContext) => AlertDialog(
+                title: const Text('删除这份快照？'),
+                content: const Text('删除后无法恢复。'),
+                actions: <Widget>[
+                  TextButton(
+                    onPressed: () => Navigator.pop(dialogContext, false),
+                    child: const Text('取消'),
+                  ),
+                  FilledButton(
+                    style: FilledButton.styleFrom(
+                      backgroundColor: AppTheme.expense,
+                      foregroundColor: Colors.white,
+                    ),
+                    onPressed: () => Navigator.pop(dialogContext, true),
+                    child: const Text('删除'),
+                  ),
+                ],
+              ),
+            );
+            if (confirmed != true) return;
+            await SnapshotService.delete(snapshot);
+            await reload();
+          }
+
+          return FractionallySizedBox(
+            heightFactor: .82,
+            child: Column(
+              children: <Widget>[
+                ListTile(
+                  title: const Text(
+                    '数据快照',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                  leading: IconButton(
+                    tooltip: '关闭',
+                    onPressed: () => Navigator.pop(sheetContext),
+                    icon: const Icon(Icons.close),
+                  ),
+                  trailing: IconButton(
+                    tooltip: '创建快照',
+                    onPressed: createSnapshot,
+                    icon: const Icon(Icons.add_a_photo_outlined),
+                  ),
+                ),
+                const Padding(
+                  padding: EdgeInsets.fromLTRB(18, 0, 18, 8),
+                  child: Text(
+                    '每周自动生成，导入、恢复和清空前也会保留；最多 8 份。',
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+                Expanded(
+                  child: snapshots.isEmpty
+                      ? const Center(child: Text('还没有数据快照'))
+                      : ListView.builder(
+                          padding: const EdgeInsets.only(bottom: 18),
+                          itemCount: snapshots.length,
+                          itemBuilder: (BuildContext context, int index) {
+                            final LedgerSnapshotInfo snapshot =
+                                snapshots[index];
+                            return ListTile(
+                              leading: const Icon(Icons.history_rounded),
+                              title: Text(
+                                '${snapshot.reasonLabel}  ${_formatSnapshotTime(snapshot.createdAt)}',
+                              ),
+                              subtitle: Text(
+                                _formatSnapshotSize(snapshot.size),
+                              ),
+                              trailing: PopupMenuButton<String>(
+                                onSelected: (String value) => value == 'restore'
+                                    ? restoreSnapshot(snapshot)
+                                    : deleteSnapshot(snapshot),
+                                itemBuilder: (_) =>
+                                    const <PopupMenuEntry<String>>[
+                                      PopupMenuItem(
+                                        value: 'restore',
+                                        child: Text('恢复'),
+                                      ),
+                                      PopupMenuItem(
+                                        value: 'delete',
+                                        child: Text('删除'),
+                                      ),
+                                    ],
+                              ),
+                            );
+                          },
+                        ),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+
   Future<void> _showExport() async {
     final ExportFormat? format = await showModalBottomSheet<ExportFormat>(
       context: context,
@@ -716,6 +944,17 @@ class _SettingsPageState extends State<SettingsPage>
       ),
     );
     if (second != true) return;
+    try {
+      await SnapshotService.create(widget.controller, reason: 'before_clear');
+      await _refreshSnapshots();
+    } on Object catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('创建保护快照失败，未清空数据：$error')));
+      }
+      return;
+    }
     await widget.controller.clearAllData();
     if (mounted) {
       ScaffoldMessenger.of(

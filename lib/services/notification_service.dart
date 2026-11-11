@@ -1,5 +1,17 @@
 import 'package:flutter/services.dart';
 
+class DailyReminderStatus {
+  const DailyReminderStatus({
+    this.nextAt,
+    this.lastTriggeredAt,
+    this.lastShownAt,
+  });
+
+  final DateTime? nextAt;
+  final DateTime? lastTriggeredAt;
+  final DateTime? lastShownAt;
+}
+
 class NotificationService {
   NotificationService._();
 
@@ -21,6 +33,21 @@ class NotificationService {
 
   static Future<bool> canScheduleExactAlarms() async {
     return await _channel.invokeMethod<bool>('canScheduleExactAlarms') ?? false;
+  }
+
+  static Future<DailyReminderStatus> dailyReminderStatus() async {
+    final Map<Object?, Object?>? value = await _channel
+        .invokeMapMethod<Object?, Object?>('dailyReminderStatus');
+    DateTime? date(Object? milliseconds) {
+      final int raw = (milliseconds as num?)?.toInt() ?? 0;
+      return raw <= 0 ? null : DateTime.fromMillisecondsSinceEpoch(raw);
+    }
+
+    return DailyReminderStatus(
+      nextAt: date(value?['nextAt']),
+      lastTriggeredAt: date(value?['lastTriggeredAt']),
+      lastShownAt: date(value?['lastShownAt']),
+    );
   }
 
   static Future<void> scheduleDaily({

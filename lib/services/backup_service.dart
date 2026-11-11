@@ -6,6 +6,7 @@ import 'package:archive/archive.dart';
 import '../data/ledger_controller.dart';
 import '../models/ledger_models.dart';
 import 'system_file_service.dart';
+import 'snapshot_service.dart';
 import 'tonglv_importer.dart';
 import 'shiguangxu_importer.dart';
 import 'generic_table_importer.dart';
@@ -71,6 +72,7 @@ class BackupService {
       ],
     );
     if (document == null) return null;
+    await SnapshotService.create(controller, reason: 'before_import');
     Uint8List jsonBytes;
     final String lower = document.name.toLowerCase();
     final bool tonglv =

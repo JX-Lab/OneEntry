@@ -16,7 +16,10 @@ class ReminderReceiver : BroadcastReceiver() {
         NotificationScheduler.createChannel(context)
         when (intent.action) {
             NotificationScheduler.ACTION_DAILY -> try {
-                notifyDaily(context)
+                NotificationScheduler.recordDailyDelivery(
+                    context,
+                    notifyDaily(context),
+                )
             } finally {
                 NotificationScheduler.scheduleNextDaily(context)
             }
@@ -33,9 +36,8 @@ class ReminderReceiver : BroadcastReceiver() {
         return show(context, 3199, "记账提醒测试成功", "之后会在设定时间提醒你记账")
     }
 
-    private fun notifyDaily(context: Context) {
+    private fun notifyDaily(context: Context): Boolean =
         show(context, 3101, "记账时间到了", "打开一笔，记录今天的收支吧")
-    }
 
     private fun notifyRecurringIfNeeded(context: Context) {
         withDatabase(context) { db ->

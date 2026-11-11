@@ -52,28 +52,56 @@ object NotificationScheduler {
     }
 
     fun scheduleDaily(context: Context, enabled: Boolean, hour: Int, minute: Int) {
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+        val preferences = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val editor = preferences.edit()
             .putBoolean("daily_enabled", enabled)
             .putInt("daily_hour", hour.coerceIn(0, 23))
             .putInt("daily_minute", minute.coerceIn(0, 59))
-            .apply()
         val alarm = context.getSystemService(AlarmManager::class.java)
         val pending = pendingIntent(context, ACTION_DAILY, 2101)
         alarm.cancel(pending)
-        if (enabled) setOneShot(alarm, nextTime(hour, minute), pending)
+        if (enabled) {
+            val next = nextTime(hour, minute)
+            editor.putLong("next_daily_at", next)
+            setOneShot(alarm, next, pending)
+        } else {
+            editor.remove("next_daily_at")
+        }
+        editor.apply()
     }
 
     fun scheduleNextDaily(context: Context) {
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         if (!prefs.getBoolean("daily_enabled", false)) return
         val alarm = context.getSystemService(AlarmManager::class.java)
+        val next = nextTime(
+            prefs.getInt("daily_hour", 20),
+            prefs.getInt("daily_minute", 0),
+        )
+        prefs.edit().putLong("next_daily_at", next).apply()
         setOneShot(
             alarm,
-            nextTime(
-                prefs.getInt("daily_hour", 20),
-                prefs.getInt("daily_minute", 0),
-            ),
+            next,
             pendingIntent(context, ACTION_DAILY, 2101),
+        )
+    }
+
+    fun recordDailyDelivery(context: Context, shown: Boolean) {
+        val now = System.currentTimeMillis()
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+            .putLong("last_daily_triggered_at", now)
+            .apply {
+                if (shown) putLong("last_daily_shown_at", now)
+            }
+            .apply()
+    }
+
+    fun dailyStatus(context: Context): Map<String, Long> {
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        return mapOf(
+            "nextAt" to prefs.getLong("next_daily_at", 0L),
+            "lastTriggeredAt" to prefs.getLong("last_daily_triggered_at", 0L),
+            "lastShownAt" to prefs.getLong("last_daily_shown_at", 0L),
         )
     }
 

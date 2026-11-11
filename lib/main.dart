@@ -7,6 +7,7 @@ import 'data/app_database.dart';
 import 'data/ledger_controller.dart';
 import 'data/ledger_repository.dart';
 import 'services/notification_service.dart';
+import 'services/snapshot_service.dart';
 import 'theme/app_theme.dart';
 
 void main() {
@@ -44,6 +45,11 @@ class _OneEntryBootstrapState extends State<OneEntryBootstrap> {
         LedgerRepository(database),
       );
       await controller.initialize();
+      try {
+        await SnapshotService.createIfDue(controller);
+      } catch (error, stackTrace) {
+        debugPrint('Automatic snapshot failed: $error\n$stackTrace');
+      }
       try {
         await NotificationService.initialize();
         await NotificationService.scheduleDaily(
