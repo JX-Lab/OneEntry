@@ -1,4 +1,13 @@
+import 'dart:async';
+
 import 'package:flutter/services.dart';
+
+class NotificationLaunchAction {
+  const NotificationLaunchAction({required this.type, this.recurringRuleId});
+
+  final String type;
+  final int? recurringRuleId;
+}
 
 class DailyReminderStatus {
   const DailyReminderStatus({
@@ -18,9 +27,29 @@ class NotificationService {
   static const MethodChannel _channel = MethodChannel(
     'com.junxu.yibi/notifications',
   );
+  static final StreamController<NotificationLaunchAction> _launchEvents =
+      StreamController<NotificationLaunchAction>.broadcast();
+  static bool _initialized = false;
+
+  static Stream<NotificationLaunchAction> get launchEvents =>
+      _launchEvents.stream;
 
   static Future<void> initialize() async {
+    if (!_initialized) {
+      _initialized = true;
+      _channel.setMethodCallHandler((MethodCall call) async {
+        if (call.method != 'notificationLaunch') return;
+        final NotificationLaunchAction? action = _launchAction(call.arguments);
+        if (action != null) _launchEvents.add(action);
+      });
+    }
     await _channel.invokeMethod<void>('initialize');
+  }
+
+  static Future<NotificationLaunchAction?> takeLaunchAction() async {
+    final Map<Object?, Object?>? value = await _channel
+        .invokeMapMethod<Object?, Object?>('takeLaunchAction');
+    return _launchAction(value);
   }
 
   static Future<bool> requestPermission() async {
@@ -76,5 +105,16 @@ class NotificationService {
 
   static Future<void> openExactAlarmSettings() async {
     await _channel.invokeMethod<void>('openExactAlarmSettings');
+  }
+
+  static NotificationLaunchAction? _launchAction(Object? raw) {
+    if (raw is! Map) return null;
+    final Map<Object?, Object?> value = Map<Object?, Object?>.from(raw);
+    final String type = '${value['type'] ?? ''}';
+    if (type.isEmpty) return null;
+    return NotificationLaunchAction(
+      type: type,
+      recurringRuleId: (value['recurringRuleId'] as num?)?.toInt(),
+    );
   }
 }

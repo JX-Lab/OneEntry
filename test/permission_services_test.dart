@@ -52,6 +52,12 @@ void main() {
               'lastShownAt': 900,
             };
           }
+          if (call.method == 'takeLaunchAction') {
+            return <String, Object?>{
+              'type': 'recurring_rule',
+              'recurringRuleId': 7,
+            };
+          }
           return null;
         });
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
@@ -66,6 +72,10 @@ void main() {
         await NotificationService.dailyReminderStatus();
     expect(status.nextAt?.millisecondsSinceEpoch, 1000);
     expect(status.lastShownAt?.millisecondsSinceEpoch, 900);
+    final NotificationLaunchAction? action =
+        await NotificationService.takeLaunchAction();
+    expect(action?.type, 'recurring_rule');
+    expect(action?.recurringRuleId, 7);
     expect(await SpeechRecognitionService.hasPermission(), isTrue);
   });
 }

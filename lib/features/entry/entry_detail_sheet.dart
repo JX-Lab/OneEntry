@@ -9,6 +9,7 @@ Future<void> showEntryDetailSheet({
   required LedgerController controller,
   required LedgerEntry entry,
   required VoidCallback onEdit,
+  VoidCallback? onRepeat,
 }) async {
   final LedgerAccount? account = _account(controller, entry.accountId);
   final LedgerAccount? target = _account(controller, entry.toAccountId);
@@ -65,15 +66,35 @@ Future<void> showEntryDetailSheet({
           _DetailRow(label: '备注', value: entry.note.isEmpty ? '无' : entry.note),
           const SizedBox(height: 14),
           if (editable)
-            SizedBox(
-              width: double.infinity,
-              child: FilledButton(
-                onPressed: () {
-                  Navigator.pop(sheetContext);
-                  WidgetsBinding.instance.addPostFrameCallback((_) => onEdit());
-                },
-                child: const Text('编辑'),
-              ),
+            Row(
+              children: <Widget>[
+                if (onRepeat != null) ...<Widget>[
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () {
+                        Navigator.pop(sheetContext);
+                        WidgetsBinding.instance.addPostFrameCallback(
+                          (_) => onRepeat(),
+                        );
+                      },
+                      icon: const Icon(Icons.replay_outlined),
+                      label: const Text('再记一笔'),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                ],
+                Expanded(
+                  child: FilledButton(
+                    onPressed: () {
+                      Navigator.pop(sheetContext);
+                      WidgetsBinding.instance.addPostFrameCallback(
+                        (_) => onEdit(),
+                      );
+                    },
+                    child: const Text('编辑'),
+                  ),
+                ),
+              ],
             )
           else
             const Text(

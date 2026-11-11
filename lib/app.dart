@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 
@@ -24,9 +26,28 @@ class OneEntryApp extends StatefulWidget {
 
 class _OneEntryAppState extends State<OneEntryApp> {
   final GlobalKey<NavigatorState> _navigatorKey = GlobalKey<NavigatorState>();
+  StreamSubscription<NotificationLaunchAction>? _notificationSubscription;
+
+  @override
+  void initState() {
+    super.initState();
+    _notificationSubscription = NotificationService.launchEvents.listen(
+      _handleNotificationLaunch,
+    );
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      try {
+        final NotificationLaunchAction? action =
+            await NotificationService.takeLaunchAction();
+        if (action != null) await _handleNotificationLaunch(action);
+      } on Object {
+        // Notification launch actions are optional on unsupported platforms.
+      }
+    });
+  }
 
   @override
   void dispose() {
+    _notificationSubscription?.cancel();
     widget.controller.dispose();
     super.dispose();
   }
@@ -99,6 +120,72 @@ class _OneEntryAppState extends State<OneEntryApp> {
     }
   }
 
+  Future<void> _repeatEntry(LedgerEntry entry) async {
+    if (entry.type == EntryType.adjustment) return;
+    final LedgerEntry draft = LedgerEntry(
+      id: 0,
+      type: entry.type,
+      amount: entry.amount,
+      category: entry.category,
+      occurredAt: DateTime.now(),
+      note: entry.note,
+      accountId: entry.accountId,
+      toAccountId: entry.toAccountId,
+      memberIds: List<int>.from(entry.memberIds),
+    );
+    final LedgerEntry? result = await _navigatorKey.currentState!
+        .push<LedgerEntry>(
+          MaterialPageRoute<LedgerEntry>(
+            builder: (_) =>
+                EntrySheet(controller: widget.controller, draft: draft),
+          ),
+        );
+    if (result != null) await widget.controller.addEntry(result);
+  }
+
+  Future<void> _handleNotificationLaunch(
+    NotificationLaunchAction action,
+  ) async {
+    if (!mounted || _navigatorKey.currentState == null) return;
+    if (action.type == 'new_entry') {
+      await _addEntry();
+      return;
+    }
+    if (action.type != 'recurring_rule' || action.recurringRuleId == null) {
+      return;
+    }
+    final List<RecurringRule> rules = widget.controller.recurringRules
+        .where((RecurringRule rule) => rule.id == action.recurringRuleId)
+        .toList();
+    if (rules.isEmpty) return;
+    final List<LedgerAccount> accounts = widget.controller.accounts
+        .where((LedgerAccount account) => !account.archived)
+        .toList();
+    if (accounts.isEmpty) return;
+    final RecurringRule rule = rules.first;
+    final int accountId =
+        accounts.any((LedgerAccount account) => account.id == rule.accountId)
+        ? rule.accountId!
+        : accounts.first.id;
+    final LedgerEntry draft = LedgerEntry(
+      id: 0,
+      type: rule.type,
+      amount: rule.amount,
+      category: rule.category,
+      occurredAt: DateTime.now(),
+      note: rule.name,
+      accountId: accountId,
+    );
+    final LedgerEntry? result = await _navigatorKey.currentState!
+        .push<LedgerEntry>(
+          MaterialPageRoute<LedgerEntry>(
+            builder: (_) =>
+                EntrySheet(controller: widget.controller, draft: draft),
+          ),
+        );
+    if (result != null) await widget.controller.addEntry(result);
+  }
+
   @override
   Widget build(BuildContext context) {
     return AnimatedBuilder(
@@ -140,6 +227,7 @@ class _OneEntryAppState extends State<OneEntryApp> {
           onVoiceEntry: _addVoiceEntry,
           onEditEntry: _editEntry,
           onDeleteEntry: widget.controller.deleteEntry,
+          onRepeatEntry: _repeatEntry,
           onOpenStatistics: () =>
               _push(StatisticsPage(controller: widget.controller)),
           onOpenSettings: () =>

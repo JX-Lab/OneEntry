@@ -31,6 +31,7 @@ class LedgerController extends ChangeNotifier {
   String colorVisionMode = 'standard';
   bool readerHints = true;
   bool haptics = true;
+  DateTime? lastBackupAt;
   bool initialized = false;
 
   Future<void> initialize() async {
@@ -69,6 +70,7 @@ class LedgerController extends ChangeNotifier {
     colorVisionMode = snapshot.colorVisionMode;
     readerHints = snapshot.readerHints;
     haptics = snapshot.haptics;
+    lastBackupAt = snapshot.lastBackupAt;
     initialized = true;
     notifyListeners();
   }
@@ -379,6 +381,12 @@ class LedgerController extends ChangeNotifier {
         break;
       case 'haptics':
         haptics = value == '1';
+        break;
+      case 'last_backup_at':
+        final int? milliseconds = int.tryParse(value);
+        lastBackupAt = milliseconds == null
+            ? null
+            : DateTime.fromMillisecondsSinceEpoch(milliseconds);
         break;
     }
     notifyListeners();

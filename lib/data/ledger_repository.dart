@@ -26,6 +26,7 @@ class LedgerSnapshot {
     required this.colorVisionMode,
     required this.readerHints,
     required this.haptics,
+    required this.lastBackupAt,
   });
 
   final List<LedgerAccount> accounts;
@@ -48,6 +49,7 @@ class LedgerSnapshot {
   final String colorVisionMode;
   final bool readerHints;
   final bool haptics;
+  final DateTime? lastBackupAt;
 }
 
 class LedgerRepository {
@@ -167,6 +169,7 @@ class LedgerRepository {
       colorVisionMode: settings['color_vision_mode'] ?? 'standard',
       readerHints: settings['reader_hints'] != '0',
       haptics: settings['haptics'] != '0',
+      lastBackupAt: _dateTimeFromMilliseconds(settings['last_backup_at']),
     );
   }
 
@@ -218,7 +221,7 @@ class LedgerRepository {
           'name': draft.note.isEmpty ? draft.category : draft.note,
           'type': draft.type.name,
           'amount_minor': _minor(draft.amount),
-          'account_id': null,
+          'account_id': draft.accountId,
           'category_id': categoryId,
           'frequency': draft.recurringFrequency,
           'anchor_date': _dateKey(draft.occurredAt),
@@ -1458,4 +1461,11 @@ class LedgerRepository {
       '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
   String _uuid(String prefix, int timestamp) =>
       '$prefix-$timestamp-${DateTime.now().microsecondsSinceEpoch}';
+
+  static DateTime? _dateTimeFromMilliseconds(String? value) {
+    final int? milliseconds = int.tryParse(value ?? '');
+    return milliseconds == null
+        ? null
+        : DateTime.fromMillisecondsSinceEpoch(milliseconds);
+  }
 }

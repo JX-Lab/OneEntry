@@ -37,18 +37,25 @@ class ReminderReceiver : BroadcastReceiver() {
     }
 
     private fun notifyDaily(context: Context): Boolean =
-        show(context, 3101, "记账时间到了", "打开一笔，记录今天的收支吧")
+        show(
+            context,
+            3101,
+            "记账时间到了",
+            "打开一笔，记录今天的收支吧",
+            launchAction = "new_entry",
+        )
 
     private fun notifyRecurringIfNeeded(context: Context) {
         withDatabase(context) { db ->
             val now = Calendar.getInstance()
-            val names = mutableListOf<String>()
-            db.rawQuery("SELECT name, frequency, anchor_date FROM recurring_rules WHERE enabled = 1", null).use { cursor ->
+            val dueRules = mutableListOf<Pair<Int, String>>()
+            db.rawQuery("SELECT id, name, frequency, anchor_date FROM recurring_rules WHERE enabled = 1", null).use { cursor ->
                 val parser = SimpleDateFormat("yyyy-MM-dd", Locale.US)
                 while (cursor.moveToNext()) {
-                    val name = cursor.getString(0)
-                    val frequency = cursor.getString(1)
-                    val anchor = Calendar.getInstance().apply { time = parser.parse(cursor.getString(2)) ?: now.time }
+                    val id = cursor.getInt(0)
+                    val name = cursor.getString(1)
+                    val frequency = cursor.getString(2)
+                    val anchor = Calendar.getInstance().apply { time = parser.parse(cursor.getString(3)) ?: now.time }
                     val due = when (frequency) {
                         "day" -> true
                         "week" -> anchor.get(Calendar.DAY_OF_WEEK) == now.get(Calendar.DAY_OF_WEEK)
@@ -56,11 +63,18 @@ class ReminderReceiver : BroadcastReceiver() {
                         "year" -> anchor.get(Calendar.MONTH) == now.get(Calendar.MONTH) && anchor.get(Calendar.DAY_OF_MONTH) == now.get(Calendar.DAY_OF_MONTH)
                         else -> false
                     }
-                    if (due) names += name
+                    if (due) dueRules += id to name
                 }
             }
-            if (names.isNotEmpty()) {
-                show(context, 3102, "🔔 今天有 ${names.size} 笔待记账", names.take(3).joinToString("、"))
+            if (dueRules.isNotEmpty()) {
+                show(
+                    context,
+                    3102,
+                    "🔔 今天有 ${dueRules.size} 笔待记账",
+                    dueRules.take(3).joinToString("、") { it.second },
+                    launchAction = "recurring_rule",
+                    recurringRuleId = dueRules.first().first,
+                )
             }
         }
     }
@@ -76,9 +90,20 @@ class ReminderReceiver : BroadcastReceiver() {
         }
     }
 
-    private fun show(context: Context, id: Int, title: String, body: String?): Boolean {
+    private fun show(
+        context: Context,
+        id: Int,
+        title: String,
+        body: String?,
+        launchAction: String? = null,
+        recurringRuleId: Int? = null,
+    ): Boolean {
         if (!NotificationScheduler.notificationsEnabled(context)) return false
         val launch = context.packageManager.getLaunchIntentForPackage(context.packageName)
+        launch?.putExtra("oneentry_notification_action", launchAction)
+        if (recurringRuleId != null) {
+            launch?.putExtra("oneentry_recurring_rule_id", recurringRuleId)
+        }
         val contentIntent = launch?.let {
             PendingIntent.getActivity(context, id, it, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         }

@@ -25,14 +25,37 @@ class MainActivity : FlutterActivity() {
     private var speechPermissionResult: MethodChannel.Result? = null
     private var fileResult: MethodChannel.Result? = null
     private var pendingSaveBytes: ByteArray? = null
+    private var notificationChannel: MethodChannel? = null
+    private var pendingNotificationAction: Map<String, Any?>? = null
     private var speechChannel: MethodChannel? = null
     private var speechRecognizer: SpeechRecognizer? = null
     private var lastPartialText: String? = null
 
+    override fun onCreate(savedInstanceState: Bundle?) {
+        pendingNotificationAction = notificationAction(intent)
+        super.onCreate(savedInstanceState)
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        val action = notificationAction(intent) ?: return
+        val channel = notificationChannel
+        if (channel == null) {
+            pendingNotificationAction = action
+        } else {
+            channel.invokeMethod("notificationLaunch", action)
+            pendingNotificationAction = null
+        }
+    }
+
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
-        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL).setMethodCallHandler { call, result ->
-            when (call.method) {
+        notificationChannel = MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            CHANNEL,
+        ).also { channel ->
+            channel.setMethodCallHandler { call, result -> when (call.method) {
                 "initialize" -> {
                     NotificationScheduler.createChannel(this)
                     result.success(null)
@@ -48,6 +71,10 @@ class MainActivity : FlutterActivity() {
                 "dailyReminderStatus" -> result.success(
                     NotificationScheduler.dailyStatus(this),
                 )
+                "takeLaunchAction" -> {
+                    result.success(pendingNotificationAction)
+                    pendingNotificationAction = null
+                }
                 "scheduleRecurringCheck" -> {
                     NotificationScheduler.scheduleRecurringCheck(this)
                     result.success(null)
@@ -71,7 +98,7 @@ class MainActivity : FlutterActivity() {
                     result.success(null)
                 }
                 else -> result.notImplemented()
-            }
+            } }
         }
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, FILE_CHANNEL).setMethodCallHandler { call, result ->
             when (call.method) {
@@ -401,8 +428,21 @@ class MainActivity : FlutterActivity() {
         }
     }
 
+    private fun notificationAction(intent: Intent?): Map<String, Any?>? {
+        val action = intent?.getStringExtra("oneentry_notification_action")
+            ?: return null
+        return mapOf(
+            "type" to action,
+            "recurringRuleId" to intent.getIntExtra(
+                "oneentry_recurring_rule_id",
+                0,
+            ).takeIf { it > 0 },
+        )
+    }
+
     override fun onDestroy() {
         releaseSpeechRecognizer()
+        notificationChannel = null
         speechChannel = null
         super.onDestroy()
     }

@@ -69,6 +69,11 @@ class _EntrySheetState extends State<EntrySheet> {
       _occurredAt = source.occurredAt;
       _amountController.text = source.amount.toStringAsFixed(2);
       _noteController.text = source.note;
+    } else {
+      final List<LedgerCategory> expense = widget.controller.categoriesFor(
+        EntryType.expense,
+      );
+      _category = _lastUsedCategory(expense) ?? _category;
     }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
@@ -99,6 +104,18 @@ class _EntrySheetState extends State<EntrySheet> {
       }
     }
     return activeAccounts.first.id;
+  }
+
+  String? _lastUsedCategory(List<LedgerCategory> available) {
+    final Set<String> names = available
+        .map((LedgerCategory category) => category.name)
+        .toSet();
+    for (final LedgerEntry entry in widget.controller.entries) {
+      if (entry.type == EntryType.expense && names.contains(entry.category)) {
+        return entry.category;
+      }
+    }
+    return null;
   }
 
   void _save() {

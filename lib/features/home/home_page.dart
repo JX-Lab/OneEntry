@@ -26,6 +26,7 @@ class HomePage extends StatefulWidget {
     required this.onOpenAccounts,
     required this.onOpenMembers,
     required this.onOpenBudget,
+    this.onRepeatEntry,
     super.key,
   });
 
@@ -39,6 +40,7 @@ class HomePage extends StatefulWidget {
   final VoidCallback onOpenAccounts;
   final VoidCallback onOpenMembers;
   final ValueChanged<DateTime> onOpenBudget;
+  final ValueChanged<LedgerEntry>? onRepeatEntry;
 
   @override
   State<HomePage> createState() => _HomePageState();
@@ -353,6 +355,9 @@ class _HomePageState extends State<HomePage> {
                           entry: item,
                           controller: widget.controller,
                           onEdit: () => widget.onEditEntry(item),
+                          onRepeat: widget.onRepeatEntry == null
+                              ? null
+                              : () => widget.onRepeatEntry!(item),
                           onDelete: () => widget.onDeleteEntry(item),
                           selectionMode: _selecting,
                           selected: _selectedEntryIds.contains(item.id),
@@ -1626,6 +1631,7 @@ class _EntryTile extends StatelessWidget {
     required this.entry,
     required this.controller,
     required this.onEdit,
+    this.onRepeat,
     required this.onDelete,
     required this.selectionMode,
     required this.selected,
@@ -1636,6 +1642,7 @@ class _EntryTile extends StatelessWidget {
   final LedgerEntry entry;
   final LedgerController controller;
   final VoidCallback onEdit;
+  final VoidCallback? onRepeat;
   final VoidCallback onDelete;
   final bool selectionMode;
   final bool selected;
@@ -1682,6 +1689,7 @@ class _EntryTile extends StatelessWidget {
                 controller: controller,
                 entry: entry,
                 onEdit: onEdit,
+                onRepeat: onRepeat,
               ),
         onLongPress: selectionMode ? onToggleSelection : onEnterSelection,
         child: Container(

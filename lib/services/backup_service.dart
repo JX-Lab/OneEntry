@@ -27,9 +27,10 @@ class BackupService {
       utf8.encode(const JsonEncoder.withIndent('  ').convert(backup)),
     );
     final String stamp = _stamp(DateTime.now());
+    final bool saved;
     switch (format) {
       case ExportFormat.json:
-        return SystemFileService.save(
+        saved = await SystemFileService.save(
           name: '一笔备份-$stamp.json',
           mimeType: 'application/json',
           bytes: jsonBytes,
@@ -40,20 +41,27 @@ class BackupService {
           ..addFile(ArchiveFile('backup.json', jsonBytes.length, jsonBytes))
           ..addFile(ArchiveFile('transactions.csv', csv.length, csv));
         final Uint8List bytes = ZipEncoder().encodeBytes(archive);
-        return SystemFileService.save(
+        saved = await SystemFileService.save(
           name: '一笔归档-$stamp.zip',
           mimeType: 'application/zip',
           bytes: bytes,
         );
       case ExportFormat.xlsx:
         final Uint8List bytes = _buildXlsx(controller, jsonBytes);
-        return SystemFileService.save(
+        saved = await SystemFileService.save(
           name: '一笔数据-$stamp.xlsx',
           mimeType:
               'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
           bytes: bytes,
         );
     }
+    if (saved) {
+      await controller.setPreference(
+        'last_backup_at',
+        '${DateTime.now().millisecondsSinceEpoch}',
+      );
+    }
+    return saved;
   }
 
   static Future<String?> importBackup(

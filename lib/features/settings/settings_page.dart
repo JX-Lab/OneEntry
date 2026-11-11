@@ -223,7 +223,7 @@ class _SettingsPageState extends State<SettingsPage>
                     ),
                     ListTile(
                       title: const Text('数据导出'),
-                      subtitle: const Text('JSON / ZIP / XLSX'),
+                      subtitle: Text(_backupSummary()),
                       trailing: const Icon(Icons.chevron_right),
                       onTap: _showExport,
                     ),
@@ -280,6 +280,14 @@ class _SettingsPageState extends State<SettingsPage>
     if (snapshots == null) return '正在读取…';
     if (snapshots.isEmpty) return '暂无快照';
     return '最近 ${_formatSnapshotTime(snapshots.first.createdAt)}（共 ${snapshots.length} 份）';
+  }
+
+  String _backupSummary() {
+    final DateTime? lastBackup = widget.controller.lastBackupAt;
+    if (lastBackup == null) return '尚未导出外部备份（JSON / ZIP / XLSX）';
+    final int days = DateTime.now().difference(lastBackup).inDays;
+    final String time = _formatSnapshotTime(lastBackup);
+    return days >= 30 ? '上次 $time（建议重新备份）' : '上次外部备份 $time';
   }
 
   String _dailyReminderSubtitle() {
@@ -719,7 +727,7 @@ class _SettingsPageState extends State<SettingsPage>
                 const Padding(
                   padding: EdgeInsets.fromLTRB(18, 0, 18, 8),
                   child: Text(
-                    '每周自动生成，导入、恢复和清空前也会保留；最多 8 份。',
+                    '每周自动生成，导入、恢复和清空前也会保留；最多 8 份。快照仅存在本机，不替代外部备份。',
                     textAlign: TextAlign.center,
                   ),
                 ),
