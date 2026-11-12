@@ -1,67 +1,174 @@
-# 一笔 · OneEntry
+<div align="center">
+  <img src="assets/branding/oneentry_icon.png" alt="一笔" width="112">
 
-一笔是一款本地优先、支持多成员记录的 Android 记账应用，使用 Flutter 开发。它适合个人、家庭、情侣或旅行同行者在同一本账中管理收支、账户、成员与预算。
+# 一笔 OneEntry
 
-<p align="center">
-  <img src="docs/prototype-preview.png" alt="一笔交互原型预览" width="760">
-</p>
+### 记下一笔，也看清共同生活
 
-> 预览图来自项目早期交互原型。可下载 [HTML 交互原型](docs/oneentry-prototype.html) 后在浏览器中完整体验。实际应用已根据真机使用反馈继续优化，细节可能与原型略有不同。
+一款无需注册、数据留在手机里的 Android 账本。
+适合个人、伴侣、家庭和旅行同行者一起记录收支。
 
-## 主要功能
+[![Build Android APK](https://github.com/JX-Lab/OneEntry/actions/workflows/android-debug.yml/badge.svg)](https://github.com/JX-Lab/OneEntry/actions/workflows/android-debug.yml)
 
-- **收支与转账**：记录支出、收入、账户间转账和余额调整。
-- **金额算式**：金额框可直接输入 `+ - × ÷` 或 `* /` 四则运算，支持括号，保存时自动计算结果。
-- **语音记账**：首页可直接说出「昨天买菜花了三十五块」等口语内容，本地解析金额、类型、分类、日期、账户与成员，生成可编辑草稿；也可在设置中关闭语音入口。
-- **多成员记账**：每笔账可选择一个或多个成员，并支持 AA 均摊或整笔计入。
-- **账户管理**：管理现金、银行卡、支付工具等账户，支持排序、归档和余额明细。
-- **自定义标签**：支持支出、收入标签和 200 余个图标，可排序、编辑、合并与移除。
-- **预算与统计**：提供月度预算、分类预算、收支构成、成员构成和明细下钻。
-- **搜索与批量操作**：按时间、标签、成员、备注搜索，并可批量编辑或删除账目。
-- **记账提醒**：支持自定义时间的每日记账提醒，以及按天、周、月或年触发的周期账目提醒。
-- **数据保护**：支持 JSON、ZIP、XLSX 导入导出，以及同旅、时光序和通用表格数据；内置每周自动快照和破坏性操作前保护快照。
-- **显示与无障碍**：支持日间/夜间主题、系统跟随、文字缩放和增强颜色对比。
+[下载最新版本](https://github.com/JX-Lab/OneEntry/releases) · [查看构建状态](https://github.com/JX-Lab/OneEntry/actions)
+
+</div>
+
+---
+
+## 为什么是一笔
+
+**打开就能记。**
+金额框直接弹出数字键盘，支持算式、最近分类和「再记一笔」。语音记账可随时关闭，不打扰手动记账流程。
+
+**一本账，多个人一起用。**
+每笔账可关联一个或多个成员，既能按 AA 均摊，也能把整笔金额计入每位成员的统计。
+
+**不登录，不强制上云。**
+账本默认只保存在设备内。你可以随时导出完整备份，也可以使用本地快照恢复误操作前的账本。
+
+## 你可以用它做什么
+
+### 快速记账
+
+- 记录支出、收入、转账和余额调整。
+- 金额框可直接输入 `+ - × ÷` 和括号，保存时自动计算。
+- 最近使用的账户与分类会优先选中。
+- 从账目详情一键「再记一笔」。
+- 可选语音记账：说出「昨天打车二十块」，确认草稿后再保存。
+
+### 看懂自己的钱去了哪里
+
+- 按日、月、年或全部时间查看账目。
+- 全局搜索分类、账户、成员、金额、日期和备注。
+- 月度总预算与分类预算。
+- 收支趋势、分类构成、成员构成和明细下钻。
+- 账户余额和资产、负债视图。
+
+### 让记账更容易坚持
+
+- 每日记账提醒，可自定义时间。
+- 按天、周、月或年管理周期账目。
+- 点击周期提醒，直接进入已填好的记账草稿。
+- 设置页显示下次提醒和上次成功发送时间。
+
+### 长期保护账本
+
+- 导出 JSON、ZIP 或 XLSX 完整备份。
+- 从一笔备份、同旅、时光序和通用表格导入数据。
+- 每周自动生成本地快照。
+- 导入、恢复和清空数据前，自动保留保护快照。
+- 可在设置中手动创建、恢复或删除快照。
+
+> 本地快照会随应用卸载一起删除，不能代替导出到其他位置的完整备份。
+
+### 显示与无障碍
+
+- 日间、夜间和跟随系统主题。
+- 多种主题色与文字大小。
+- 增强颜色对比。
+- 红色觉、绿色觉、蓝黄色觉异常与全色盲模式。
+- 收入与支出同时使用颜色、正负号、文字和不同图表线型表达。
+
+## 安装
+
+一笔支持 Android 6.0 及以上系统。
+
+1. 打开 [Releases](https://github.com/JX-Lab/OneEntry/releases)。
+2. 下载适合设备的 APK。
+3. 允许浏览器或文件管理器安装来自该来源的应用，然后完成安装。
+
+| APK | 适用设备 |
+| --- | --- |
+| `arm64-v8a` | 绝大多数现代 Android 手机和平板 |
+| `armeabi-v7a` | 较旧的 32 位 ARM 设备 |
+| `x86_64` | Android 模拟器或 x86 设备 |
+
+如果不确定，通常选择 `arm64-v8a`。
 
 ## 数据与隐私
 
-账本使用 SQLite 保存在应用内部，无需登录或云端服务。金额以整数分存储，转账、余额变更和多人分摊在数据库事务中完成。
+- 无需注册账号。
+- 账本默认保存在应用内部的 SQLite 数据库中。
+- 应用本身不会将账本上传到一笔的服务器。
+- 语音转写由 Android 系统中已安装的识别服务处理，可能根据该服务的能力使用网络。
+- 转写后的金额、分类、日期、账户和成员解析在本地完成。
 
-语音记账由 Android 系统中已安装的语音识别服务处理，会根据设备能力使用离线或联网识别。转写后的账目解析在应用本地完成。
+### 可选权限
 
-Android 12 及以上系统中，每日提醒需允许系统的「闹钟和提醒」权限才能准时触发。
+| 权限 | 用途 |
+| --- | --- |
+| 麦克风 | 语音记账；可在设置中完全关闭语音入口 |
+| 通知 | 每日提醒和周期账目提醒 |
+| 闹钟和提醒 | Android 12 及以上系统中准时发送每日提醒 |
 
-建议定期从设置页导出 ZIP 或 JSON 完整备份，特别是在卸载应用或更换设备之前。
+## 常见问题
 
-## 安装 APK
+<details>
+<summary><strong>账本会自动同步到云端吗？</strong></summary>
 
-GitHub Actions 会按 CPU 架构生成独立 APK，避免通用安装包同时携带多套原生库。
+不会。一笔目前是本地优先账本，不要求登录，也不会自动上传账本。
 
-- `app-arm64-v8a-release.apk`：大多数现代 Android 手机和平板。
-- `app-armeabi-v7a-release.apk`：较旧的 32 位 ARM 设备。
-- `app-x86_64-release.apk`：Android 模拟器或 x86 设备。
+</details>
 
-在 GitHub 仓库的 **Actions** 或 **Releases** 中下载对应文件。绝大多数真机应选择 `arm64-v8a`。
+<details>
+<summary><strong>换手机或卸载前需要做什么？</strong></summary>
 
-## 本地开发
+请先从设置导出 ZIP 或 JSON 完整备份，并将文件保存到其他设备或云盘。应用内的快照无法在卸载后保留。
 
-需要 Flutter `3.41.4` 或与项目兼容的更高版本，以及 Android SDK/JDK 17。
+</details>
 
-```text
+<details>
+<summary><strong>账目数量有上限吗？</strong></summary>
+
+应用没有人为设置账目条数上限。日常个人长期使用通常不会触及存储容量问题；一次导入极大量历史账目时，启动、搜索和统计可能变慢。
+
+</details>
+
+<details>
+<summary><strong>语音记账为什么可能联网？</strong></summary>
+
+语音转写依赖手机安装的 Android 语音服务。应用不强制离线模型，以便在可用时获得更好的普通话识别效果。
+
+</details>
+
+## 反馈
+
+如果遇到问题或有功能建议，欢迎在 [GitHub Issues](https://github.com/JX-Lab/OneEntry/issues) 中说明设备型号、Android 版本和复现步骤。
+
+<details>
+<summary><strong>开发者信息</strong></summary>
+
+### 技术栈
+
+- Flutter `3.41.4`
+- Dart `3.11`
+- SQLite
+- Android Kotlin
+
+### 本地运行
+
+需要 Flutter、Android SDK 和 JDK 17。
+
+```bash
 flutter pub get
 flutter run
 ```
 
-使用 Android Studio 时，请打开项目根目录，安装 Flutter 和 Dart 插件，然后在已连接真机或模拟器上运行 `lib/main.dart`。
+### 质量检查
 
-## GitHub Actions 构建
+```bash
+dart format --output=none --set-exit-if-changed lib test
+flutter analyze
+flutter test
+```
 
-推送到 `main` 后，`.github/workflows/android-debug.yml` 会自动执行格式检查、静态分析和 APK 构建。也可在 **Actions → Build Android APK → Run workflow** 手动触发。
+### 构建
 
-如果仓库配置了签名 Secrets，工作流会生成 release APK；否则生成 debug APK。
-
-## 项目信息
+推送到 `main` 后，GitHub Actions 会运行格式检查、静态分析并按 CPU 架构生成 APK。如果仓库已配置签名 Secrets，生成 release APK；否则生成 debug APK。
 
 - Android 应用 ID：`com.junxu.yibi`
-- 数据库：SQLite / `oneentry.db`
-- 主要框架：Flutter + Android Kotlin
-- 项目状态：主要功能已完成，可日常使用
+- 数据库：`oneentry.db`
+- CI 工作流：`.github/workflows/android-debug.yml`
+
+</details>
