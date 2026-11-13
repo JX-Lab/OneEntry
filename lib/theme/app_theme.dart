@@ -80,7 +80,7 @@ class LedgerSemanticColors extends ThemeExtension<LedgerSemanticColors> {
 abstract final class AppTheme {
   static const Color green = Color(0xFF0EB078);
   static const Color greenLight = Color(0xFF35D3A0);
-  static const Color expense = Color(0xFFC62828);
+  static const Color expense = Color(0xFFD32F2F);
   static const Color income = Color(0xFF2E7CF6);
 
   // Gradients stay bright; action colors are the accessible white-text layer.
@@ -153,7 +153,7 @@ abstract final class AppTheme {
       Theme.of(context).extension<LedgerSemanticColors>() ??
       const LedgerSemanticColors(
         income: Color(0xFF1769AA),
-        expense: Color(0xFFB4232D),
+        expense: Color(0xFFD32F2F),
         transfer: Color(0xFF667085),
       );
 
@@ -310,7 +310,7 @@ abstract final class AppTheme {
               )
             : const LedgerSemanticColors(
                 income: Color(0xFF1769AA),
-                expense: Color(0xFFB4232D),
+                expense: Color(0xFFD32F2F),
                 transfer: Color(0xFF667085),
               ),
     };
