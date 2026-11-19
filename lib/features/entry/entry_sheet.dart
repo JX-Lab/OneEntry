@@ -195,7 +195,18 @@ class _EntrySheetState extends State<EntrySheet> {
         centerTitle: true,
         title: Text(widget.initial == null ? '记一笔' : '编辑账目'),
         actions: <Widget>[
-          TextButton(onPressed: _save, child: const Text('保存')),
+          Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: FilledButton.tonalIcon(
+              onPressed: _save,
+              icon: const Icon(Icons.check_rounded, size: 18),
+              label: const Text('保存'),
+              style: FilledButton.styleFrom(
+                minimumSize: const Size(80, 40),
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+              ),
+            ),
+          ),
         ],
       ),
       body: SafeArea(

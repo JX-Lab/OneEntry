@@ -229,7 +229,7 @@ class LedgerRepository {
       multiEnabled: settings['multi_enabled'] != '0',
       splitMode: settings['split_mode'] ?? 'equal',
       themeMode: settings['theme_mode'] ?? 'system',
-      themeColor: settings['theme_color'] ?? 'green',
+      themeColor: settings['theme_color'] ?? 'indigo',
       voiceEnabled: settings['voice_enabled'] != '0',
       textScale: double.tryParse(settings['text_scale'] ?? '') ?? 1,
       highContrast: settings['high_contrast'] == '1',

@@ -78,6 +78,10 @@ class LedgerSemanticColors extends ThemeExtension<LedgerSemanticColors> {
 }
 
 abstract final class AppTheme {
+  static const String defaultAccentKey = 'indigo';
+  static const Color brandInk = Color(0xFF29265C);
+  static const Color brandIris = Color(0xFF5B5FEF);
+  static const Color brandIrisLight = Color(0xFF8B7CFF);
   static const Color green = Color(0xFF0EB078);
   static const Color greenLight = Color(0xFF35D3A0);
   static const Color expense = Color(0xFFD32F2F);
@@ -85,6 +89,13 @@ abstract final class AppTheme {
 
   // Gradients stay bright; action colors are the accessible white-text layer.
   static const List<AppAccent> accents = <AppAccent>[
+    AppAccent(
+      key: 'indigo',
+      label: '交汇靛',
+      primary: brandIris,
+      secondary: brandIrisLight,
+      action: Color(0xFF4338CA),
+    ),
     AppAccent(
       key: 'green',
       label: '翡翠绿',
@@ -105,13 +116,6 @@ abstract final class AppTheme {
       primary: Color(0xFF06B6D4),
       secondary: Color(0xFF22D3EE),
       action: Color(0xFF0E7490),
-    ),
-    AppAccent(
-      key: 'indigo',
-      label: '靛青',
-      primary: Color(0xFF4F46E5),
-      secondary: Color(0xFF818CF8),
-      action: Color(0xFF4338CA),
     ),
     AppAccent(
       key: 'purple',
@@ -136,17 +140,52 @@ abstract final class AppTheme {
     ),
   ];
 
-  static AppAccent accentFor(String key) => accents.firstWhere(
-    (AppAccent accent) => accent.key == key,
-    orElse: () => accents.first,
-  );
+  static AppAccent accentFor(String key) {
+    final AppAccent? custom = _customAccent(key);
+    if (custom != null) return custom;
+    return accents.firstWhere(
+      (AppAccent accent) => accent.key == key,
+      orElse: () => accents.first,
+    );
+  }
+
+  static String customAccentKey(Color color) =>
+      'custom:${(color.toARGB32() & 0xFFFFFF).toRadixString(16).padLeft(6, '0').toUpperCase()}';
+
+  static AppAccent? _customAccent(String key) {
+    if (!key.startsWith('custom:')) return null;
+    final String hex = key.substring('custom:'.length).replaceFirst('#', '');
+    if (!RegExp(r'^[0-9A-Fa-f]{6}$').hasMatch(hex)) return null;
+    final Color primary = Color(0xFF000000 | int.parse(hex, radix: 16));
+    final HSLColor hsl = HSLColor.fromColor(primary);
+    final double secondaryLightness = hsl.lightness < .58
+        ? (hsl.lightness + .16).clamp(0.0, .82)
+        : (hsl.lightness - .12).clamp(.24, 1.0);
+    final Color secondary = hsl
+        .withSaturation((hsl.saturation * .86).clamp(.18, .82))
+        .withLightness(secondaryLightness)
+        .toColor();
+    Color action = primary;
+    double lightness = hsl.lightness;
+    while (contrastRatio(action, Colors.white) < 4.5 && lightness > .12) {
+      lightness -= .025;
+      action = hsl.withLightness(lightness).toColor();
+    }
+    return AppAccent(
+      key: customAccentKey(primary),
+      label: '自定义 #${hex.toUpperCase()}',
+      primary: primary,
+      secondary: secondary,
+      action: action,
+    );
+  }
 
   static AppAccentTheme accentOf(BuildContext context) =>
       Theme.of(context).extension<AppAccentTheme>() ??
       const AppAccentTheme(
-        primary: green,
-        secondary: greenLight,
-        action: Color(0xFF087F5B),
+        primary: brandIris,
+        secondary: brandIrisLight,
+        action: Color(0xFF4338CA),
       );
 
   static LedgerSemanticColors ledgerOf(BuildContext context) =>
@@ -171,7 +210,7 @@ abstract final class AppTheme {
 
   static ThemeData light({
     bool highContrast = false,
-    String accentKey = 'green',
+    String accentKey = defaultAccentKey,
     String colorVisionMode = 'standard',
   }) => _theme(
     brightness: Brightness.light,
@@ -182,7 +221,7 @@ abstract final class AppTheme {
 
   static ThemeData dark({
     bool highContrast = false,
-    String accentKey = 'green',
+    String accentKey = defaultAccentKey,
     String colorVisionMode = 'standard',
   }) => _theme(
     brightness: Brightness.dark,
@@ -201,7 +240,7 @@ abstract final class AppTheme {
     ColorScheme colors = ColorScheme.fromSeed(
       seedColor: accent.primary,
       brightness: brightness,
-      surface: dark ? const Color(0xFF1A1F27) : const Color(0xFFFFFFFF),
+      surface: dark ? const Color(0xFF1C1B27) : const Color(0xFFFFFFFF),
     );
     if (!dark) {
       colors = colors.copyWith(primary: accent.action, onPrimary: Colors.white);
@@ -217,17 +256,18 @@ abstract final class AppTheme {
       scaffoldBackgroundColor: dark
           ? highContrast
                 ? const Color(0xFF050607)
-                : const Color(0xFF101318)
+                : const Color(0xFF11101A)
           : highContrast
           ? const Color(0xFFE9EDF2)
-          : const Color(0xFFF2F4F7),
+          : const Color(0xFFF4F4FA),
       fontFamilyFallback: const <String>['PingFang SC', 'Microsoft YaHei'],
+      visualDensity: VisualDensity.standard,
       appBarTheme: AppBarTheme(
         centerTitle: true,
         elevation: 0,
         scrolledUnderElevation: 0,
         backgroundColor: dark
-            ? const Color(0xFF1A1F27)
+            ? const Color(0xFF1C1B27)
             : const Color(0xFFFFFFFF),
         foregroundColor: dark
             ? const Color(0xFFE7ECF3)
@@ -235,18 +275,108 @@ abstract final class AppTheme {
       ),
       cardTheme: CardThemeData(
         elevation: 0,
-        color: dark ? const Color(0xFF1A1F27) : Colors.white,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        color: dark ? const Color(0xFF1C1B27) : Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        fillColor: dark ? const Color(0xFF252B34) : const Color(0xFFF1F3F6),
+        fillColor: dark ? const Color(0xFF282634) : const Color(0xFFF0F0F7),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: 15,
+        ),
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(16),
           borderSide: BorderSide.none,
         ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16),
+          borderSide: BorderSide(
+            color: colors.outlineVariant.withValues(alpha: .55),
+          ),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16),
+          borderSide: BorderSide(color: colors.primary, width: 1.5),
+        ),
       ),
-      bottomSheetTheme: const BottomSheetThemeData(showDragHandle: true),
+      filledButtonTheme: FilledButtonThemeData(
+        style: FilledButton.styleFrom(
+          minimumSize: const Size(48, 48),
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 13),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          textStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+        ),
+      ),
+      outlinedButtonTheme: OutlinedButtonThemeData(
+        style: OutlinedButton.styleFrom(
+          minimumSize: const Size(48, 46),
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(15),
+          ),
+          side: BorderSide(color: colors.outlineVariant),
+          textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+        ),
+      ),
+      textButtonTheme: TextButtonThemeData(
+        style: TextButton.styleFrom(
+          minimumSize: const Size(44, 44),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+          textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+        ),
+      ),
+      listTileTheme: const ListTileThemeData(
+        minTileHeight: 58,
+        contentPadding: EdgeInsets.symmetric(horizontal: 18),
+        minVerticalPadding: 10,
+      ),
+      dividerTheme: DividerThemeData(
+        color: colors.outlineVariant.withValues(alpha: .65),
+        space: 1,
+        thickness: 1,
+      ),
+      bottomSheetTheme: BottomSheetThemeData(
+        showDragHandle: true,
+        backgroundColor: colors.surface,
+        modalBackgroundColor: colors.surface,
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+        ),
+      ),
+      dialogTheme: DialogThemeData(
+        backgroundColor: colors.surface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+      ),
+      snackBarTheme: SnackBarThemeData(
+        behavior: SnackBarBehavior.floating,
+        backgroundColor: dark
+            ? const Color(0xFFE8E5F4)
+            : const Color(0xFF252236),
+        contentTextStyle: TextStyle(
+          color: dark ? const Color(0xFF211E2C) : Colors.white,
+          fontSize: 14,
+        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      ),
+      navigationBarTheme: NavigationBarThemeData(
+        height: 72,
+        elevation: 0,
+        backgroundColor: colors.surface,
+        indicatorColor: colors.primaryContainer,
+        labelTextStyle: WidgetStateProperty.resolveWith(
+          (Set<WidgetState> states) => TextStyle(
+            fontSize: 12,
+            fontWeight: states.contains(WidgetState.selected)
+                ? FontWeight.w700
+                : FontWeight.w500,
+          ),
+        ),
+      ),
       extensions: <ThemeExtension<dynamic>>[
         AppAccentTheme(
           primary: accent.primary,

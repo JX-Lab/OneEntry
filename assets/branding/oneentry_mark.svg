@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-labelledby="title desc">
+  <title id="title">一笔交汇标志</title>
+  <desc id="desc">四条保持独立的环形笔迹彼此交叠，共同围出一个共享中心。</desc>
+  <defs>
+    <linearGradient id="background" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#29265C"/>
+      <stop offset="1" stop-color="#5B5FEF"/>
+    </linearGradient>
+  </defs>
+  <rect width="1024" height="1024" rx="232" fill="url(#background)"/>
+  <g fill="none" stroke-width="54" stroke-linecap="round" stroke-linejoin="round">
+    <ellipse cx="398" cy="398" rx="180" ry="138" transform="rotate(-12 398 398)" stroke="#F8F6FF"/>
+    <ellipse cx="626" cy="398" rx="180" ry="138" transform="rotate(12 626 398)" stroke="#B9F1EA"/>
+    <ellipse cx="398" cy="626" rx="180" ry="138" transform="rotate(12 398 626)" stroke="#FFD8CE"/>
+    <ellipse cx="626" cy="626" rx="180" ry="138" transform="rotate(-12 626 626)" stroke="#D9CEFF"/>
+  </g>
+</svg>

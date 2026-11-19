@@ -13,14 +13,24 @@ void main() {
     }
   });
 
-  test('未知主题色会回退到默认绿色', () {
-    expect(AppTheme.accentFor('missing').key, 'green');
+  test('未知主题色会回退到默认交汇靛', () {
+    expect(AppTheme.accentFor('missing').key, AppTheme.defaultAccentKey);
   });
 
-  test('默认主题恢复原始绿色渐变', () {
-    final AppAccent green = AppTheme.accentFor('green');
-    expect(green.primary, const Color(0xFF0EB078));
-    expect(green.secondary, const Color(0xFF35D3A0));
+  test('默认主题使用新的品牌靛色', () {
+    final AppAccent accent = AppTheme.accentFor(AppTheme.defaultAccentKey);
+    expect(accent.primary, AppTheme.brandIris);
+    expect(accent.secondary, AppTheme.brandIrisLight);
+  });
+
+  test('自定义主题色会生成可读的实心操作色', () {
+    final AppAccent accent = AppTheme.accentFor('custom:F4C542');
+    expect(accent.primary, const Color(0xFFF4C542));
+    expect(accent.key, 'custom:F4C542');
+    expect(
+      AppTheme.contrastRatio(accent.action, Colors.white),
+      greaterThanOrEqualTo(4.5),
+    );
   });
 
   test('危险操作色与白色文字对比度达标', () {

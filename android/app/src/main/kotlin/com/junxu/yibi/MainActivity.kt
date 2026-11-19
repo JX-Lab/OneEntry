@@ -16,6 +16,7 @@ import android.speech.RecognizerIntent
 import android.speech.RecognitionService
 import android.speech.SpeechRecognizer
 import android.util.Log
+import androidx.annotation.RequiresApi
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -140,7 +141,98 @@ class MainActivity : FlutterActivity() {
                 }
             }
         }
+        MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            LAUNCHER_ICON_CHANNEL,
+        ).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "getMode" -> result.success(
+                    getSharedPreferences(LAUNCHER_ICON_PREFS, MODE_PRIVATE)
+                        .getString("mode", "brand"),
+                )
+                "setMode" -> {
+                    val mode = call.argument<String>("mode") ?: "brand"
+                    val themeKey = call.argument<String>("themeKey") ?: "indigo"
+                    runCatching {
+                        applyLauncherIcon(resolveLauncherIcon(mode, themeKey))
+                        getSharedPreferences(LAUNCHER_ICON_PREFS, MODE_PRIVATE)
+                            .edit()
+                            .putString("mode", mode)
+                            .apply()
+                    }.onSuccess {
+                        result.success(true)
+                    }.onFailure { error ->
+                        Log.w(LAUNCHER_ICON_LOG_TAG, "Unable to change launcher icon", error)
+                        result.success(false)
+                    }
+                }
+                "syncTheme" -> {
+                    val themeKey = call.argument<String>("themeKey") ?: "indigo"
+                    val mode = getSharedPreferences(LAUNCHER_ICON_PREFS, MODE_PRIVATE)
+                        .getString("mode", "brand") ?: "brand"
+                    if (mode == "theme") {
+                        runCatching {
+                            applyLauncherIcon(resolveLauncherIcon(mode, themeKey))
+                        }.onFailure { error ->
+                            Log.w(LAUNCHER_ICON_LOG_TAG, "Unable to sync launcher icon", error)
+                        }
+                    }
+                    result.success(null)
+                }
+                else -> result.notImplemented()
+            }
+        }
     }
+
+    private fun resolveLauncherIcon(mode: String, themeKey: String): String {
+        val requested = when {
+            mode == "theme" -> themeKey
+            mode.startsWith("preset:") -> mode.removePrefix("preset:")
+            else -> "indigo"
+        }
+        return requested.takeIf { it in LAUNCHER_ICON_KEYS } ?: "indigo"
+    }
+
+    private fun applyLauncherIcon(key: String) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            applyLauncherIconApi33(key)
+            return
+        }
+        packageManager.setComponentEnabledSetting(
+            launcherIconComponent(key),
+            PackageManager.COMPONENT_ENABLED_STATE_ENABLED,
+            PackageManager.DONT_KILL_APP,
+        )
+        LAUNCHER_ICON_KEYS.filterNot { it == key }.forEach { iconKey ->
+            packageManager.setComponentEnabledSetting(
+                launcherIconComponent(iconKey),
+                PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
+                PackageManager.DONT_KILL_APP,
+            )
+        }
+    }
+
+    @RequiresApi(Build.VERSION_CODES.TIRAMISU)
+    private fun applyLauncherIconApi33(key: String) {
+        packageManager.setComponentEnabledSettings(
+            LAUNCHER_ICON_KEYS.map { iconKey ->
+                PackageManager.ComponentEnabledSetting(
+                    launcherIconComponent(iconKey),
+                    if (iconKey == key) {
+                        PackageManager.COMPONENT_ENABLED_STATE_ENABLED
+                    } else {
+                        PackageManager.COMPONENT_ENABLED_STATE_DISABLED
+                    },
+                    PackageManager.DONT_KILL_APP,
+                )
+            },
+        )
+    }
+
+    private fun launcherIconComponent(key: String) = ComponentName(
+        this,
+        "$packageName.Icon${key.replaceFirstChar { it.uppercase() }}",
+    )
 
     private fun requestNotificationPermission(result: MethodChannel.Result) {
         NotificationScheduler.createChannel(this)
@@ -451,6 +543,18 @@ class MainActivity : FlutterActivity() {
         private const val CHANNEL = "com.junxu.yibi/notifications"
         private const val FILE_CHANNEL = "com.junxu.yibi/files"
         private const val SPEECH_CHANNEL = "com.junxu.yibi/speech"
+        private const val LAUNCHER_ICON_CHANNEL = "com.junxu.yibi/launcher_icon"
+        private const val LAUNCHER_ICON_PREFS = "launcher_icon"
+        private const val LAUNCHER_ICON_LOG_TAG = "OneEntryIcon"
+        private val LAUNCHER_ICON_KEYS = listOf(
+            "indigo",
+            "green",
+            "blue",
+            "cyan",
+            "purple",
+            "orange",
+            "rose",
+        )
         private const val REQUEST_NOTIFICATIONS = 901
         private const val REQUEST_OPEN_FILE = 902
         private const val REQUEST_SAVE_FILE = 903

@@ -1560,33 +1560,41 @@ class _VoiceButton extends StatelessWidget {
           height: 50,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            gradient: LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: state == _VoiceState.listening
-                  ? const <Color>[AppTheme.expense, Color(0xFFE53935)]
-                  : <Color>[
-                      AppTheme.accentOf(context).primary,
-                      AppTheme.accentOf(context).secondary,
-                    ],
+            color: state == _VoiceState.idle
+                ? Theme.of(context).colorScheme.surface
+                : null,
+            gradient: state == _VoiceState.idle
+                ? null
+                : LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: state == _VoiceState.listening
+                        ? const <Color>[AppTheme.expense, Color(0xFFE53935)]
+                        : <Color>[
+                            AppTheme.accentOf(context).primary,
+                            AppTheme.accentOf(context).secondary,
+                          ],
+                  ),
+            border: Border.all(
+              color: state == _VoiceState.idle
+                  ? Theme.of(context).colorScheme.outlineVariant
+                  : Colors.transparent,
             ),
-            boxShadow: <BoxShadow>[
-              BoxShadow(
-                color:
-                    (state == _VoiceState.listening
-                            ? AppTheme.expense
-                            : AppTheme.accentOf(context).primary)
-                        .withValues(alpha: .28),
-                blurRadius: 16,
-                offset: const Offset(0, 7),
-              ),
-            ],
+            boxShadow: state == _VoiceState.idle
+                ? const <BoxShadow>[]
+                : <BoxShadow>[
+                    BoxShadow(
+                      color: AppTheme.expense.withValues(alpha: .28),
+                      blurRadius: 16,
+                      offset: const Offset(0, 7),
+                    ),
+                  ],
           ),
           child: Center(
             child: switch (state) {
               _VoiceState.idle => const Icon(
                 Icons.mic_none_rounded,
-                color: Colors.white,
+                color: AppTheme.brandIris,
               ),
               _VoiceState.listening => const Icon(
                 Icons.close_rounded,
@@ -1684,6 +1692,9 @@ class _EntryTile extends StatelessWidget {
     final List<LedgerMember> members = controller.members
         .where((LedgerMember member) => entry.memberIds.contains(member.id))
         .toList();
+    final String memberLabel = members
+        .map((LedgerMember member) => member.name)
+        .join('、');
     final double shownAmount = adjustment
         ? entry.adjustmentDelta.abs()
         : entry.amount;
@@ -1779,10 +1790,15 @@ class _EntryTile extends StatelessWidget {
                   : entry.category,
               style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
             ),
-            subtitle: entry.note.isEmpty && !entry.outsideBudget
+            subtitle:
+                entry.note.isEmpty &&
+                    !entry.outsideBudget &&
+                    (!controller.multiEnabled || memberLabel.isEmpty)
                 ? null
                 : Text(
                     <String>[
+                      if (controller.multiEnabled && memberLabel.isNotEmpty)
+                        memberLabel,
                       if (entry.outsideBudget) '预算外',
                       if (entry.note.isNotEmpty) entry.note,
                     ].join(' · '),

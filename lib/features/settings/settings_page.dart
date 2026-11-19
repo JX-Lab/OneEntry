@@ -5,6 +5,7 @@ import '../../theme/app_theme.dart';
 import '../categories/categories_page.dart';
 import '../recurring/recurring_rules_page.dart';
 import '../../services/backup_service.dart';
+import '../../services/launcher_icon_service.dart';
 import '../../services/notification_service.dart';
 import '../../services/snapshot_service.dart';
 
@@ -25,6 +26,7 @@ class _SettingsPageState extends State<SettingsPage>
   int? _pendingReminderMinute;
   List<LedgerSnapshotInfo>? _snapshots;
   DailyReminderStatus? _dailyReminderStatus;
+  String _launcherIconMode = 'brand';
 
   @override
   void initState() {
@@ -33,6 +35,7 @@ class _SettingsPageState extends State<SettingsPage>
     _refreshExactAlarmAccess();
     _refreshSnapshots();
     _refreshReminderStatus();
+    _refreshLauncherIconMode();
   }
 
   @override
@@ -160,7 +163,7 @@ class _SettingsPageState extends State<SettingsPage>
                     ),
                     ListTile(
                       title: const Text('主题色'),
-                      subtitle: const Text('按钮、选中态与重点信息颜色'),
+                      subtitle: const Text('按钮、选中态与重点信息'),
                       trailing: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: <Widget>[
@@ -181,6 +184,12 @@ class _SettingsPageState extends State<SettingsPage>
                         ],
                       ),
                       onTap: _pickThemeColor,
+                    ),
+                    ListTile(
+                      title: const Text('桌面图标'),
+                      subtitle: const Text('可固定配色或跟随界面主题'),
+                      trailing: Text('${_launcherIconModeName()}  ›'),
+                      onTap: _pickLauncherIcon,
                     ),
                     const ListTile(title: Text('语言'), trailing: Text('简体中文')),
                   ],
@@ -499,6 +508,7 @@ class _SettingsPageState extends State<SettingsPage>
   }
 
   Future<void> _pickThemeColor() async {
+    final AppAccent current = AppTheme.accentFor(widget.controller.themeColor);
     final String? value = await showModalBottomSheet<String>(
       context: context,
       useSafeArea: true,
@@ -517,44 +527,236 @@ class _SettingsPageState extends State<SettingsPage>
             Expanded(
               child: ListView(
                 padding: const EdgeInsets.only(bottom: 12),
-                children: AppTheme.accents
-                    .map(
-                      (AppAccent accent) => ListTile(
-                        leading: Container(
-                          width: 36,
-                          height: 36,
-                          decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              begin: Alignment.topCenter,
-                              end: Alignment.bottomCenter,
-                              colors: <Color>[accent.primary, accent.secondary],
-                            ),
-                            shape: BoxShape.circle,
-                          ),
-                          child: widget.controller.themeColor == accent.key
-                              ? const Icon(
-                                  Icons.check,
-                                  color: Colors.white,
-                                  size: 20,
-                                )
-                              : null,
+                children: <Widget>[
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(18, 4, 18, 12),
+                    child: Container(
+                      height: 82,
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: <Color>[current.primary, current.secondary],
                         ),
-                        title: Text(accent.label),
-                        trailing: widget.controller.themeColor == accent.key
-                            ? const Icon(Icons.radio_button_checked)
-                            : const Icon(Icons.radio_button_unchecked),
-                        onTap: () => Navigator.pop(context, accent.key),
+                        borderRadius: BorderRadius.circular(20),
                       ),
-                    )
-                    .toList(),
+                      alignment: Alignment.center,
+                      child: const Text(
+                        '不同的主体，各自留下清楚的一笔',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                  ),
+                  ...AppTheme.accents.map(
+                    (AppAccent accent) => ListTile(
+                      leading: Container(
+                        width: 36,
+                        height: 36,
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            colors: <Color>[accent.primary, accent.secondary],
+                          ),
+                          shape: BoxShape.circle,
+                        ),
+                        child: widget.controller.themeColor == accent.key
+                            ? const Icon(
+                                Icons.check,
+                                color: Colors.white,
+                                size: 20,
+                              )
+                            : null,
+                      ),
+                      title: Text(accent.label),
+                      trailing: widget.controller.themeColor == accent.key
+                          ? const Icon(Icons.radio_button_checked)
+                          : const Icon(Icons.radio_button_unchecked),
+                      onTap: () => Navigator.pop(context, accent.key),
+                    ),
+                  ),
+                  ListTile(
+                    leading: Container(
+                      width: 36,
+                      height: 36,
+                      decoration: BoxDecoration(
+                        color: current.primary,
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: Theme.of(context).colorScheme.outlineVariant,
+                        ),
+                      ),
+                      child: const Icon(Icons.colorize_outlined, size: 19),
+                    ),
+                    title: const Text('自定义颜色'),
+                    subtitle: const Text('输入十六进制颜色值'),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: () => Navigator.pop(context, '__custom__'),
+                  ),
+                ],
               ),
             ),
           ],
         ),
       ),
     );
-    if (value != null) {
-      await widget.controller.setPreference('theme_color', value);
+    if (value == null || !mounted) return;
+    final String? next = value == '__custom__'
+        ? await _pickCustomThemeColor(current.primary)
+        : value;
+    if (next == null) return;
+    await widget.controller.setPreference('theme_color', next);
+    await LauncherIconService.syncTheme(next);
+  }
+
+  Future<String?> _pickCustomThemeColor(Color initial) async {
+    final TextEditingController controller = TextEditingController(
+      text:
+          '#${(initial.toARGB32() & 0xFFFFFF).toRadixString(16).padLeft(6, '0').toUpperCase()}',
+    );
+    String? error;
+    final String? result = await showDialog<String>(
+      context: context,
+      builder: (BuildContext context) => StatefulBuilder(
+        builder: (BuildContext context, StateSetter update) => AlertDialog(
+          title: const Text('自定义主题色'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              const Text('输入 6 位十六进制颜色，系统会自动生成可读的按钮色和辅助色。'),
+              const SizedBox(height: 16),
+              TextField(
+                controller: controller,
+                autofocus: true,
+                textCapitalization: TextCapitalization.characters,
+                decoration: InputDecoration(
+                  labelText: '颜色值',
+                  hintText: '#5B5FEF',
+                  errorText: error,
+                  prefixIcon: const Icon(Icons.palette_outlined),
+                ),
+                onSubmitted: (_) {},
+              ),
+            ],
+          ),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              onPressed: () {
+                final String hex = controller.text
+                    .trim()
+                    .replaceFirst('#', '')
+                    .toUpperCase();
+                if (!RegExp(r'^[0-9A-F]{6}$').hasMatch(hex)) {
+                  update(() => error = '请输入 6 位十六进制颜色');
+                  return;
+                }
+                Navigator.pop(context, 'custom:$hex');
+              },
+              child: const Text('使用此颜色'),
+            ),
+          ],
+        ),
+      ),
+    );
+    controller.dispose();
+    return result;
+  }
+
+  Future<void> _refreshLauncherIconMode() async {
+    final String mode = await LauncherIconService.currentMode();
+    if (!mounted) return;
+    setState(() => _launcherIconMode = mode);
+  }
+
+  String _launcherIconModeName() {
+    if (_launcherIconMode == 'theme') return '跟随主题';
+    if (_launcherIconMode.startsWith('preset:')) {
+      return AppTheme.accentFor(
+        _launcherIconMode.substring('preset:'.length),
+      ).label;
+    }
+    return '品牌默认';
+  }
+
+  Future<void> _pickLauncherIcon() async {
+    final String? mode = await showModalBottomSheet<String>(
+      context: context,
+      useSafeArea: true,
+      builder: (BuildContext context) => RadioGroup<String>(
+        groupValue: _launcherIconMode,
+        onChanged: (String? value) => Navigator.pop(context, value),
+        child: ListView(
+          shrinkWrap: true,
+          padding: const EdgeInsets.only(bottom: 16),
+          children: <Widget>[
+            const Padding(
+              padding: EdgeInsets.fromLTRB(20, 8, 20, 10),
+              child: Text(
+                '选择桌面图标',
+                style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
+              ),
+            ),
+            const RadioListTile<String>(
+              value: 'brand',
+              title: Text('品牌默认'),
+              subtitle: Text('深墨靛与鸢尾紫'),
+            ),
+            const RadioListTile<String>(
+              value: 'theme',
+              title: Text('跟随界面主题'),
+              subtitle: Text('自定义颜色使用最接近的品牌图标'),
+            ),
+            const Divider(indent: 18, endIndent: 18),
+            ...AppTheme.accents.map(
+              (AppAccent accent) => RadioListTile<String>(
+                value: 'preset:${accent.key}',
+                title: Text(accent.label),
+                secondary: Container(
+                  width: 30,
+                  height: 30,
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: <Color>[accent.action, accent.primary],
+                    ),
+                    shape: BoxShape.circle,
+                  ),
+                ),
+              ),
+            ),
+            const Padding(
+              padding: EdgeInsets.fromLTRB(20, 8, 20, 4),
+              child: Text(
+                '支持系统主题图标时，Android 仍可根据壁纸自动着色。部分桌面刷新图标需要几秒钟。',
+                style: TextStyle(fontSize: 12, color: Color(0xFF777382)),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (mode == null || !mounted) return;
+    final bool changed = await LauncherIconService.setMode(
+      mode: mode,
+      themeKey: widget.controller.themeColor,
+    );
+    if (!mounted) return;
+    if (changed) {
+      setState(() => _launcherIconMode = mode);
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('桌面图标已更新，部分桌面可能稍后刷新')));
+    } else {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('当前设备暂不支持应用内切换桌面图标')));
     }
   }
 

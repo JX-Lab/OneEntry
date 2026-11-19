@@ -25,7 +25,7 @@ class LedgerController extends ChangeNotifier {
   bool multiEnabled = true;
   String splitMode = 'equal';
   String themeMode = 'system';
-  String themeColor = 'green';
+  String themeColor = 'indigo';
   bool voiceEnabled = true;
   double textScale = 1;
   bool highContrast = false;

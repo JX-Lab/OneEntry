@@ -9,6 +9,7 @@ import 'data/ledger_repository.dart';
 import 'services/notification_service.dart';
 import 'services/snapshot_service.dart';
 import 'theme/app_theme.dart';
+import 'widgets/brand_mark.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -111,19 +112,25 @@ class _LoadingPage extends StatelessWidget {
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: <Color>[AppTheme.green, AppTheme.greenLight],
+          colors: <Color>[AppTheme.brandInk, AppTheme.brandIris],
         ),
       ),
       child: Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: <Widget>[
-            Image.asset(
-              'assets/branding/oneentry_icon.png',
-              width: 112,
-              height: 112,
+            TweenAnimationBuilder<double>(
+              tween: Tween<double>(begin: .92, end: 1),
+              duration: const Duration(milliseconds: 460),
+              curve: Curves.easeOutCubic,
+              builder: (BuildContext context, double value, Widget? child) =>
+                  Opacity(
+                    opacity: value,
+                    child: Transform.scale(scale: value, child: child),
+                  ),
+              child: const BrandMark(size: 126),
             ),
-            const SizedBox(height: 22),
+            const SizedBox(height: 24),
             const Text(
               '一笔',
               style: TextStyle(
@@ -132,7 +139,16 @@ class _LoadingPage extends StatelessWidget {
                 fontWeight: FontWeight.w700,
               ),
             ),
-            const SizedBox(height: 18),
+            const SizedBox(height: 7),
+            const Text(
+              '不同的主体，共同的一本账',
+              style: TextStyle(
+                color: Color(0xFFD9D5FF),
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+            const SizedBox(height: 22),
             const SizedBox(
               width: 24,
               height: 24,

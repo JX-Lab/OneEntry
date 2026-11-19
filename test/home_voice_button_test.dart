@@ -138,7 +138,7 @@ void main() {
     );
   });
 
-  testWidgets('首页卡片和主按钮使用纵向渐变', (WidgetTester tester) async {
+  testWidgets('首页卡片和主按钮使用渐变，语音入口保持从属', (WidgetTester tester) async {
     final LedgerController controller = LedgerController(
       LedgerRepository(AppDatabase()),
     );
@@ -181,7 +181,16 @@ void main() {
     final int verticalInkCount = inkGradients.where(isVertical).length;
 
     expect(verticalBoxCount, greaterThanOrEqualTo(1));
-    expect(verticalInkCount, greaterThanOrEqualTo(2));
+    expect(verticalInkCount, greaterThanOrEqualTo(1));
+    final Ink voiceInk = tester.widget<Ink>(
+      find
+          .ancestor(
+            of: find.byIcon(Icons.mic_none_rounded),
+            matching: find.byType(Ink),
+          )
+          .first,
+    );
+    expect((voiceInk.decoration as BoxDecoration).gradient, isNull);
   });
 
   testWidgets('四位数月预算在手机宽度下不溢出', (WidgetTester tester) async {
