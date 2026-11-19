@@ -82,13 +82,13 @@ class _SettingsPageState extends State<SettingsPage>
                           .setPreference('voice_enabled', value ? '1' : '0'),
                     ),
                     ListTile(
-                      title: const Text('多人统计'),
-                      subtitle: const Text('选择成员金额的统计方式'),
-                      trailing: Text(
-                        widget.controller.splitMode == 'full'
-                            ? '整笔计入  ›'
-                            : 'AA 均摊  ›',
-                      ),
+                      title: const Text('成员金额口径'),
+                      subtitle: const Text('选择多人账目的统计与分摊方式'),
+                      trailing: Text(switch (widget.controller.splitMode) {
+                        'full' => '整笔计入  ›',
+                        'fund_ratio' => '按资金比例  ›',
+                        _ => 'AA 均摊  ›',
+                      }),
                       onTap: _pickSplitMode,
                     ),
                     ListTile(
@@ -475,13 +475,12 @@ class _SettingsPageState extends State<SettingsPage>
   }
 
   Future<void> _pickSplitMode() async {
-    final String? value = await _simpleChoice(
-      '多人统计',
-      const <MapEntry<String, String>>[
-        MapEntry('equal', 'AA 均摊'),
-        MapEntry('full', '整笔计入每位成员'),
-      ],
-    );
+    final String? value =
+        await _simpleChoice('多人统计', const <MapEntry<String, String>>[
+          MapEntry('equal', 'AA 均摊'),
+          MapEntry('full', '整笔计入每位成员'),
+          MapEntry('fund_ratio', '按成员当前资金比例'),
+        ]);
     if (value != null)
       await widget.controller.setPreference('split_mode', value);
   }

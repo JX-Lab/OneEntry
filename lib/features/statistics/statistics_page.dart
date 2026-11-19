@@ -305,10 +305,15 @@ class _StatisticsPageState extends State<StatisticsPage> {
       (item) => item.type == _breakdown,
     )) {
       if (entry.memberIds.isEmpty) continue;
-      final double share = widget.controller.splitMode == 'full'
-          ? entry.amount
-          : entry.amount / entry.memberIds.length;
       for (final int id in entry.memberIds) {
+        final double share = widget.controller.splitMode == 'full'
+            ? entry.amount
+            : entry.memberShares.isNotEmpty
+            ? entry.memberShares
+                  .where((MemberShare item) => item.memberId == id)
+                  .map((MemberShare item) => item.amount)
+                  .fold(0, (double sum, double value) => sum + value)
+            : entry.amount / entry.memberIds.length;
         values.update(id, (value) => value + share, ifAbsent: () => share);
       }
     }

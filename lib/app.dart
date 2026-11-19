@@ -66,8 +66,7 @@ class _OneEntryAppState extends State<OneEntryApp> {
           ),
         );
     if (result != null) {
-      await widget.controller.addEntry(result);
-      await _handleRecurringNotification(result);
+      await _saveNewEntry(result);
     }
   }
 
@@ -80,8 +79,7 @@ class _OneEntryAppState extends State<OneEntryApp> {
           ),
         );
     if (result != null) {
-      await widget.controller.addEntry(result);
-      await _handleRecurringNotification(result);
+      await _saveNewEntry(result);
     }
   }
 
@@ -116,7 +114,7 @@ class _OneEntryAppState extends State<OneEntryApp> {
           ),
         );
     if (result != null) {
-      await widget.controller.updateEntry(entry, result);
+      await _saveEditedEntry(entry, result);
     }
   }
 
@@ -132,6 +130,9 @@ class _OneEntryAppState extends State<OneEntryApp> {
       accountId: entry.accountId,
       toAccountId: entry.toAccountId,
       memberIds: List<int>.from(entry.memberIds),
+      memberShares: List<MemberShare>.from(entry.memberShares),
+      fundings: List<EntryFunding>.from(entry.fundings),
+      outsideBudget: entry.outsideBudget,
     );
     final LedgerEntry? result = await _navigatorKey.currentState!
         .push<LedgerEntry>(
@@ -140,7 +141,7 @@ class _OneEntryAppState extends State<OneEntryApp> {
                 EntrySheet(controller: widget.controller, draft: draft),
           ),
         );
-    if (result != null) await widget.controller.addEntry(result);
+    if (result != null) await _saveNewEntry(result);
   }
 
   Future<void> _handleNotificationLaunch(
@@ -183,7 +184,52 @@ class _OneEntryAppState extends State<OneEntryApp> {
                 EntrySheet(controller: widget.controller, draft: draft),
           ),
         );
-    if (result != null) await widget.controller.addEntry(result);
+    if (result != null) await _saveNewEntry(result);
+  }
+
+  Future<void> _saveNewEntry(LedgerEntry draft) async {
+    LedgerEntry? pending = draft;
+    while (pending != null) {
+      try {
+        await widget.controller.addEntry(pending);
+        await _handleRecurringNotification(pending);
+        return;
+      } on StateError catch (error) {
+        _showEntrySaveError(error);
+        pending = await _navigatorKey.currentState!.push<LedgerEntry>(
+          MaterialPageRoute<LedgerEntry>(
+            builder: (_) =>
+                EntrySheet(controller: widget.controller, draft: pending),
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _saveEditedEntry(LedgerEntry previous, LedgerEntry draft) async {
+    LedgerEntry? pending = draft;
+    while (pending != null) {
+      try {
+        await widget.controller.updateEntry(previous, pending);
+        return;
+      } on StateError catch (error) {
+        _showEntrySaveError(error);
+        pending = await _navigatorKey.currentState!.push<LedgerEntry>(
+          MaterialPageRoute<LedgerEntry>(
+            builder: (_) =>
+                EntrySheet(controller: widget.controller, initial: pending),
+          ),
+        );
+      }
+    }
+  }
+
+  void _showEntrySaveError(StateError error) {
+    final BuildContext? context = _navigatorKey.currentContext;
+    if (context == null) return;
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text('账目未保存：${error.message}，请调整后重试')));
   }
 
   @override

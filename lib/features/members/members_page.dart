@@ -50,6 +50,7 @@ class _MembersPageState extends State<MembersPage> {
             (item) => item.archived && item.name.toLowerCase().contains(query),
           )
           .toList();
+      final List<_DebtSummary> debts = _debtSummaries();
       return Scaffold(
         appBar: AppBar(
           title: _searching
@@ -132,6 +133,38 @@ class _MembersPageState extends State<MembersPage> {
                 ],
               ),
             ),
+            if (debts.isNotEmpty) ...<Widget>[
+              const Padding(
+                padding: EdgeInsets.fromLTRB(4, 14, 4, 8),
+                child: Text(
+                  '成员往来',
+                  style: TextStyle(fontSize: 12, color: Color(0xFF8A9099)),
+                ),
+              ),
+              Container(
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.surface,
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Column(
+                  children: debts
+                      .map(
+                        (_DebtSummary debt) => ListTile(
+                          leading: const Icon(Icons.handshake_outlined),
+                          title: Text('${debt.debtor} 欠 ${debt.creditor}'),
+                          trailing: Text(
+                            '¥${debt.amount.toStringAsFixed(2)}',
+                            style: TextStyle(
+                              color: AppTheme.ledgerOf(context).expense,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                      )
+                      .toList(),
+                ),
+              ),
+            ],
             const Padding(
               padding: EdgeInsets.fromLTRB(4, 14, 4, 8),
               child: Text(
@@ -182,6 +215,10 @@ class _MembersPageState extends State<MembersPage> {
     final int count = widget.controller.entries
         .where((entry) => entry.memberIds.contains(member.id))
         .length;
+    final double funds = widget.controller.accounts
+        .expand((LedgerAccount account) => account.funds)
+        .where((AccountFund fund) => fund.memberId == member.id)
+        .fold(0, (double sum, AccountFund fund) => sum + fund.balance);
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: SwipeActionTile(
@@ -220,12 +257,58 @@ class _MembersPageState extends State<MembersPage> {
               ),
             ),
             title: Text(member.name),
-            subtitle: Text(member.archived ? '已归档（$count 笔）' : '参与 $count 笔账目'),
+            subtitle: Text(
+              member.archived
+                  ? '已归档（$count 笔）'
+                  : '资金 ¥${funds.toStringAsFixed(2)} · 参与 $count 笔账目',
+            ),
             trailing: const Icon(Icons.chevron_right),
           ),
         ),
       ),
     );
+  }
+
+  List<_DebtSummary> _debtSummaries() {
+    final Map<(int, int), double> directional = <(int, int), double>{};
+    for (final MemberDebt debt in widget.controller.memberDebts) {
+      final (int, int) key = (debt.creditorMemberId, debt.debtorMemberId);
+      directional.update(
+        key,
+        (double value) => value + debt.amount,
+        ifAbsent: () => debt.amount,
+      );
+    }
+    final Set<(int, int)> visited = <(int, int)>{};
+    final List<_DebtSummary> result = <_DebtSummary>[];
+    for (final MapEntry<(int, int), double> item in directional.entries) {
+      final int creditorId = item.key.$1;
+      final int debtorId = item.key.$2;
+      final (int, int) canonical = creditorId < debtorId
+          ? (creditorId, debtorId)
+          : (debtorId, creditorId);
+      if (!visited.add(canonical)) continue;
+      final double forward = directional[(creditorId, debtorId)] ?? 0;
+      final double reverse = directional[(debtorId, creditorId)] ?? 0;
+      final double net = forward - reverse;
+      if (net.abs() < .005) continue;
+      final int finalCreditor = net > 0 ? creditorId : debtorId;
+      final int finalDebtor = net > 0 ? debtorId : creditorId;
+      String name(int id) =>
+          widget.controller.members
+              .where((LedgerMember member) => member.id == id)
+              .map((LedgerMember member) => member.name)
+              .firstOrNull ??
+          '已删除成员';
+      result.add(
+        _DebtSummary(
+          creditor: name(finalCreditor),
+          debtor: name(finalDebtor),
+          amount: net.abs(),
+        ),
+      );
+    }
+    return result;
   }
 
   Future<void> _edit(BuildContext context, [LedgerMember? member]) async {
@@ -419,6 +502,18 @@ class _MembersPageState extends State<MembersPage> {
       '#${(value & 0xFFFFFF).toRadixString(16).padLeft(6, '0').toUpperCase()}';
 }
 
+class _DebtSummary {
+  const _DebtSummary({
+    required this.creditor,
+    required this.debtor,
+    required this.amount,
+  });
+
+  final String creditor;
+  final String debtor;
+  final double amount;
+}
+
 class _MemberCount extends StatelessWidget {
   const _MemberCount({required this.label, required this.value});
   final String label;
@@ -487,10 +582,10 @@ class _MemberDetailPage extends StatelessWidget {
           .toList();
       final double income = entries
           .where((entry) => entry.type == EntryType.income)
-          .fold(0, (sum, entry) => sum + entry.amount);
+          .fold(0, (sum, entry) => sum + _memberAmount(entry));
       final double expense = entries
           .where((entry) => entry.type == EntryType.expense)
-          .fold(0, (sum, entry) => sum + entry.amount);
+          .fold(0, (sum, entry) => sum + _memberAmount(entry));
       final Map<String, List<LedgerEntry>> months =
           <String, List<LedgerEntry>>{};
       for (final LedgerEntry entry in entries) {
@@ -694,6 +789,17 @@ class _MemberDetailPage extends StatelessWidget {
       ),
     );
     if (updated != null) await controller.updateEntry(entry, updated);
+  }
+
+  double _memberAmount(LedgerEntry entry) {
+    if (controller.splitMode == 'full') return entry.amount;
+    if (entry.memberShares.isNotEmpty) {
+      return entry.memberShares
+          .where((MemberShare share) => share.memberId == memberId)
+          .map((MemberShare share) => share.amount)
+          .fold(0, (double sum, double value) => sum + value);
+    }
+    return entry.memberIds.isEmpty ? 0 : entry.amount / entry.memberIds.length;
   }
 
   Future<void> _deleteMember(BuildContext context, LedgerMember member) async {

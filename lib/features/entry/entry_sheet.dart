@@ -30,7 +30,9 @@ class _EntrySheetState extends State<EntrySheet> {
   int _accountId = 1;
   int? _toAccountId = 2;
   final Set<int> _members = <int>{};
+  final List<EntryFunding> _fundings = <EntryFunding>[];
   bool _recurring = false;
+  bool _outsideBudget = false;
   String _frequency = 'month';
   DateTime _occurredAt = DateTime.now();
 
@@ -64,7 +66,11 @@ class _EntrySheetState extends State<EntrySheet> {
       _members
         ..clear()
         ..addAll(source.memberIds);
+      _fundings
+        ..clear()
+        ..addAll(source.fundings);
       _recurring = source.recurring;
+      _outsideBudget = source.outsideBudget;
       _frequency = source.recurringFrequency;
       _occurredAt = source.occurredAt;
       _amountController.text = source.amount.toStringAsFixed(2);
@@ -133,6 +139,22 @@ class _EntrySheetState extends State<EntrySheet> {
       ).showSnackBar(const SnackBar(content: Text('请选择两个不同的账户')));
       return;
     }
+    late final List<EntryFunding> fundings;
+    try {
+      fundings = _fundingsForSave(amount);
+    } on StateError catch (error) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('${error.message}')));
+      return;
+    }
+    final String? fundingError = _validateLocalFundings(fundings);
+    if (fundingError != null) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(fundingError)));
+      return;
+    }
     Navigator.of(context).pop(
       LedgerEntry(
         id: widget.initial?.id ?? 0,
@@ -144,6 +166,9 @@ class _EntrySheetState extends State<EntrySheet> {
         accountId: _accountId,
         toAccountId: _type == EntryType.transfer ? _toAccountId : null,
         memberIds: _members.toList(),
+        memberShares: _memberSharesForSave(amount),
+        fundings: fundings,
+        outsideBudget: _type == EntryType.expense && _outsideBudget,
         recurring: _type != EntryType.transfer && _recurring,
         recurringFrequency: _frequency,
       ),
@@ -204,15 +229,17 @@ class _EntrySheetState extends State<EntrySheet> {
                   onLongPress: (LedgerCategory category) =>
                       _addCategory(category),
                 ),
-                _PickerField(
-                  title: '账户',
-                  value: account?.name ?? '请选择',
-                  onTap: () => _pickAccount(
-                    title: '选择账户',
-                    accounts: accounts,
-                    selectedId: _accountId,
-                    onSelected: (int id) => setState(() => _accountId = id),
+                if (widget.controller.multiEnabled)
+                  _PickerField(
+                    title: '承担成员（可多选）',
+                    value: _memberSummary(members),
+                    onTap: () => _pickMembers(members),
                   ),
+                _PickerField(
+                  title: _type == EntryType.expense ? '支付来源' : '入账账户',
+                  value: _fundingSummary(accounts, members, account),
+                  onTap: () =>
+                      _editFundings(accounts: accounts, members: members),
                 ),
               ] else ...<Widget>[
                 _PickerField(
@@ -238,9 +265,9 @@ class _EntrySheetState extends State<EntrySheet> {
                   ),
                 ),
               ],
-              if (widget.controller.multiEnabled)
+              if (widget.controller.multiEnabled && _type == EntryType.transfer)
                 _PickerField(
-                  title: _type == EntryType.transfer ? '操作者（可多选）' : '成员（可多选）',
+                  title: '操作者（可多选）',
                   value: _memberSummary(members),
                   onTap: () => _pickMembers(members),
                 ),
@@ -281,6 +308,16 @@ class _EntrySheetState extends State<EntrySheet> {
                   ),
                   child: Column(
                     children: <Widget>[
+                      if (_type == EntryType.expense) ...<Widget>[
+                        SwitchListTile(
+                          title: const Text('预算外花销'),
+                          subtitle: const Text('计入本月总支出，但不占用预算额度'),
+                          value: _outsideBudget,
+                          onChanged: (bool value) =>
+                              setState(() => _outsideBudget = value),
+                        ),
+                        const Divider(height: 1, indent: 16, endIndent: 16),
+                      ],
                       SwitchListTile(
                         title: const Text('设为周期账目'),
                         subtitle: const Text('到期时提醒手动确认记账'),
@@ -373,6 +410,171 @@ class _EntrySheetState extends State<EntrySheet> {
       _members
         ..clear()
         ..addAll(result);
+    });
+  }
+
+  List<EntryFunding> _fundingsForSave(double amount) {
+    if (_type == EntryType.transfer) {
+      return <EntryFunding>[
+        EntryFunding(accountId: _accountId, amount: amount),
+      ];
+    }
+    if (_fundings.isEmpty) {
+      return <EntryFunding>[
+        EntryFunding(accountId: _accountId, amount: amount),
+      ];
+    }
+    if (_fundings.length == 1) {
+      final EntryFunding only = _fundings.first;
+      return <EntryFunding>[
+        EntryFunding(
+          accountId: only.accountId,
+          memberId: only.memberId,
+          amount: amount,
+        ),
+      ];
+    }
+    final int expected = (amount * 100).round();
+    final int actual = _fundings.fold<int>(
+      0,
+      (int sum, EntryFunding item) => sum + (item.amount * 100).round(),
+    );
+    if (actual != expected) {
+      throw StateError('组合付款合计必须等于账目金额');
+    }
+    return List<EntryFunding>.from(_fundings);
+  }
+
+  List<MemberShare> _memberSharesForSave(double amount) {
+    if (widget.controller.splitMode != 'fund_ratio' || _members.isEmpty) {
+      return const <MemberShare>[];
+    }
+    final Map<int, double> wealth = <int, double>{
+      for (final int memberId in _members)
+        memberId: widget.controller.accounts
+            .where((LedgerAccount account) => !account.archived)
+            .expand((LedgerAccount account) => account.funds)
+            .where((AccountFund fund) => fund.memberId == memberId)
+            .fold(
+              0,
+              (double sum, AccountFund fund) =>
+                  sum + (fund.balance > 0 ? fund.balance : 0),
+            ),
+    };
+    final double totalWealth = wealth.values.fold(
+      0,
+      (double sum, double value) => sum + value,
+    );
+    if (totalWealth <= 0) return const <MemberShare>[];
+    final int totalMinor = (amount * 100).round();
+    int assigned = 0;
+    final List<int> ids = _members.toList();
+    return ids.map((int memberId) {
+      final int share = memberId == ids.last
+          ? totalMinor - assigned
+          : (totalMinor * (wealth[memberId] ?? 0) / totalWealth).floor();
+      assigned += share;
+      return MemberShare(memberId: memberId, amount: share / 100);
+    }).toList();
+  }
+
+  String? _validateLocalFundings(List<EntryFunding> fundings) {
+    if (_type == EntryType.income) return null;
+    final Map<(int, int?), double> requested = <(int, int?), double>{};
+    for (final EntryFunding funding in fundings) {
+      final (int, int?) key = (funding.accountId, funding.memberId);
+      requested.update(
+        key,
+        (double value) => value + funding.amount,
+        ifAbsent: () => funding.amount,
+      );
+    }
+    for (final MapEntry<(int, int?), double> item in requested.entries) {
+      final LedgerAccount? account = widget.controller.accounts
+          .where((LedgerAccount value) => value.id == item.key.$1)
+          .firstOrNull;
+      if (account == null || account.archived) return '所选账户不可用';
+      if (account.kind == AccountKind.loan) return '贷款账户不能直接用于支付';
+      final double available =
+          account.kind == AccountKind.credit && item.key.$2 == null
+          ? account.availableToSpend
+          : account.funds
+                    .where((AccountFund fund) => fund.memberId == item.key.$2)
+                    .map((AccountFund fund) => fund.balance)
+                    .firstOrNull ??
+                (item.key.$2 == null && account.funds.isEmpty
+                    ? account.balance
+                    : 0);
+      if (item.value - available > .004) {
+        return '所选资金不足，请调整支付来源或使用组合付款';
+      }
+    }
+    return null;
+  }
+
+  String _fundingSummary(
+    List<LedgerAccount> accounts,
+    List<LedgerMember> members,
+    LedgerAccount? fallback,
+  ) {
+    if (_fundings.isEmpty) return fallback?.name ?? '请选择';
+    String label(EntryFunding funding) {
+      final String account =
+          accounts
+              .where((LedgerAccount item) => item.id == funding.accountId)
+              .map((LedgerAccount item) => item.name)
+              .firstOrNull ??
+          '未知账户';
+      final String owner = funding.memberId == null
+          ? '共同资金'
+          : members
+                    .where((LedgerMember item) => item.id == funding.memberId)
+                    .map((LedgerMember item) => item.name)
+                    .firstOrNull ??
+                '未知成员';
+      return '$account·$owner ¥${funding.amount.toStringAsFixed(2)}';
+    }
+
+    if (_fundings.length == 1) return label(_fundings.first);
+    return _fundings.map(label).join(' + ');
+  }
+
+  Future<void> _editFundings({
+    required List<LedgerAccount> accounts,
+    required List<LedgerMember> members,
+  }) async {
+    _dismissKeyboard();
+    final double? amount = evaluateAmountExpression(_amountController.text);
+    if (amount == null || amount <= 0) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('请先输入账目金额')));
+      return;
+    }
+    final List<EntryFunding>? result =
+        await showModalBottomSheet<List<EntryFunding>>(
+          context: context,
+          isScrollControlled: true,
+          useSafeArea: true,
+          builder: (BuildContext context) => _FundingEditorSheet(
+            total: amount,
+            type: _type,
+            accounts: accounts,
+            members: members,
+            selectedMemberIds: _members,
+            initial: _fundings.isEmpty
+                ? <EntryFunding>[
+                    EntryFunding(accountId: _accountId, amount: amount),
+                  ]
+                : _fundings,
+          ),
+        );
+    if (!mounted || result == null || result.isEmpty) return;
+    setState(() {
+      _fundings
+        ..clear()
+        ..addAll(result);
+      _accountId = result.first.accountId;
     });
   }
 
@@ -957,6 +1159,437 @@ class _PickerField extends StatelessWidget {
         ),
       ),
     ),
+  );
+}
+
+class _FundingSource {
+  const _FundingSource({
+    required this.account,
+    required this.available,
+    this.memberId,
+    this.memberName,
+  });
+
+  final LedgerAccount account;
+  final int? memberId;
+  final String? memberName;
+  final double available;
+
+  String get label =>
+      '${account.name} · ${memberId == null ? '共同资金' : memberName ?? '成员资金'}';
+}
+
+class _FundingDraft {
+  _FundingDraft(this.source, double amount)
+    : controller = TextEditingController(text: amount.toStringAsFixed(2));
+
+  _FundingSource source;
+  final TextEditingController controller;
+
+  double get amount => double.tryParse(controller.text) ?? 0;
+  void dispose() => controller.dispose();
+}
+
+class _FundingEditorSheet extends StatefulWidget {
+  const _FundingEditorSheet({
+    required this.total,
+    required this.type,
+    required this.accounts,
+    required this.members,
+    required this.selectedMemberIds,
+    required this.initial,
+  });
+
+  final double total;
+  final EntryType type;
+  final List<LedgerAccount> accounts;
+  final List<LedgerMember> members;
+  final Set<int> selectedMemberIds;
+  final List<EntryFunding> initial;
+
+  @override
+  State<_FundingEditorSheet> createState() => _FundingEditorSheetState();
+}
+
+class _FundingEditorSheetState extends State<_FundingEditorSheet> {
+  final List<_FundingDraft> _rows = <_FundingDraft>[];
+
+  @override
+  void initState() {
+    super.initState();
+    final List<_FundingSource> sources = _sources();
+    for (final EntryFunding item in widget.initial) {
+      final _FundingSource? source = sources
+          .where(
+            (_FundingSource candidate) =>
+                candidate.account.id == item.accountId &&
+                candidate.memberId == item.memberId,
+          )
+          .firstOrNull;
+      if (source != null) _rows.add(_FundingDraft(source, item.amount));
+    }
+    if (_rows.isEmpty && sources.isNotEmpty) {
+      _rows.add(_FundingDraft(sources.first, widget.total));
+    }
+  }
+
+  @override
+  void dispose() {
+    for (final _FundingDraft row in _rows) {
+      row.dispose();
+    }
+    super.dispose();
+  }
+
+  List<_FundingSource> _sources() {
+    final List<_FundingSource> result = <_FundingSource>[];
+    for (final LedgerAccount account in widget.accounts) {
+      if (widget.type == EntryType.expense &&
+          account.kind == AccountKind.loan) {
+        continue;
+      }
+      final Map<int?, double> balances = <int?, double>{
+        for (final AccountFund fund in account.funds)
+          fund.memberId: fund.balance,
+      };
+      balances.putIfAbsent(
+        null,
+        () => account.funds.isEmpty ? account.balance : 0,
+      );
+      if (widget.type == EntryType.income) {
+        for (final LedgerMember member in widget.members) {
+          balances.putIfAbsent(member.id, () => 0);
+        }
+      }
+      for (final MapEntry<int?, double> fund in balances.entries) {
+        if (widget.type == EntryType.expense &&
+            fund.key != null &&
+            widget.selectedMemberIds.isEmpty) {
+          continue;
+        }
+        final LedgerMember? member = fund.key == null
+            ? null
+            : widget.members
+                  .where((LedgerMember item) => item.id == fund.key)
+                  .firstOrNull;
+        final double available =
+            account.kind == AccountKind.credit &&
+                fund.key == null &&
+                widget.type == EntryType.expense
+            ? account.availableToSpend
+            : fund.value;
+        if (widget.type == EntryType.expense && available <= 0) continue;
+        result.add(
+          _FundingSource(
+            account: account,
+            memberId: fund.key,
+            memberName: member?.name,
+            available: available,
+          ),
+        );
+      }
+    }
+    return result;
+  }
+
+  double get _allocated => _rows.fold<double>(
+    0,
+    (double sum, _FundingDraft row) => sum + row.amount,
+  );
+
+  double get _remaining => widget.total - _allocated;
+
+  Future<void> _addOrReplace({int? index}) async {
+    final _FundingSource? source = await showModalBottomSheet<_FundingSource>(
+      context: context,
+      useSafeArea: true,
+      builder: (BuildContext context) => ListView(
+        shrinkWrap: true,
+        padding: const EdgeInsets.only(bottom: 16),
+        children: <Widget>[
+          const Padding(
+            padding: EdgeInsets.fromLTRB(18, 16, 18, 8),
+            child: Text(
+              '选择资金来源',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+            ),
+          ),
+          ..._sources().map(
+            (_FundingSource item) => ListTile(
+              leading: CircleAvatar(
+                child: Icon(_entryAccountIcon(item.account.icon)),
+              ),
+              title: Text(item.label),
+              subtitle: widget.type == EntryType.expense
+                  ? Text('可用 ¥${item.available.toStringAsFixed(2)}')
+                  : const Text('收入将计入这部分资金'),
+              onTap: () => Navigator.pop(context, item),
+            ),
+          ),
+        ],
+      ),
+    );
+    if (source == null || !mounted) return;
+    setState(() {
+      if (index == null) {
+        final double suggested = widget.type == EntryType.expense
+            ? _remaining.clamp(0, source.available).toDouble()
+            : _remaining.clamp(0, widget.total).toDouble();
+        _rows.add(_FundingDraft(source, suggested));
+      } else {
+        _rows[index].source = source;
+      }
+    });
+  }
+
+  void _autoFill() {
+    for (final _FundingDraft row in _rows) {
+      row.dispose();
+    }
+    _rows.clear();
+    double remaining = widget.total;
+    for (final _FundingSource source in _sources()) {
+      if (source.memberId != null &&
+          !widget.selectedMemberIds.contains(source.memberId)) {
+        continue;
+      }
+      final double amount = remaining.clamp(0, source.available).toDouble();
+      if (amount <= 0) continue;
+      _rows.add(_FundingDraft(source, amount));
+      remaining -= amount;
+      if (remaining <= .004) break;
+    }
+    setState(() {});
+  }
+
+  List<EntryFunding> _result() {
+    final Map<(int, int?), double> grouped = <(int, int?), double>{};
+    for (final _FundingDraft row in _rows) {
+      if (row.amount <= 0) continue;
+      final (int, int?) key = (row.source.account.id, row.source.memberId);
+      grouped.update(
+        key,
+        (double value) => value + row.amount,
+        ifAbsent: () => row.amount,
+      );
+    }
+    return grouped.entries
+        .map(
+          (MapEntry<(int, int?), double> item) => EntryFunding(
+            accountId: item.key.$1,
+            memberId: item.key.$2,
+            amount: item.value,
+          ),
+        )
+        .toList();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bool withinAvailable =
+        widget.type != EntryType.expense ||
+        _rows.every(
+          (_FundingDraft row) => row.amount - row.source.available <= .004,
+        );
+    final bool complete =
+        _remaining.abs() < .005 && _rows.isNotEmpty && withinAvailable;
+    return FractionallySizedBox(
+      heightFactor: .9,
+      child: Column(
+        children: <Widget>[
+          SizedBox(
+            height: 56,
+            child: Row(
+              children: <Widget>[
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('取消'),
+                ),
+                Expanded(
+                  child: Text(
+                    widget.type == EntryType.expense ? '组合付款' : '收入归属',
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                ),
+                TextButton(
+                  onPressed: complete
+                      ? () => Navigator.pop(context, _result())
+                      : null,
+                  child: const Text('完成'),
+                ),
+              ],
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 10),
+            child: Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Row(
+                children: <Widget>[
+                  Expanded(
+                    child: _FundingMetric(label: '账目金额', value: widget.total),
+                  ),
+                  Expanded(
+                    child: _FundingMetric(label: '已分配', value: _allocated),
+                  ),
+                  Expanded(
+                    child: _FundingMetric(
+                      label: '还需分配',
+                      value: _remaining,
+                      warning: !complete,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          if (widget.type == EntryType.expense)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: OutlinedButton.icon(
+                onPressed: _autoFill,
+                icon: const Icon(Icons.auto_awesome_outlined),
+                label: const Text('按账户顺序自动补足'),
+              ),
+            ),
+          AnimatedSwitcher(
+            duration: const Duration(milliseconds: 180),
+            child: complete
+                ? const SizedBox(height: 8, key: ValueKey<String>('complete'))
+                : Padding(
+                    key: const ValueKey<String>('remaining'),
+                    padding: const EdgeInsets.fromLTRB(18, 8, 18, 0),
+                    child: Text(
+                      !withinAvailable
+                          ? '有一项超过可用资金'
+                          : _remaining > 0
+                          ? '还差 ¥${_remaining.toStringAsFixed(2)}'
+                          : '已多分配 ¥${(-_remaining).toStringAsFixed(2)}',
+                      style: TextStyle(
+                        color: AppTheme.ledgerOf(context).expense,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+          ),
+          Expanded(
+            child: ListView.separated(
+              padding: const EdgeInsets.fromLTRB(12, 8, 12, 16),
+              itemCount: _rows.length,
+              separatorBuilder: (_, _) => const SizedBox(height: 8),
+              itemBuilder: (BuildContext context, int index) {
+                final _FundingDraft row = _rows[index];
+                return Material(
+                  color: Theme.of(context).colorScheme.surface,
+                  borderRadius: BorderRadius.circular(14),
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(12, 8, 8, 8),
+                    child: Row(
+                      children: <Widget>[
+                        Expanded(
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(10),
+                            onTap: () => _addOrReplace(index: index),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 8),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: <Widget>[
+                                  Text(
+                                    row.source.label,
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                  if (widget.type == EntryType.expense)
+                                    Text(
+                                      '可用 ¥${row.source.available.toStringAsFixed(2)}',
+                                      style: const TextStyle(
+                                        color: Color(0xFF8A9099),
+                                        fontSize: 12,
+                                      ),
+                                    ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                        SizedBox(
+                          width: 104,
+                          child: TextField(
+                            controller: row.controller,
+                            keyboardType: const TextInputType.numberWithOptions(
+                              decimal: true,
+                            ),
+                            textAlign: TextAlign.end,
+                            decoration: const InputDecoration(
+                              prefixText: '¥ ',
+                              isDense: true,
+                            ),
+                            onChanged: (_) => setState(() {}),
+                          ),
+                        ),
+                        IconButton(
+                          tooltip: '移除',
+                          onPressed: () => setState(() {
+                            _rows.removeAt(index).dispose();
+                          }),
+                          icon: const Icon(Icons.close, size: 20),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+            child: OutlinedButton.icon(
+              onPressed: _remaining > .004 ? _addOrReplace : null,
+              icon: const Icon(Icons.add),
+              label: const Text('添加资金来源'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _FundingMetric extends StatelessWidget {
+  const _FundingMetric({
+    required this.label,
+    required this.value,
+    this.warning = false,
+  });
+
+  final String label;
+  final double value;
+  final bool warning;
+
+  @override
+  Widget build(BuildContext context) => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: <Widget>[
+      Text(
+        label,
+        style: const TextStyle(fontSize: 11, color: Color(0xFF8A9099)),
+      ),
+      const SizedBox(height: 3),
+      Text(
+        '¥${value.abs().toStringAsFixed(2)}',
+        style: TextStyle(
+          fontWeight: FontWeight.w700,
+          color: warning ? AppTheme.ledgerOf(context).expense : null,
+        ),
+      ),
+    ],
   );
 }
 

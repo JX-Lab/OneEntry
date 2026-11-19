@@ -49,7 +49,10 @@ class _SwipeActionTileState extends State<SwipeActionTile> {
           right: 0,
           bottom: 0,
           width: _actionWidth,
-          child: ColoredBox(color: widget.actionColor),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 120),
+            color: _offset < -.5 ? widget.actionColor : Colors.transparent,
+          ),
         ),
         if (widget.onSwipeRight != null)
           Positioned(

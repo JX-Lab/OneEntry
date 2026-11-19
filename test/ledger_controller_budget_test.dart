@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:yibi/data/app_database.dart';
 import 'package:yibi/data/ledger_controller.dart';
 import 'package:yibi/data/ledger_repository.dart';
+import 'package:yibi/models/ledger_models.dart';
 
 class _FakeLedgerRepository extends LedgerRepository {
   _FakeLedgerRepository() : super(AppDatabase());
@@ -91,5 +92,38 @@ void main() {
     expect(controller.dailyReminderHour, 21);
     expect(controller.dailyReminderMinute, 30);
     expect(repository.savedDailyEnabled, isTrue);
+  });
+
+  test('预算外花销计入总支出但不占用预算', () {
+    final LedgerController controller = LedgerController(
+      _FakeLedgerRepository(),
+    );
+    addTearDown(controller.dispose);
+    final DateTime month = DateTime(2026, 11);
+    controller.entries.addAll(<LedgerEntry>[
+      LedgerEntry(
+        id: 1,
+        type: EntryType.expense,
+        amount: 80,
+        category: '餐饮',
+        occurredAt: DateTime(2026, 11, 3),
+        note: '',
+        accountId: 1,
+      ),
+      LedgerEntry(
+        id: 2,
+        type: EntryType.expense,
+        amount: 35,
+        category: '旅行',
+        occurredAt: DateTime(2026, 11, 5),
+        note: '',
+        accountId: 1,
+        outsideBudget: true,
+      ),
+    ]);
+
+    expect(controller.expenseForMonth(month), 115);
+    expect(controller.budgetExpenseForMonth(month), 80);
+    expect(controller.outsideBudgetExpenseForMonth(month), 35);
   });
 }

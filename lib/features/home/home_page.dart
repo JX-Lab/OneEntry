@@ -122,7 +122,10 @@ class _HomePageState extends State<HomePage> {
               .where(
                 (account) =>
                     account.id == entry.accountId ||
-                    account.id == entry.toAccountId,
+                    account.id == entry.toAccountId ||
+                    entry.fundings.any(
+                      (EntryFunding funding) => funding.accountId == account.id,
+                    ),
               )
               .map((account) => account.name)
               .join(' ');
@@ -143,6 +146,12 @@ class _HomePageState extends State<HomePage> {
             .fold(0.0, (sum, entry) => sum + entry.amount);
         final double expense = periodEntries
             .where((entry) => entry.type == EntryType.expense)
+            .fold(0.0, (sum, entry) => sum + entry.amount);
+        final double budgetSpent = periodEntries
+            .where(
+              (entry) =>
+                  entry.type == EntryType.expense && !entry.outsideBudget,
+            )
             .fold(0.0, (sum, entry) => sum + entry.amount);
         final bool monthlyPeriod =
             _year != null && _month != null && _day == null;
@@ -265,7 +274,7 @@ class _HomePageState extends State<HomePage> {
                                   _SummaryCard(
                                     income: income,
                                     expense: expense,
-                                    spent: expense,
+                                    spent: budgetSpent,
                                     budget: widget.controller.monthlyBudget,
                                     monthlyPeriod: monthlyPeriod,
                                     loadingBudget: _budgetLoading,
@@ -973,7 +982,11 @@ class _HomePageState extends State<HomePage> {
           if (categories.isNotEmpty && !categories.contains(entry.category)) {
             return false;
           }
-          if (accounts.isNotEmpty && !accounts.contains(entry.accountId)) {
+          if (accounts.isNotEmpty &&
+              !accounts.contains(entry.accountId) &&
+              !entry.fundings.any(
+                (EntryFunding funding) => accounts.contains(funding.accountId),
+              )) {
             return false;
           }
           if (members.isNotEmpty || includeNoMember) {
@@ -1766,10 +1779,13 @@ class _EntryTile extends StatelessWidget {
                   : entry.category,
               style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
             ),
-            subtitle: entry.note.isEmpty
+            subtitle: entry.note.isEmpty && !entry.outsideBudget
                 ? null
                 : Text(
-                    entry.note,
+                    <String>[
+                      if (entry.outsideBudget) '预算外',
+                      if (entry.note.isNotEmpty) entry.note,
+                    ].join(' · '),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),

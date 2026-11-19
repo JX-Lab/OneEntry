@@ -30,7 +30,7 @@ Future<void> showEntryDetailSheet({
       : '+';
   final String accountText = entry.type == EntryType.transfer
       ? '${account?.name ?? '未知账户'} → ${target?.name ?? '未知账户'}'
-      : account?.name ?? '未知账户';
+      : _fundingText(controller, entry, account?.name ?? '未知账户');
   final bool editable = entry.type != EntryType.adjustment;
   await showModalBottomSheet<void>(
     context: context,
@@ -58,6 +58,14 @@ Future<void> showEntryDetailSheet({
                 : null,
           ),
           _DetailRow(label: '账户', value: accountText),
+          if (entry.type == EntryType.expense)
+            _DetailRow(
+              label: '预算',
+              value: entry.outsideBudget ? '预算外花销' : '计入预算',
+              valueColor: entry.outsideBudget
+                  ? AppTheme.ledgerOf(context).expense
+                  : null,
+            ),
           _DetailRow(
             label: '成员',
             value: members.isEmpty ? '无' : members.join('、'),
@@ -142,6 +150,30 @@ LedgerAccount? _account(LedgerController controller, int? id) {
     if (account.id == id) return account;
   }
   return null;
+}
+
+String _fundingText(
+  LedgerController controller,
+  LedgerEntry entry,
+  String fallback,
+) {
+  if (entry.fundings.isEmpty) return fallback;
+  return entry.fundings
+      .map((EntryFunding funding) {
+        final String account =
+            _account(controller, funding.accountId)?.name ?? '未知账户';
+        final String owner = funding.memberId == null
+            ? '共同资金'
+            : controller.members
+                      .where(
+                        (LedgerMember member) => member.id == funding.memberId,
+                      )
+                      .map((LedgerMember member) => member.name)
+                      .firstOrNull ??
+                  '未知成员';
+        return '$account·$owner ¥${funding.amount.toStringAsFixed(2)}';
+      })
+      .join(' + ');
 }
 
 String _typeName(LedgerEntry entry) => switch (entry.type) {

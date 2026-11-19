@@ -2,12 +2,14 @@ import 'package:sqflite/sqflite.dart';
 
 import '../models/ledger_models.dart';
 import '../services/tonglv_importer.dart';
+import '../utils/member_debt_calculator.dart';
 import 'app_database.dart';
 
 class LedgerSnapshot {
   const LedgerSnapshot({
     required this.accounts,
     required this.members,
+    required this.memberDebts,
     required this.entries,
     required this.monthlyBudget,
     required this.dailyReminderEnabled,
@@ -31,6 +33,7 @@ class LedgerSnapshot {
 
   final List<LedgerAccount> accounts;
   final List<LedgerMember> members;
+  final List<MemberDebt> memberDebts;
   final List<LedgerEntry> entries;
   final double monthlyBudget;
   final bool dailyReminderEnabled;
@@ -64,6 +67,9 @@ class LedgerRepository {
     'recurring_rules',
     'transactions',
     'transaction_members',
+    'transaction_fundings',
+    'account_funds',
+    'member_debts',
     'budgets',
     'settings',
     'import_jobs',
@@ -75,6 +81,25 @@ class LedgerRepository {
       'accounts',
       orderBy: 'sort_order, id',
     )).map(_accountFromRow).toList();
+    final Map<int, LedgerAccount> accountById = <int, LedgerAccount>{
+      for (final LedgerAccount account in accounts) account.id: account,
+    };
+    for (final Map<String, Object?> row in await db.query(
+      'account_funds',
+      orderBy: 'account_id, member_id',
+    )) {
+      final int accountId = row['account_id'] as int;
+      final LedgerAccount? account = accountById[accountId];
+      if (account == null) continue;
+      account.funds = <AccountFund>[
+        ...account.funds,
+        AccountFund(
+          accountId: accountId,
+          memberId: row['member_id'] as int?,
+          balance: (row['balance_minor'] as int) / 100,
+        ),
+      ];
+    }
     final List<LedgerMember> members = (await db.query(
       'members',
       orderBy: 'sort_order, id',
@@ -91,19 +116,60 @@ class LedgerRepository {
       orderBy: 'transaction_id, member_id',
     );
     final Map<int, List<int>> transactionMembers = <int, List<int>>{};
+    final Map<int, List<MemberShare>> transactionMemberShares =
+        <int, List<MemberShare>>{};
     for (final Map<String, Object?> row in memberRows) {
+      final int transactionId = row['transaction_id'] as int;
+      final int memberId = row['member_id'] as int;
       transactionMembers
-          .putIfAbsent(row['transaction_id'] as int, () => <int>[])
-          .add(row['member_id'] as int);
+          .putIfAbsent(transactionId, () => <int>[])
+          .add(memberId);
+      transactionMemberShares
+          .putIfAbsent(transactionId, () => <MemberShare>[])
+          .add(
+            MemberShare(
+              memberId: memberId,
+              amount: ((row['share_minor'] as int?) ?? 0) / 100,
+            ),
+          );
+    }
+    final Map<int, List<EntryFunding>> transactionFundings =
+        <int, List<EntryFunding>>{};
+    for (final Map<String, Object?> row in await db.query(
+      'transaction_fundings',
+      orderBy: 'transaction_id, sort_order, id',
+    )) {
+      transactionFundings
+          .putIfAbsent(row['transaction_id'] as int, () => <EntryFunding>[])
+          .add(
+            EntryFunding(
+              accountId: row['account_id'] as int,
+              memberId: row['member_id'] as int?,
+              amount: (row['amount_minor'] as int) / 100,
+            ),
+          );
     }
     final List<LedgerEntry> entries = transactionRows
         .map(
           (Map<String, Object?> row) => _entryFromRow(
             row,
             transactionMembers[row['id'] as int] ?? const <int>[],
+            transactionMemberShares[row['id'] as int] ?? const <MemberShare>[],
+            transactionFundings[row['id'] as int] ?? const <EntryFunding>[],
           ),
         )
         .toList();
+    final List<MemberDebt> memberDebts =
+        (await db.query('member_debts', orderBy: 'id'))
+            .map(
+              (Map<String, Object?> row) => MemberDebt(
+                transactionId: row['transaction_id'] as int,
+                creditorMemberId: row['creditor_member_id'] as int,
+                debtorMemberId: row['debtor_member_id'] as int,
+                amount: (row['amount_minor'] as int) / 100,
+              ),
+            )
+            .toList();
     final DateTime now = budgetMonth ?? DateTime.now();
     final String period = '${now.year}-${now.month.toString().padLeft(2, '0')}';
     final List<Map<String, Object?>> budgetRows = await db.query(
@@ -149,6 +215,7 @@ class LedgerRepository {
     return LedgerSnapshot(
       accounts: accounts,
       members: members,
+      memberDebts: memberDebts,
       entries: entries,
       monthlyBudget: budget,
       dailyReminderEnabled: settings['daily_reminder_enabled'] == '1',
@@ -211,6 +278,8 @@ class LedgerRepository {
     final Database db = await _appDatabase.database;
     final int now = DateTime.now().millisecondsSinceEpoch;
     return db.transaction((Transaction txn) async {
+      final List<EntryFunding> fundings = await _resolveFundings(txn, draft);
+      final List<MemberShare> memberShares = _resolvedMemberShares(draft);
       final int? categoryId = draft.type == EntryType.transfer
           ? null
           : await _categoryId(txn, draft.category, now, type: draft.type);
@@ -245,6 +314,7 @@ class LedgerRepository {
             'local_date': _dateKey(draft.occurredAt),
             'timezone': draft.occurredAt.timeZoneName,
             'note': draft.note,
+            'outside_budget': draft.outsideBudget ? 1 : 0,
             'recurring_rule_id': recurringRuleId,
             'created_at': now,
             'updated_at': now,
@@ -254,8 +324,18 @@ class LedgerRepository {
         transactionId,
         draft.memberIds,
         _minor(draft.amount),
+        shares: memberShares,
       );
-      await _applyBalance(txn, draft, 1);
+      await _insertFundings(txn, transactionId, fundings);
+      await _applyBalance(txn, draft, 1, fundings: fundings);
+      await _insertDebts(
+        txn,
+        transactionId,
+        draft.type,
+        memberShares,
+        fundings,
+        _minor(draft.amount),
+      );
       return LedgerEntry(
         id: transactionId,
         type: draft.type,
@@ -266,6 +346,9 @@ class LedgerRepository {
         accountId: draft.accountId,
         toAccountId: draft.toAccountId,
         memberIds: List<int>.from(draft.memberIds),
+        memberShares: memberShares,
+        fundings: fundings,
+        outsideBudget: draft.outsideBudget,
         recurring: draft.recurring,
         recurringFrequency: draft.recurringFrequency,
       );
@@ -277,6 +360,8 @@ class LedgerRepository {
     final int now = DateTime.now().millisecondsSinceEpoch;
     await db.transaction((Transaction txn) async {
       await _applyBalance(txn, previous, -1);
+      final List<EntryFunding> fundings = await _resolveFundings(txn, next);
+      final List<MemberShare> memberShares = _resolvedMemberShares(next);
       final int? categoryId = next.type == EntryType.transfer
           ? null
           : await _categoryId(txn, next.category, now, type: next.type);
@@ -294,6 +379,7 @@ class LedgerRepository {
           'local_date': _dateKey(next.occurredAt),
           'timezone': next.occurredAt.timeZoneName,
           'note': next.note,
+          'outside_budget': next.outsideBudget ? 1 : 0,
           'updated_at': now,
         },
         where: 'id = ?',
@@ -304,13 +390,33 @@ class LedgerRepository {
         where: 'transaction_id = ?',
         whereArgs: <Object?>[previous.id],
       );
+      await txn.delete(
+        'transaction_fundings',
+        where: 'transaction_id = ?',
+        whereArgs: <Object?>[previous.id],
+      );
+      await txn.delete(
+        'member_debts',
+        where: 'transaction_id = ?',
+        whereArgs: <Object?>[previous.id],
+      );
       await _insertMembers(
         txn,
         previous.id,
         next.memberIds,
         _minor(next.amount),
+        shares: memberShares,
       );
-      await _applyBalance(txn, next, 1);
+      await _insertFundings(txn, previous.id, fundings);
+      await _applyBalance(txn, next, 1, fundings: fundings);
+      await _insertDebts(
+        txn,
+        previous.id,
+        next.type,
+        memberShares,
+        fundings,
+        _minor(next.amount),
+      );
     });
   }
 
@@ -368,26 +474,62 @@ class LedgerRepository {
           'account_id',
           'to_account_id',
         ],
-        where: 'account_id = ? OR to_account_id = ?',
-        whereArgs: <Object?>[id, id],
+        where:
+            'account_id = ? OR to_account_id = ? OR id IN (SELECT transaction_id FROM transaction_fundings WHERE account_id = ?)',
+        whereArgs: <Object?>[id, id, id],
       );
       final List<int> transactionIds = transactionRows
           .map((row) => row['id'] as int)
           .toList();
       for (final Map<String, Object?> row in transactionRows) {
-        if (row['type'] != 'transfer') continue;
-        final int amount = row['amount_minor'] as int;
         final int fromId = row['account_id'] as int;
-        final int toId = row['to_account_id'] as int;
-        if (fromId == id) {
-          await txn.rawUpdate(
-            'UPDATE accounts SET balance_minor = balance_minor - ? WHERE id = ?',
-            <Object?>[amount, toId],
-          );
-        } else {
+        final List<Map<String, Object?>> fundingRows = await txn.query(
+          'transaction_fundings',
+          columns: <String>['account_id', 'member_id', 'amount_minor'],
+          where: 'transaction_id = ?',
+          whereArgs: <Object?>[row['id']],
+        );
+        final List<Map<String, Object?>> resolvedRows = fundingRows.isEmpty
+            ? <Map<String, Object?>>[
+                <String, Object?>{
+                  'account_id': fromId,
+                  'member_id': null,
+                  'amount_minor': row['amount_minor'],
+                },
+              ]
+            : fundingRows;
+        for (final Map<String, Object?> funding in resolvedRows) {
+          final int amount = funding['amount_minor'] as int;
+          final int fundingAccountId = funding['account_id'] as int;
+          final int counterpartId;
+          final int delta;
+          if (row['type'] == 'transfer') {
+            final int toId = row['to_account_id'] as int;
+            counterpartId = fromId == id ? toId : fromId;
+            delta = fromId == id ? -amount : amount;
+          } else {
+            if (fundingAccountId == id) continue;
+            counterpartId = fundingAccountId;
+            delta = row['type'] == 'expense' ? amount : -amount;
+          }
           await txn.rawUpdate(
             'UPDATE accounts SET balance_minor = balance_minor + ? WHERE id = ?',
-            <Object?>[amount, fromId],
+            <Object?>[delta, counterpartId],
+          );
+          await txn.rawUpdate(
+            '''
+            UPDATE account_funds
+            SET balance_minor = balance_minor + ?
+            WHERE account_id = ? AND (
+              (member_id IS NULL AND ? IS NULL) OR member_id = ?
+            )
+            ''',
+            <Object?>[
+              delta,
+              counterpartId,
+              funding['member_id'],
+              funding['member_id'],
+            ],
           );
         }
       }
@@ -400,8 +542,9 @@ class LedgerRepository {
       }
       await txn.delete(
         'transactions',
-        where: 'account_id = ? OR to_account_id = ?',
-        whereArgs: <Object?>[id, id],
+        where:
+            'account_id = ? OR to_account_id = ? OR id IN (SELECT transaction_id FROM transaction_fundings WHERE account_id = ?)',
+        whereArgs: <Object?>[id, id, id],
       );
       await txn.update(
         'recurring_rules',
@@ -446,6 +589,45 @@ class LedgerRepository {
   Future<void> deleteMember(int id) async {
     final Database db = await _appDatabase.database;
     await db.transaction((Transaction txn) async {
+      final int now = DateTime.now().millisecondsSinceEpoch;
+      final List<Map<String, Object?>> funds = await txn.query(
+        'account_funds',
+        columns: <String>['account_id', 'balance_minor'],
+        where: 'member_id = ?',
+        whereArgs: <Object?>[id],
+      );
+      for (final Map<String, Object?> fund in funds) {
+        final int accountId = fund['account_id'] as int;
+        final int amount = fund['balance_minor'] as int;
+        final int updated = await txn.rawUpdate(
+          '''
+          UPDATE account_funds
+          SET balance_minor = balance_minor + ?, updated_at = ?
+          WHERE account_id = ? AND member_id IS NULL
+          ''',
+          <Object?>[amount, now, accountId],
+        );
+        if (updated == 0) {
+          await txn.insert('account_funds', <String, Object?>{
+            'account_id': accountId,
+            'member_id': null,
+            'balance_minor': amount,
+            'created_at': now,
+            'updated_at': now,
+          });
+        }
+      }
+      await txn.update(
+        'transaction_fundings',
+        <String, Object?>{'member_id': null},
+        where: 'member_id = ?',
+        whereArgs: <Object?>[id],
+      );
+      await txn.delete(
+        'member_debts',
+        where: 'creditor_member_id = ? OR debtor_member_id = ?',
+        whereArgs: <Object?>[id, id],
+      );
       await txn.delete(
         'transaction_members',
         where: 'member_id = ?',
@@ -510,6 +692,8 @@ class LedgerRepository {
     required String name,
     required double openingBalance,
     String icon = 'wallet',
+    AccountKind kind = AccountKind.asset,
+    double creditLimit = 0,
   }) async {
     final Database db = await _appDatabase.database;
     final int now = DateTime.now().millisecondsSinceEpoch;
@@ -520,16 +704,28 @@ class LedgerRepository {
           ),
         ) ??
         0;
-    await db.insert('accounts', <String, Object?>{
-      'uuid': _uuid('account', now),
-      'name': name,
-      'type': 'wallet',
-      'icon': icon,
-      'opening_balance_minor': _minor(openingBalance),
-      'balance_minor': _minor(openingBalance),
-      'sort_order': order,
-      'created_at': now,
-      'updated_at': now,
+    _validateAccountBalance(kind, openingBalance, creditLimit);
+    await db.transaction((Transaction txn) async {
+      final int accountId = await txn.insert('accounts', <String, Object?>{
+        'uuid': _uuid('account', now),
+        'name': name,
+        'type': 'wallet',
+        'icon': icon,
+        'kind': kind.name,
+        'credit_limit_minor': _minor(creditLimit),
+        'opening_balance_minor': _minor(openingBalance),
+        'balance_minor': _minor(openingBalance),
+        'sort_order': order,
+        'created_at': now,
+        'updated_at': now,
+      });
+      await txn.insert('account_funds', <String, Object?>{
+        'account_id': accountId,
+        'member_id': null,
+        'balance_minor': _minor(openingBalance),
+        'created_at': now,
+        'updated_at': now,
+      });
     });
   }
 
@@ -538,9 +734,12 @@ class LedgerRepository {
     required String name,
     required String icon,
     required double balance,
+    required AccountKind kind,
+    required double creditLimit,
   }) async {
     final Database db = await _appDatabase.database;
     final int now = DateTime.now().millisecondsSinceEpoch;
+    _validateAccountBalance(kind, balance, creditLimit);
     await db.transaction((Transaction txn) async {
       final List<Map<String, Object?>> rows = await txn.query(
         'accounts',
@@ -557,6 +756,8 @@ class LedgerRepository {
         <String, Object?>{
           'name': name,
           'icon': icon,
+          'kind': kind.name,
+          'credit_limit_minor': _minor(creditLimit),
           'balance_minor': nextMinor,
           'updated_at': now,
         },
@@ -565,6 +766,36 @@ class LedgerRepository {
       );
       final int delta = nextMinor - oldMinor;
       if (delta != 0) {
+        final List<Map<String, Object?>> sharedRows = await txn.query(
+          'account_funds',
+          columns: <String>['id', 'balance_minor'],
+          where: 'account_id = ? AND member_id IS NULL',
+          whereArgs: <Object?>[id],
+          limit: 1,
+        );
+        final int sharedBalance = sharedRows.isEmpty
+            ? 0
+            : sharedRows.first['balance_minor'] as int;
+        final int nextShared = sharedBalance + delta;
+        if (kind == AccountKind.asset && nextShared < 0) {
+          throw StateError('共同资金不足，请先调整资金归属');
+        }
+        if (sharedRows.isEmpty) {
+          await txn.insert('account_funds', <String, Object?>{
+            'account_id': id,
+            'member_id': null,
+            'balance_minor': nextShared,
+            'created_at': now,
+            'updated_at': now,
+          });
+        } else {
+          await txn.update(
+            'account_funds',
+            <String, Object?>{'balance_minor': nextShared, 'updated_at': now},
+            where: 'id = ?',
+            whereArgs: <Object?>[sharedRows.first['id']],
+          );
+        }
         await txn.insert('transactions', <String, Object?>{
           'uuid': _uuid('adjustment', now),
           'type': EntryType.adjustment.name,
@@ -576,6 +807,69 @@ class LedgerRepository {
           'timezone': DateTime.now().timeZoneName,
           'note':
               '$name账户余额由 ¥${(oldMinor / 100).toStringAsFixed(2)} 变更为 ¥${balance.toStringAsFixed(2)}',
+          'created_at': now,
+          'updated_at': now,
+        });
+      }
+    });
+  }
+
+  void _validateAccountBalance(
+    AccountKind kind,
+    double balance,
+    double creditLimit,
+  ) {
+    if (creditLimit < 0) throw StateError('信用额度不能为负数');
+    if (kind == AccountKind.asset && balance < 0) {
+      throw StateError('资产账户余额不能小于 0');
+    }
+    if (kind == AccountKind.credit && balance < -creditLimit) {
+      throw StateError('信用账户余额不能低于信用额度');
+    }
+    if (kind == AccountKind.loan && balance > 0) {
+      throw StateError('贷款账户请用负数表示尚未偿还的金额');
+    }
+  }
+
+  Future<void> setAccountFunds(
+    int accountId,
+    Map<int?, double> balances,
+  ) async {
+    final Database db = await _appDatabase.database;
+    await db.transaction((Transaction txn) async {
+      final List<Map<String, Object?>> accountRows = await txn.query(
+        'accounts',
+        columns: <String>['balance_minor', 'kind'],
+        where: 'id = ?',
+        whereArgs: <Object?>[accountId],
+        limit: 1,
+      );
+      if (accountRows.isEmpty) throw StateError('账户不存在');
+      final int expected = accountRows.first['balance_minor'] as int;
+      final int actual = balances.values.fold<int>(
+        0,
+        (int sum, double amount) => sum + _minor(amount),
+      );
+      if (actual != expected) throw StateError('资金归属合计必须等于账户余额');
+      final AccountKind kind = AccountKind.values.byName(
+        accountRows.first['kind'] as String? ?? 'asset',
+      );
+      if (kind == AccountKind.asset &&
+          balances.values.any((value) => value < 0)) {
+        throw StateError('资产账户的成员资金不能为负数');
+      }
+      final int now = DateTime.now().millisecondsSinceEpoch;
+      await txn.delete(
+        'account_funds',
+        where: 'account_id = ?',
+        whereArgs: <Object?>[accountId],
+      );
+      for (final MapEntry<int?, double> item in balances.entries) {
+        if (_minor(item.value) == 0 && item.key != null) continue;
+        await txn.insert('account_funds', <String, Object?>{
+          'account_id': accountId,
+          'member_id': item.key,
+          'balance_minor': _minor(item.value),
           'created_at': now,
           'updated_at': now,
         });
@@ -790,6 +1084,7 @@ class LedgerRepository {
             )
           : null;
       for (final LedgerEntry entry in entries) {
+        List<EntryFunding> effectiveFundings = entry.fundings;
         final Map<String, Object?> values = <String, Object?>{
           'updated_at': now,
         };
@@ -815,11 +1110,37 @@ class LedgerRepository {
             accountId: accountId,
             toAccountId: entry.toAccountId,
             memberIds: entry.memberIds,
+            memberShares: entry.memberShares,
+            outsideBudget: entry.outsideBudget,
             recurring: entry.recurring,
             recurringFrequency: entry.recurringFrequency,
             adjustmentDelta: entry.adjustmentDelta,
           );
-          await _applyBalance(txn, moved, 1);
+          final List<EntryFunding> movedFundings = await _resolveFundings(
+            txn,
+            moved,
+          );
+          effectiveFundings = movedFundings;
+          await txn.delete(
+            'transaction_fundings',
+            where: 'transaction_id = ?',
+            whereArgs: <Object?>[entry.id],
+          );
+          await txn.delete(
+            'member_debts',
+            where: 'transaction_id = ?',
+            whereArgs: <Object?>[entry.id],
+          );
+          await _insertFundings(txn, entry.id, movedFundings);
+          await _applyBalance(txn, moved, 1, fundings: movedFundings);
+          await _insertDebts(
+            txn,
+            entry.id,
+            moved.type,
+            _resolvedMemberShares(moved),
+            movedFundings,
+            _minor(moved.amount),
+          );
         }
         if (changeNote) values['note'] = note;
         if (values.length > 1) {
@@ -837,6 +1158,34 @@ class LedgerRepository {
             whereArgs: <Object?>[entry.id],
           );
           await _insertMembers(txn, entry.id, memberIds, _minor(entry.amount));
+          await txn.delete(
+            'member_debts',
+            where: 'transaction_id = ?',
+            whereArgs: <Object?>[entry.id],
+          );
+          final LedgerEntry reassigned = LedgerEntry(
+            id: entry.id,
+            type: entry.type,
+            amount: entry.amount,
+            category: entry.category,
+            occurredAt: entry.occurredAt,
+            note: entry.note,
+            accountId: changeAccount && accountId != null
+                ? accountId
+                : entry.accountId,
+            toAccountId: entry.toAccountId,
+            memberIds: memberIds,
+            fundings: effectiveFundings,
+            outsideBudget: entry.outsideBudget,
+          );
+          await _insertDebts(
+            txn,
+            entry.id,
+            entry.type,
+            _resolvedMemberShares(reassigned),
+            effectiveFundings,
+            _minor(entry.amount),
+          );
         }
       }
     });
@@ -947,19 +1296,22 @@ class LedgerRepository {
     final int now = DateTime.now().millisecondsSinceEpoch;
     await db.transaction((Transaction txn) async {
       for (final String table in <String>[
+        'member_debts',
+        'transaction_fundings',
         'transaction_members',
         'transactions',
         'budgets',
         'recurring_rules',
         'import_jobs',
         'categories',
+        'account_funds',
         'members',
         'accounts',
         'settings',
       ]) {
         await txn.delete(table);
       }
-      await txn.insert('accounts', <String, Object?>{
+      final int accountId = await txn.insert('accounts', <String, Object?>{
         'uuid': _uuid('account', now),
         'name': '现金',
         'type': 'cash',
@@ -967,6 +1319,13 @@ class LedgerRepository {
         'opening_balance_minor': 0,
         'balance_minor': 0,
         'sort_order': 0,
+        'created_at': now,
+        'updated_at': now,
+      });
+      await txn.insert('account_funds', <String, Object?>{
+        'account_id': accountId,
+        'member_id': null,
+        'balance_minor': 0,
         'created_at': now,
         'updated_at': now,
       });
@@ -1096,7 +1455,37 @@ class LedgerRepository {
           await txn.insert(table, Map<String, Object?>.from(value as Map));
         }
       }
+      if (sourceVersion < 6) await _backfillV6Tables(txn);
     });
+  }
+
+  Future<void> _backfillV6Tables(DatabaseExecutor db) async {
+    final int now = DateTime.now().millisecondsSinceEpoch;
+    await db.execute(
+      '''
+      INSERT INTO account_funds (
+        account_id, member_id, balance_minor, created_at, updated_at
+      )
+      SELECT id, NULL, balance_minor, ?, ? FROM accounts
+      WHERE NOT EXISTS (
+        SELECT 1 FROM account_funds f WHERE f.account_id = accounts.id
+      )
+    ''',
+      <Object?>[now, now],
+    );
+    await db.execute('''
+      INSERT INTO transaction_fundings (
+        transaction_id, account_id, member_id, amount_minor, sort_order
+      )
+      SELECT id, account_id, NULL, amount_minor, 0
+      FROM transactions
+      WHERE type IN ('expense', 'income')
+        AND account_id IS NOT NULL
+        AND NOT EXISTS (
+          SELECT 1 FROM transaction_fundings f
+          WHERE f.transaction_id = transactions.id
+        )
+    ''');
   }
 
   Future<({int imported, int skipped, int members, int accounts})> importTonglv(
@@ -1167,6 +1556,13 @@ class LedgerRepository {
             'opening_balance_minor': 0,
             'balance_minor': 0,
             'sort_order': accountIds.length,
+            'created_at': now,
+            'updated_at': now,
+          });
+          await txn.insert('account_funds', <String, Object?>{
+            'account_id': localId,
+            'member_id': null,
+            'balance_minor': 0,
             'created_at': now,
             'updated_at': now,
           });
@@ -1264,9 +1660,24 @@ class LedgerRepository {
             .whereType<int>()
             .toList();
         await _insertMembers(txn, transactionId, linkedMembers, amountMinor);
+        await txn.insert('transaction_fundings', <String, Object?>{
+          'transaction_id': transactionId,
+          'account_id': accountId,
+          'member_id': null,
+          'amount_minor': amountMinor,
+          'sort_order': 0,
+        });
         final int delta = type == 'expense' ? -amountMinor : amountMinor;
         await txn.rawUpdate(
           'UPDATE accounts SET balance_minor = balance_minor + ?, updated_at = ? WHERE id = ?',
+          <Object?>[delta, now, accountId],
+        );
+        await txn.rawUpdate(
+          '''
+          UPDATE account_funds
+          SET balance_minor = balance_minor + ?, updated_at = ?
+          WHERE account_id = ? AND member_id IS NULL
+          ''',
           <Object?>[delta, now, accountId],
         );
         imported++;
@@ -1296,6 +1707,8 @@ class LedgerRepository {
     name: row['name'] as String,
     balance: (row['balance_minor'] as int) / 100,
     icon: row['icon'] as String? ?? 'wallet',
+    kind: AccountKind.values.byName(row['kind'] as String? ?? 'asset'),
+    creditLimit: ((row['credit_limit_minor'] as int?) ?? 0) / 100,
     archived: row['archived_at'] != null,
   );
 
@@ -1346,7 +1759,12 @@ class LedgerRepository {
     enabled: (row['enabled'] as int) == 1,
   );
 
-  LedgerEntry _entryFromRow(Map<String, Object?> row, List<int> memberIds) {
+  LedgerEntry _entryFromRow(
+    Map<String, Object?> row,
+    List<int> memberIds,
+    List<MemberShare> memberShares,
+    List<EntryFunding> fundings,
+  ) {
     final EntryType type = EntryType.values.byName(row['type'] as String);
     return LedgerEntry(
       id: row['id'] as int,
@@ -1362,6 +1780,9 @@ class LedgerRepository {
       accountId: row['account_id'] as int,
       toAccountId: row['to_account_id'] as int?,
       memberIds: memberIds,
+      memberShares: memberShares,
+      fundings: fundings,
+      outsideBudget: ((row['outside_budget'] as int?) ?? 0) == 1,
       recurring: row['recurring_rule_id'] != null,
       recurringFrequency: (row['recurring_frequency'] as String?) ?? 'month',
       adjustmentDelta: ((row['adjustment_delta_minor'] as int?) ?? 0) / 100,
@@ -1402,19 +1823,221 @@ class LedgerRepository {
     DatabaseExecutor db,
     int transactionId,
     List<int> memberIds,
-    int amountMinor,
-  ) async {
-    if (memberIds.isEmpty) return;
-    final int base = amountMinor ~/ memberIds.length;
-    int remainder = amountMinor % memberIds.length;
-    for (final int memberId in memberIds) {
-      final int share = base + (remainder > 0 ? 1 : 0);
-      if (remainder > 0) remainder--;
+    int amountMinor, {
+    List<MemberShare> shares = const <MemberShare>[],
+  }) async {
+    final List<MemberShare> resolved = shares.isNotEmpty
+        ? shares
+        : _equalMemberShares(memberIds, amountMinor);
+    if (resolved.isEmpty) return;
+    for (final MemberShare item in resolved) {
+      final int share = _minor(item.amount);
       await db.insert('transaction_members', <String, Object?>{
         'transaction_id': transactionId,
-        'member_id': memberId,
+        'member_id': item.memberId,
         'share_minor': share,
-        'share_ratio': 1 / memberIds.length,
+        'share_ratio': amountMinor == 0 ? 0 : share / amountMinor,
+      });
+    }
+  }
+
+  List<MemberShare> _equalMemberShares(List<int> memberIds, int amountMinor) {
+    final List<int> ids = memberIds.toSet().toList();
+    if (ids.isEmpty) return const <MemberShare>[];
+    final int base = amountMinor ~/ ids.length;
+    int remainder = amountMinor % ids.length;
+    return ids.map((int memberId) {
+      final int share = base + (remainder > 0 ? 1 : 0);
+      if (remainder > 0) remainder--;
+      return MemberShare(memberId: memberId, amount: share / 100);
+    }).toList();
+  }
+
+  List<MemberShare> _resolvedMemberShares(LedgerEntry entry) {
+    final int amountMinor = _minor(entry.amount);
+    if (entry.memberShares.isNotEmpty) {
+      final int total = entry.memberShares.fold<int>(
+        0,
+        (int sum, MemberShare share) => sum + _minor(share.amount),
+      );
+      if (total == amountMinor) return entry.memberShares;
+      if (total != 0) {
+        throw StateError('成员承担金额合计必须等于账目金额');
+      }
+    }
+    return _equalMemberShares(entry.memberIds, amountMinor);
+  }
+
+  Future<List<EntryFunding>> _resolveFundings(
+    DatabaseExecutor db,
+    LedgerEntry entry,
+  ) async {
+    if (entry.type == EntryType.adjustment) return const <EntryFunding>[];
+    final int amountMinor = _minor(entry.amount);
+    if (entry.fundings.isNotEmpty) {
+      final int total = entry.fundings.fold<int>(
+        0,
+        (int sum, EntryFunding funding) => sum + _minor(funding.amount),
+      );
+      if (total != amountMinor) {
+        throw StateError('支付明细合计必须等于账目金额');
+      }
+      for (final EntryFunding funding in entry.fundings) {
+        if (funding.amount <= 0) throw StateError('支付金额必须大于 0');
+        await _validateFundingAccount(db, entry.type, funding.accountId);
+      }
+      return entry.fundings;
+    }
+
+    await _validateFundingAccount(db, entry.type, entry.accountId);
+    if (entry.type == EntryType.income) {
+      return <EntryFunding>[
+        EntryFunding(accountId: entry.accountId, amount: entry.amount),
+      ];
+    }
+
+    final List<Map<String, Object?>> accountRows = await db.query(
+      'accounts',
+      columns: <String>['kind', 'balance_minor', 'credit_limit_minor'],
+      where: 'id = ?',
+      whereArgs: <Object?>[entry.accountId],
+      limit: 1,
+    );
+    if (accountRows.isEmpty) throw StateError('账户不存在');
+    final Map<String, Object?> account = accountRows.first;
+    final AccountKind kind = AccountKind.values.byName(
+      account['kind'] as String? ?? 'asset',
+    );
+    final List<Map<String, Object?>> rows = await db.rawQuery(
+      '''
+      SELECT member_id, balance_minor
+      FROM account_funds
+      WHERE account_id = ?
+      ORDER BY CASE WHEN member_id IS NULL THEN 0 ELSE 1 END, id
+      ''',
+      <Object?>[entry.accountId],
+    );
+    final Set<int> selectedMembers = entry.memberIds.toSet();
+    rows.sort((Map<String, Object?> a, Map<String, Object?> b) {
+      final int? aId = a['member_id'] as int?;
+      final int? bId = b['member_id'] as int?;
+      int rank(int? id) => id == null
+          ? 0
+          : selectedMembers.contains(id)
+          ? 1
+          : 2;
+      return rank(aId).compareTo(rank(bId));
+    });
+    int remaining = amountMinor;
+    final List<EntryFunding> result = <EntryFunding>[];
+    for (final Map<String, Object?> row in rows) {
+      final int? memberId = row['member_id'] as int?;
+      if (memberId != null && !selectedMembers.contains(memberId)) continue;
+      final int available = (row['balance_minor'] as int).clamp(0, remaining);
+      if (available <= 0) continue;
+      result.add(
+        EntryFunding(
+          accountId: entry.accountId,
+          memberId: memberId,
+          amount: available / 100,
+        ),
+      );
+      remaining -= available;
+      if (remaining == 0) break;
+    }
+    if (remaining > 0 && kind == AccountKind.credit) {
+      final int alreadyAllocated = amountMinor - remaining;
+      final int availableCredit =
+          ((account['balance_minor'] as int) +
+                  (account['credit_limit_minor'] as int) -
+                  alreadyAllocated)
+              .clamp(0, remaining);
+      if (availableCredit > 0) {
+        final int sharedIndex = result.indexWhere(
+          (EntryFunding funding) => funding.memberId == null,
+        );
+        if (sharedIndex >= 0) {
+          final EntryFunding shared = result[sharedIndex];
+          result[sharedIndex] = EntryFunding(
+            accountId: shared.accountId,
+            amount: shared.amount + availableCredit / 100,
+          );
+        } else {
+          result.add(
+            EntryFunding(
+              accountId: entry.accountId,
+              amount: availableCredit / 100,
+            ),
+          );
+        }
+        remaining -= availableCredit;
+      }
+    }
+    if (remaining > 0) {
+      throw StateError('账户中的可用资金不足，请使用组合付款或明确借用其他成员资金');
+    }
+    return result;
+  }
+
+  Future<void> _validateFundingAccount(
+    DatabaseExecutor db,
+    EntryType type,
+    int accountId,
+  ) async {
+    final List<Map<String, Object?>> rows = await db.query(
+      'accounts',
+      columns: <String>['kind', 'archived_at'],
+      where: 'id = ?',
+      whereArgs: <Object?>[accountId],
+      limit: 1,
+    );
+    if (rows.isEmpty) throw StateError('账户不存在');
+    if (rows.first['archived_at'] != null) throw StateError('归档账户不能用于新账目');
+    final AccountKind kind = AccountKind.values.byName(
+      rows.first['kind'] as String? ?? 'asset',
+    );
+    if ((type == EntryType.expense || type == EntryType.transfer) &&
+        kind == AccountKind.loan) {
+      throw StateError('贷款账户不能直接用于支付');
+    }
+  }
+
+  Future<void> _insertFundings(
+    DatabaseExecutor db,
+    int transactionId,
+    List<EntryFunding> fundings,
+  ) async {
+    for (int index = 0; index < fundings.length; index++) {
+      final EntryFunding funding = fundings[index];
+      await db.insert('transaction_fundings', <String, Object?>{
+        'transaction_id': transactionId,
+        'account_id': funding.accountId,
+        'member_id': funding.memberId,
+        'amount_minor': _minor(funding.amount),
+        'sort_order': index,
+      });
+    }
+  }
+
+  Future<void> _insertDebts(
+    DatabaseExecutor db,
+    int transactionId,
+    EntryType type,
+    List<MemberShare> memberShares,
+    List<EntryFunding> fundings,
+    int amountMinor,
+  ) async {
+    if (type != EntryType.expense || amountMinor <= 0) return;
+    for (final MemberDebt debt in calculateMemberDebts(
+      amount: amountMinor / 100,
+      memberShares: memberShares,
+      fundings: fundings,
+    )) {
+      await db.insert('member_debts', <String, Object?>{
+        'transaction_id': transactionId,
+        'creditor_member_id': debt.creditorMemberId,
+        'debtor_member_id': debt.debtorMemberId,
+        'amount_minor': _minor(debt.amount),
       });
     }
   }
@@ -1422,38 +2045,119 @@ class LedgerRepository {
   Future<void> _applyBalance(
     DatabaseExecutor db,
     LedgerEntry entry,
-    int direction,
-  ) async {
-    final int amount = _minor(entry.amount) * direction;
+    int direction, {
+    List<EntryFunding>? fundings,
+  }) async {
     if (entry.type == EntryType.adjustment) return;
+    final List<EntryFunding> resolved =
+        fundings ??
+        (entry.fundings.isNotEmpty
+            ? entry.fundings
+            : await _resolveFundings(db, entry));
     if (entry.type == EntryType.transfer) {
-      await db.rawUpdate(
-        'UPDATE accounts SET balance_minor = balance_minor - ?, updated_at = ? WHERE id = ?',
-        <Object?>[
+      if (entry.toAccountId == null) throw StateError('请选择转入账户');
+      for (final EntryFunding funding in resolved) {
+        final int amount = _minor(funding.amount) * direction;
+        await _changeAccountFund(
+          db,
+          funding.accountId,
+          funding.memberId,
+          -amount,
+        );
+        await _changeAccountFund(
+          db,
+          entry.toAccountId!,
+          funding.memberId,
           amount,
-          DateTime.now().millisecondsSinceEpoch,
-          entry.accountId,
-        ],
-      );
-      await db.rawUpdate(
-        'UPDATE accounts SET balance_minor = balance_minor + ?, updated_at = ? WHERE id = ?',
-        <Object?>[
-          amount,
-          DateTime.now().millisecondsSinceEpoch,
-          entry.toAccountId,
-        ],
-      );
+        );
+      }
     } else {
-      final int delta = entry.type == EntryType.expense ? -amount : amount;
-      await db.rawUpdate(
-        'UPDATE accounts SET balance_minor = balance_minor + ?, updated_at = ? WHERE id = ?',
-        <Object?>[
+      for (final EntryFunding funding in resolved) {
+        final int amount = _minor(funding.amount) * direction;
+        final int delta = entry.type == EntryType.expense ? -amount : amount;
+        await _changeAccountFund(
+          db,
+          funding.accountId,
+          funding.memberId,
           delta,
-          DateTime.now().millisecondsSinceEpoch,
-          entry.accountId,
-        ],
+        );
+      }
+    }
+  }
+
+  Future<void> _changeAccountFund(
+    DatabaseExecutor db,
+    int accountId,
+    int? memberId,
+    int deltaMinor,
+  ) async {
+    final List<Map<String, Object?>> accountRows = await db.query(
+      'accounts',
+      columns: <String>['balance_minor', 'kind', 'credit_limit_minor'],
+      where: 'id = ?',
+      whereArgs: <Object?>[accountId],
+      limit: 1,
+    );
+    if (accountRows.isEmpty) throw StateError('账户不存在');
+    final Map<String, Object?> account = accountRows.first;
+    final AccountKind kind = AccountKind.values.byName(
+      account['kind'] as String? ?? 'asset',
+    );
+    final int nextBalance = (account['balance_minor'] as int) + deltaMinor;
+    if (kind == AccountKind.asset && nextBalance < 0) {
+      throw StateError('资产账户余额不足');
+    }
+    if (kind == AccountKind.credit &&
+        nextBalance < -(account['credit_limit_minor'] as int)) {
+      throw StateError('已超过信用账户额度');
+    }
+
+    final String where = memberId == null
+        ? 'account_id = ? AND member_id IS NULL'
+        : 'account_id = ? AND member_id = ?';
+    final List<Object?> whereArgs = memberId == null
+        ? <Object?>[accountId]
+        : <Object?>[accountId, memberId];
+    final List<Map<String, Object?>> fundRows = await db.query(
+      'account_funds',
+      columns: <String>['id', 'balance_minor'],
+      where: where,
+      whereArgs: whereArgs,
+      limit: 1,
+    );
+    final int oldFundBalance = fundRows.isEmpty
+        ? 0
+        : fundRows.first['balance_minor'] as int;
+    final int nextFundBalance = oldFundBalance + deltaMinor;
+    if (kind == AccountKind.asset && nextFundBalance < 0) {
+      throw StateError('所选成员在该账户中的资金不足');
+    }
+    if (kind == AccountKind.credit && memberId != null && nextFundBalance < 0) {
+      throw StateError('成员个人资金不能透支');
+    }
+    final int now = DateTime.now().millisecondsSinceEpoch;
+    if (fundRows.isEmpty) {
+      await db.insert('account_funds', <String, Object?>{
+        'account_id': accountId,
+        'member_id': memberId,
+        'balance_minor': nextFundBalance,
+        'created_at': now,
+        'updated_at': now,
+      });
+    } else {
+      await db.update(
+        'account_funds',
+        <String, Object?>{'balance_minor': nextFundBalance, 'updated_at': now},
+        where: 'id = ?',
+        whereArgs: <Object?>[fundRows.first['id']],
       );
     }
+    await db.update(
+      'accounts',
+      <String, Object?>{'balance_minor': nextBalance, 'updated_at': now},
+      where: 'id = ?',
+      whereArgs: <Object?>[accountId],
+    );
   }
 
   int _minor(double amount) => (amount * 100).round();

@@ -2,7 +2,7 @@ import 'package:path/path.dart' as p;
 import 'package:sqflite/sqflite.dart';
 
 class AppDatabase {
-  static const int schemaVersion = 5;
+  static const int schemaVersion = 6;
   static const String fileName = 'oneentry.db';
 
   Database? _database;
@@ -23,6 +23,7 @@ class AppDatabase {
         if (version >= 3) await _migrate2To3(db);
         if (version >= 4) await _migrate3To4(db);
         if (version >= 5) await _migrate4To5(db);
+        if (version >= 6) await _migrate5To6(db);
         await _seed(db);
       },
       onUpgrade: (Database db, int oldVersion, int newVersion) async {
@@ -43,6 +44,10 @@ class AppDatabase {
           if (version < 5 && newVersion >= 5) {
             await _migrate4To5(txn);
             version = 5;
+          }
+          if (version < 6 && newVersion >= 6) {
+            await _migrate5To6(txn);
+            version = 6;
           }
           if (version != newVersion) {
             throw StateError(
@@ -408,6 +413,83 @@ class AppDatabase {
     );
   }
 
+  Future<void> _migrate5To6(DatabaseExecutor db) async {
+    await db.execute(
+      "ALTER TABLE accounts ADD COLUMN kind TEXT NOT NULL DEFAULT 'asset'",
+    );
+    await db.execute(
+      'ALTER TABLE accounts ADD COLUMN credit_limit_minor INTEGER NOT NULL DEFAULT 0',
+    );
+    await db.execute(
+      'ALTER TABLE transactions ADD COLUMN outside_budget INTEGER NOT NULL DEFAULT 0',
+    );
+    await db.execute('''
+      CREATE TABLE account_funds (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+        member_id INTEGER REFERENCES members(id) ON DELETE CASCADE,
+        balance_minor INTEGER NOT NULL DEFAULT 0,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      )
+    ''');
+    await db.execute('''
+      CREATE UNIQUE INDEX idx_account_funds_shared
+      ON account_funds(account_id)
+      WHERE member_id IS NULL
+    ''');
+    await db.execute('''
+      CREATE UNIQUE INDEX idx_account_funds_member
+      ON account_funds(account_id, member_id)
+      WHERE member_id IS NOT NULL
+    ''');
+    await db.execute('''
+      CREATE TABLE transaction_fundings (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        transaction_id INTEGER NOT NULL REFERENCES transactions(id) ON DELETE CASCADE,
+        account_id INTEGER NOT NULL REFERENCES accounts(id),
+        member_id INTEGER REFERENCES members(id),
+        amount_minor INTEGER NOT NULL CHECK(amount_minor > 0),
+        sort_order INTEGER NOT NULL DEFAULT 0
+      )
+    ''');
+    await db.execute('''
+      CREATE TABLE member_debts (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        transaction_id INTEGER NOT NULL REFERENCES transactions(id) ON DELETE CASCADE,
+        creditor_member_id INTEGER NOT NULL REFERENCES members(id),
+        debtor_member_id INTEGER NOT NULL REFERENCES members(id),
+        amount_minor INTEGER NOT NULL CHECK(amount_minor > 0),
+        CHECK(creditor_member_id != debtor_member_id)
+      )
+    ''');
+    await db.execute(
+      'CREATE INDEX idx_transaction_fundings_transaction ON transaction_fundings(transaction_id, sort_order)',
+    );
+    await db.execute(
+      'CREATE INDEX idx_member_debts_members ON member_debts(creditor_member_id, debtor_member_id)',
+    );
+
+    final int now = DateTime.now().millisecondsSinceEpoch;
+    await db.execute(
+      '''
+      INSERT INTO account_funds (
+        account_id, member_id, balance_minor, created_at, updated_at
+      )
+      SELECT id, NULL, balance_minor, ?, ? FROM accounts
+    ''',
+      <Object?>[now, now],
+    );
+    await db.execute('''
+      INSERT INTO transaction_fundings (
+        transaction_id, account_id, member_id, amount_minor, sort_order
+      )
+      SELECT id, account_id, NULL, amount_minor, 0
+      FROM transactions
+      WHERE type IN ('expense', 'income') AND account_id IS NOT NULL
+    ''');
+  }
+
   Future<void> _mergeCategory(
     DatabaseExecutor db, {
     required String from,
@@ -536,6 +618,8 @@ class AppDatabase {
         'icon': seed.$2,
         'opening_balance_minor': seed.$3,
         'balance_minor': seed.$3,
+        'kind': seed.$2 == 'card' ? 'credit' : 'asset',
+        'credit_limit_minor': seed.$2 == 'card' ? 2000000 : 0,
         'sort_order': index,
         'created_at': now,
         'updated_at': now,
@@ -601,6 +685,18 @@ class AppDatabase {
       'updated_at': now,
     });
     await batch.commit(noResult: true);
+    for (final Map<String, Object?> account in await db.query(
+      'accounts',
+      columns: <String>['id', 'balance_minor'],
+    )) {
+      await db.insert('account_funds', <String, Object?>{
+        'account_id': account['id'],
+        'member_id': null,
+        'balance_minor': account['balance_minor'],
+        'created_at': now,
+        'updated_at': now,
+      }, conflictAlgorithm: ConflictAlgorithm.ignore);
+    }
     await _seedPreviewEntries(db, current, now);
   }
 
@@ -649,6 +745,13 @@ class AppDatabase {
         'note': seed.$5,
         'created_at': now,
         'updated_at': now,
+      });
+      await db.insert('transaction_fundings', <String, Object?>{
+        'transaction_id': transactionId,
+        'account_id': seed.$4,
+        'member_id': null,
+        'amount_minor': seed.$2,
+        'sort_order': 0,
       });
       for (final int memberId in seed.$6) {
         await db.insert('transaction_members', <String, Object?>{

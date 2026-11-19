@@ -1,11 +1,63 @@
 enum EntryType { expense, income, transfer, adjustment }
 
+enum AccountKind { asset, credit, loan }
+
+class AccountFund {
+  const AccountFund({
+    required this.accountId,
+    required this.balance,
+    this.memberId,
+  });
+
+  final int accountId;
+  final int? memberId;
+  final double balance;
+
+  bool get shared => memberId == null;
+}
+
+class EntryFunding {
+  const EntryFunding({
+    required this.accountId,
+    required this.amount,
+    this.memberId,
+  });
+
+  final int accountId;
+  final int? memberId;
+  final double amount;
+}
+
+class MemberShare {
+  const MemberShare({required this.memberId, required this.amount});
+
+  final int memberId;
+  final double amount;
+}
+
+class MemberDebt {
+  const MemberDebt({
+    required this.creditorMemberId,
+    required this.debtorMemberId,
+    required this.amount,
+    this.transactionId,
+  });
+
+  final int creditorMemberId;
+  final int debtorMemberId;
+  final double amount;
+  final int? transactionId;
+}
+
 class LedgerAccount {
   LedgerAccount({
     required this.id,
     required this.name,
     required this.balance,
     this.icon = 'wallet',
+    this.kind = AccountKind.asset,
+    this.creditLimit = 0,
+    this.funds = const <AccountFund>[],
     this.archived = false,
   });
 
@@ -13,7 +65,16 @@ class LedgerAccount {
   final String name;
   double balance;
   String icon;
+  AccountKind kind;
+  double creditLimit;
+  List<AccountFund> funds;
   bool archived;
+
+  double get availableToSpend => switch (kind) {
+    AccountKind.asset => balance,
+    AccountKind.credit => balance + creditLimit,
+    AccountKind.loan => 0,
+  };
 }
 
 class LedgerMember {
@@ -41,6 +102,9 @@ class LedgerEntry {
     required this.accountId,
     this.toAccountId,
     this.memberIds = const <int>[],
+    this.memberShares = const <MemberShare>[],
+    this.fundings = const <EntryFunding>[],
+    this.outsideBudget = false,
     this.recurring = false,
     this.recurringFrequency = 'month',
     this.adjustmentDelta = 0,
@@ -55,9 +119,16 @@ class LedgerEntry {
   final int accountId;
   final int? toAccountId;
   final List<int> memberIds;
+  final List<MemberShare> memberShares;
+  final List<EntryFunding> fundings;
+  final bool outsideBudget;
   final bool recurring;
   final String recurringFrequency;
   final double adjustmentDelta;
+
+  List<int> get effectiveMemberIds => memberShares.isEmpty
+      ? memberIds
+      : memberShares.map((MemberShare share) => share.memberId).toList();
 }
 
 class LedgerCategory {

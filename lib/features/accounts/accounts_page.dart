@@ -202,7 +202,12 @@ class _AccountsPageState extends State<AccountsPage> {
         child: ListTile(
           leading: CircleAvatar(child: Icon(_accountIcon(account.icon))),
           title: Text(account.name),
-          subtitle: account.archived ? const Text('已归档') : null,
+          subtitle: Text(
+            <String>[
+              _accountKindLabel(account.kind),
+              if (account.archived) '已归档',
+            ].join(' · '),
+          ),
           trailing: Row(
             mainAxisSize: MainAxisSize.min,
             children: <Widget>[
@@ -231,7 +236,13 @@ class _AccountsPageState extends State<AccountsPage> {
     final TextEditingController balance = TextEditingController(
       text: account == null ? '' : account.balance.toStringAsFixed(2),
     );
+    final TextEditingController creditLimit = TextEditingController(
+      text: account?.creditLimit == null || account!.creditLimit <= 0
+          ? ''
+          : account.creditLimit.toStringAsFixed(2),
+    );
     String icon = account?.icon ?? 'cash';
+    AccountKind kind = account?.kind ?? AccountKind.asset;
     final bool? save = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
@@ -260,6 +271,40 @@ class _AccountsPageState extends State<AccountsPage> {
                           decoration: const InputDecoration(labelText: '名称'),
                         ),
                         const SizedBox(height: 12),
+                        DropdownButtonFormField<AccountKind>(
+                          initialValue: kind,
+                          decoration: const InputDecoration(labelText: '账户类型'),
+                          items: const <DropdownMenuItem<AccountKind>>[
+                            DropdownMenuItem(
+                              value: AccountKind.asset,
+                              child: Text('资产账户 · 余额不能为负'),
+                            ),
+                            DropdownMenuItem(
+                              value: AccountKind.credit,
+                              child: Text('信用账户 · 可在额度内透支'),
+                            ),
+                            DropdownMenuItem(
+                              value: AccountKind.loan,
+                              child: Text('贷款账户 · 只记录负债与还款'),
+                            ),
+                          ],
+                          onChanged: (AccountKind? value) =>
+                              update(() => kind = value ?? kind),
+                        ),
+                        if (kind == AccountKind.credit) ...<Widget>[
+                          const SizedBox(height: 12),
+                          TextField(
+                            controller: creditLimit,
+                            keyboardType: const TextInputType.numberWithOptions(
+                              decimal: true,
+                            ),
+                            decoration: const InputDecoration(
+                              labelText: '信用额度',
+                              prefixText: '¥ ',
+                            ),
+                          ),
+                        ],
+                        const SizedBox(height: 12),
                         TextField(
                           controller: balance,
                           keyboardType: const TextInputType.numberWithOptions(
@@ -269,6 +314,11 @@ class _AccountsPageState extends State<AccountsPage> {
                           decoration: InputDecoration(
                             labelText: account == null ? '初始余额' : '余额',
                             prefixText: '¥ ',
+                            helperText: switch (kind) {
+                              AccountKind.asset => '资产账户最低为 0',
+                              AccountKind.credit => '欠款用负数表示',
+                              AccountKind.loan => '剩余贷款用负数表示',
+                            },
                           ),
                         ),
                       ],
@@ -328,11 +378,32 @@ class _AccountsPageState extends State<AccountsPage> {
     );
     final String value = name.text.trim();
     final double amount = double.tryParse(balance.text) ?? 0;
+    final double limit = double.tryParse(creditLimit.text) ?? 0;
     if (save != true || value.isEmpty) return;
-    if (account == null) {
-      await widget.controller.addAccount(value, amount, icon);
-    } else {
-      await widget.controller.updateAccount(account.id, value, amount, icon);
+    try {
+      if (account == null) {
+        await widget.controller.addAccount(
+          value,
+          amount,
+          icon,
+          kind: kind,
+          creditLimit: limit,
+        );
+      } else {
+        await widget.controller.updateAccount(
+          account.id,
+          value,
+          amount,
+          icon,
+          kind: kind,
+          creditLimit: limit,
+        );
+      }
+    } on StateError catch (error) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('${error.message}')));
     }
   }
 }
@@ -357,7 +428,11 @@ class _AccountDetailPage extends StatelessWidget {
       final List<LedgerEntry> entries = controller.entries
           .where(
             (entry) =>
-                entry.accountId == accountId || entry.toAccountId == accountId,
+                entry.accountId == accountId ||
+                entry.toAccountId == accountId ||
+                entry.fundings.any(
+                  (EntryFunding funding) => funding.accountId == accountId,
+                ),
           )
           .toList();
       final double income = entries
@@ -462,6 +537,57 @@ class _AccountDetailPage extends StatelessWidget {
                           ),
                         ),
                       ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 14),
+                child: Column(
+                  children: <Widget>[
+                    Row(
+                      children: <Widget>[
+                        const Expanded(
+                          child: Text(
+                            '资金归属',
+                            style: TextStyle(fontWeight: FontWeight.w700),
+                          ),
+                        ),
+                        TextButton(
+                          onPressed: account.archived
+                              ? null
+                              : () => _editFunds(context, account),
+                          child: const Text('调整'),
+                        ),
+                      ],
+                    ),
+                    ..._accountFunds(account).map(
+                      (AccountFund fund) => Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 5),
+                        child: Row(
+                          children: <Widget>[
+                            Icon(
+                              fund.memberId == null
+                                  ? Icons.people_alt_outlined
+                                  : Icons.person_outline,
+                              size: 18,
+                              color: const Color(0xFF8A9099),
+                            ),
+                            const SizedBox(width: 9),
+                            Expanded(
+                              child: Text(_fundOwnerName(fund.memberId)),
+                            ),
+                            Text(
+                              '¥${fund.balance.toStringAsFixed(2)}',
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
                     ),
                   ],
                 ),
@@ -572,6 +698,161 @@ class _AccountDetailPage extends StatelessWidget {
       ),
     );
     if (updated != null) await controller.updateEntry(entry, updated);
+  }
+
+  List<AccountFund> _accountFunds(LedgerAccount account) =>
+      account.funds.isEmpty
+      ? <AccountFund>[
+          AccountFund(accountId: account.id, balance: account.balance),
+        ]
+      : account.funds;
+
+  String _fundOwnerName(int? memberId) {
+    if (memberId == null) return '共同资金';
+    return controller.members
+            .where((LedgerMember member) => member.id == memberId)
+            .map((LedgerMember member) => member.name)
+            .firstOrNull ??
+        '已删除成员';
+  }
+
+  Future<void> _editFunds(BuildContext context, LedgerAccount account) async {
+    final Map<int?, TextEditingController> inputs =
+        <int?, TextEditingController>{};
+    final Map<int?, double> existing = <int?, double>{
+      for (final AccountFund fund in _accountFunds(account))
+        fund.memberId: fund.balance,
+    };
+    inputs[null] = TextEditingController(
+      text: (existing[null] ?? 0).toStringAsFixed(2),
+    );
+    for (final LedgerMember member in controller.members.where(
+      (LedgerMember item) => !item.archived || existing.containsKey(item.id),
+    )) {
+      inputs[member.id] = TextEditingController(
+        text: (existing[member.id] ?? 0).toStringAsFixed(2),
+      );
+    }
+    final Map<int?, double>?
+    result = await showModalBottomSheet<Map<int?, double>>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      builder: (BuildContext context) => StatefulBuilder(
+        builder: (BuildContext context, StateSetter update) {
+          final double total = inputs.values.fold<double>(
+            0,
+            (double sum, TextEditingController input) =>
+                sum + (double.tryParse(input.text) ?? 0),
+          );
+          final double remaining = account.balance - total;
+          final bool complete = remaining.abs() < .005;
+          return FractionallySizedBox(
+            heightFactor: .86,
+            child: Column(
+              children: <Widget>[
+                SizedBox(
+                  height: 56,
+                  child: Row(
+                    children: <Widget>[
+                      TextButton(
+                        onPressed: () => Navigator.pop(context),
+                        child: const Text('取消'),
+                      ),
+                      const Expanded(
+                        child: Text(
+                          '分配账户资金',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(fontWeight: FontWeight.w700),
+                        ),
+                      ),
+                      TextButton(
+                        onPressed: complete
+                            ? () => Navigator.pop(context, <int?, double>{
+                                for (final MapEntry<int?, TextEditingController>
+                                    item
+                                    in inputs.entries)
+                                  item.key:
+                                      double.tryParse(item.value.text) ?? 0,
+                              })
+                            : null,
+                        child: const Text('保存'),
+                      ),
+                    ],
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                  child: Container(
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: Theme.of(
+                        context,
+                      ).colorScheme.surfaceContainerHighest,
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: Row(
+                      children: <Widget>[
+                        Expanded(
+                          child: Text(
+                            '账户余额 ¥${account.balance.toStringAsFixed(2)}',
+                          ),
+                        ),
+                        Text(
+                          complete
+                              ? '已全部分配'
+                              : '还差 ¥${remaining.abs().toStringAsFixed(2)}',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w600,
+                            color: complete
+                                ? null
+                                : AppTheme.ledgerOf(context).expense,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                Expanded(
+                  child: ListView(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 20),
+                    children: inputs.entries.map((item) {
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 10),
+                        child: TextField(
+                          controller: item.value,
+                          keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true,
+                            signed: true,
+                          ),
+                          decoration: InputDecoration(
+                            labelText: _fundOwnerName(item.key),
+                            prefixText: '¥ ',
+                          ),
+                          onChanged: (_) => update(() {}),
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+    for (final TextEditingController input in inputs.values) {
+      input.dispose();
+    }
+    if (result == null) return;
+    try {
+      await controller.setAccountFunds(account.id, result);
+    } on StateError catch (error) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('${error.message}')));
+    }
   }
 
   Future<void> _deleteAccount(
@@ -737,6 +1018,12 @@ IconData _accountIcon(String value) => switch (value) {
   'insurance' => Icons.health_and_safety_outlined,
   'business' => Icons.business_center_outlined,
   _ => Icons.account_balance_wallet_outlined,
+};
+
+String _accountKindLabel(AccountKind kind) => switch (kind) {
+  AccountKind.asset => '资产账户',
+  AccountKind.credit => '信用账户',
+  AccountKind.loan => '贷款账户',
 };
 
 IconData _detailCategoryIcon(String category) => switch (category) {

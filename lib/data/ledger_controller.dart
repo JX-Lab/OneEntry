@@ -11,6 +11,7 @@ class LedgerController extends ChangeNotifier {
 
   final List<LedgerAccount> accounts = <LedgerAccount>[];
   final List<LedgerMember> members = <LedgerMember>[];
+  final List<MemberDebt> memberDebts = <MemberDebt>[];
   final List<LedgerEntry> entries = <LedgerEntry>[];
   final List<RecurringRule> recurringRules = <RecurringRule>[];
   final List<LedgerCategory> categories = <LedgerCategory>[];
@@ -44,6 +45,9 @@ class LedgerController extends ChangeNotifier {
     members
       ..clear()
       ..addAll(snapshot.members);
+    memberDebts
+      ..clear()
+      ..addAll(snapshot.memberDebts);
     entries
       ..clear()
       ..addAll(snapshot.entries);
@@ -115,6 +119,20 @@ class LedgerController extends ChangeNotifier {
 
   double expenseForMonth(DateTime month) => entriesForMonth(month)
       .where((LedgerEntry entry) => entry.type == EntryType.expense)
+      .fold(0, (double sum, LedgerEntry entry) => sum + entry.amount);
+
+  double budgetExpenseForMonth(DateTime month) => entriesForMonth(month)
+      .where(
+        (LedgerEntry entry) =>
+            entry.type == EntryType.expense && !entry.outsideBudget,
+      )
+      .fold(0, (double sum, LedgerEntry entry) => sum + entry.amount);
+
+  double outsideBudgetExpenseForMonth(DateTime month) => entriesForMonth(month)
+      .where(
+        (LedgerEntry entry) =>
+            entry.type == EntryType.expense && entry.outsideBudget,
+      )
       .fold(0, (double sum, LedgerEntry entry) => sum + entry.amount);
 
   Future<void> addEntry(LedgerEntry draft) async {
@@ -228,12 +246,16 @@ class LedgerController extends ChangeNotifier {
   Future<void> addAccount(
     String name,
     double openingBalance,
-    String icon,
-  ) async {
+    String icon, {
+    AccountKind kind = AccountKind.asset,
+    double creditLimit = 0,
+  }) async {
     await _repository.addAccount(
       name: name,
       openingBalance: openingBalance,
       icon: icon,
+      kind: kind,
+      creditLimit: creditLimit,
     );
     await initialize();
   }
@@ -242,14 +264,26 @@ class LedgerController extends ChangeNotifier {
     int id,
     String name,
     double balance,
-    String icon,
-  ) async {
+    String icon, {
+    required AccountKind kind,
+    double creditLimit = 0,
+  }) async {
     await _repository.updateAccount(
       id,
       name: name,
       balance: balance,
       icon: icon,
+      kind: kind,
+      creditLimit: creditLimit,
     );
+    await initialize();
+  }
+
+  Future<void> setAccountFunds(
+    int accountId,
+    Map<int?, double> balances,
+  ) async {
+    await _repository.setAccountFunds(accountId, balances);
     await initialize();
   }
 

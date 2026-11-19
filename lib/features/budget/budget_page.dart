@@ -36,14 +36,18 @@ class _BudgetPageState extends State<BudgetPage> {
   Widget build(BuildContext context) => AnimatedBuilder(
     animation: controller,
     builder: (BuildContext context, Widget? child) {
-      final double spent = controller.expenseForMonth(_month);
+      final double spent = controller.budgetExpenseForMonth(_month);
+      final double outside = controller.outsideBudgetExpenseForMonth(_month);
+      final double totalSpent = spent + outside;
       final double budget = controller.monthlyBudget;
       final double progress = budget == 0 ? 0 : spent / budget;
       final Map<String, double> categorySpent = <String, double>{};
       for (final LedgerEntry entry
           in controller
               .entriesForMonth(_month)
-              .where((item) => item.type == EntryType.expense)) {
+              .where(
+                (item) => item.type == EntryType.expense && !item.outsideBudget,
+              )) {
         categorySpent.update(
           entry.category,
           (value) => value + entry.amount,
@@ -69,6 +73,8 @@ class _BudgetPageState extends State<BudgetPage> {
                   _BudgetHero(
                     month: _month,
                     spent: spent,
+                    outside: outside,
+                    totalSpent: totalSpent,
                     budget: budget,
                     progress: progress,
                     editing: _editing,
@@ -289,6 +295,8 @@ class _BudgetHero extends StatelessWidget {
   const _BudgetHero({
     required this.month,
     required this.spent,
+    required this.outside,
+    required this.totalSpent,
     required this.budget,
     required this.progress,
     required this.editing,
@@ -296,67 +304,105 @@ class _BudgetHero extends StatelessWidget {
   });
   final DateTime month;
   final double spent;
+  final double outside;
+  final double totalSpent;
   final double budget;
   final double progress;
   final bool editing;
   final VoidCallback? onTap;
 
   @override
-  Widget build(BuildContext context) => InkWell(
-    onTap: onTap,
-    borderRadius: BorderRadius.circular(16),
-    child: Container(
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surface,
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Column(
-        children: <Widget>[
-          Text(
-            '${month.year}年${month.month}月',
-            style: const TextStyle(color: Color(0xFF8A9099)),
-          ),
-          const SizedBox(height: 18),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: <Widget>[
-              _Value(label: '已支出', value: spent),
-              const SizedBox(width: 36),
-              _Value(label: editing ? '预算 ›' : '预算', value: budget),
-            ],
-          ),
-          const SizedBox(height: 18),
-          LinearProgressIndicator(
-            value: progress.clamp(0, 1),
-            minHeight: 11,
-            color: progress > 1
-                ? AppTheme.ledgerOf(context).expense
-                : Theme.of(context).colorScheme.primary,
-            borderRadius: BorderRadius.circular(99),
-          ),
-          const SizedBox(height: 8),
-          Text('${(progress * 100).toStringAsFixed(1)}%'),
-          const SizedBox(height: 10),
-          Text(
-            progress > 1
-                ? '超支 ¥${(spent - budget).toStringAsFixed(2)}'
-                : '剩余 ¥${(budget - spent).toStringAsFixed(2)}',
-            style: TextStyle(
-              fontWeight: FontWeight.w700,
-              color: progress > 1 ? AppTheme.ledgerOf(context).expense : null,
+  Widget build(BuildContext context) {
+    final double remaining = budget - spent;
+    final bool over = remaining < 0;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(16),
+      child: Container(
+        padding: const EdgeInsets.all(18),
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.surface,
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Column(
+          children: <Widget>[
+            Text(
+              '${month.year}年${month.month}月',
+              style: const TextStyle(color: Color(0xFF8A9099)),
             ),
-          ),
-        ],
+            const SizedBox(height: 12),
+            Text(
+              over ? '已超支' : '剩余预算',
+              style: const TextStyle(fontSize: 13, color: Color(0xFF8A9099)),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              '¥${remaining.abs().toStringAsFixed(2)}',
+              style: TextStyle(
+                fontSize: 28,
+                fontWeight: FontWeight.w800,
+                color: over ? AppTheme.ledgerOf(context).expense : null,
+              ),
+            ),
+            const SizedBox(height: 16),
+            Row(
+              children: <Widget>[
+                Expanded(
+                  child: _Value(label: '预算内', value: spent),
+                ),
+                Expanded(
+                  child: _Value(
+                    label: '预算外',
+                    value: outside,
+                    emphasize: outside > 0,
+                  ),
+                ),
+                Expanded(
+                  child: _Value(
+                    label: editing ? '本月预算 ›' : '本月预算',
+                    value: budget,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            LinearProgressIndicator(
+              value: progress.clamp(0, 1),
+              minHeight: 11,
+              color: over
+                  ? AppTheme.ledgerOf(context).expense
+                  : Theme.of(context).colorScheme.primary,
+              borderRadius: BorderRadius.circular(99),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              '预算已使用 ${(progress * 100).toStringAsFixed(1)}%',
+              style: const TextStyle(fontSize: 12, color: Color(0xFF8A9099)),
+            ),
+            if (outside > 0) ...<Widget>[
+              const SizedBox(height: 6),
+              Text(
+                '本月总支出 ¥${totalSpent.toStringAsFixed(2)}，其中预算外 ¥${outside.toStringAsFixed(2)}',
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontSize: 12, color: Color(0xFF8A9099)),
+              ),
+            ],
+          ],
+        ),
       ),
-    ),
-  );
+    );
+  }
 }
 
 class _Value extends StatelessWidget {
-  const _Value({required this.label, required this.value});
+  const _Value({
+    required this.label,
+    required this.value,
+    this.emphasize = false,
+  });
   final String label;
   final double value;
+  final bool emphasize;
   @override
   Widget build(BuildContext context) => Column(
     children: <Widget>[
@@ -367,7 +413,11 @@ class _Value extends StatelessWidget {
       const SizedBox(height: 3),
       Text(
         '¥${value.toStringAsFixed(2)}',
-        style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
+        style: TextStyle(
+          fontWeight: FontWeight.w700,
+          fontSize: 16,
+          color: emphasize ? AppTheme.ledgerOf(context).expense : null,
+        ),
       ),
     ],
   );
@@ -403,9 +453,18 @@ class _CategoryBudget extends StatelessWidget {
                   style: const TextStyle(fontWeight: FontWeight.w600),
                 ),
               ),
-              Text(
-                '¥${spent.toStringAsFixed(0)} / ¥${budget.toStringAsFixed(0)}',
-                style: const TextStyle(color: Color(0xFF8A9099), fontSize: 12),
+              Flexible(
+                flex: 2,
+                child: Text(
+                  '¥${spent.toStringAsFixed(0)} / ¥${budget.toStringAsFixed(0)}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.right,
+                  style: const TextStyle(
+                    color: Color(0xFF8A9099),
+                    fontSize: 12,
+                  ),
+                ),
               ),
               if (editing) const Icon(Icons.chevron_right, size: 18),
             ],
