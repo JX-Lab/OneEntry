@@ -152,6 +152,7 @@ class _MembersPageState extends State<MembersPage> {
                         (_DebtSummary debt) => ListTile(
                           leading: const Icon(Icons.handshake_outlined),
                           title: Text('${debt.debtor} 欠 ${debt.creditor}'),
+                          subtitle: const Text('点击记录已结算金额'),
                           trailing: Text(
                             '¥${debt.amount.toStringAsFixed(2)}',
                             style: TextStyle(
@@ -159,6 +160,7 @@ class _MembersPageState extends State<MembersPage> {
                               fontWeight: FontWeight.w700,
                             ),
                           ),
+                          onTap: () => _settleDebt(context, debt),
                         ),
                       )
                       .toList(),
@@ -212,7 +214,7 @@ class _MembersPageState extends State<MembersPage> {
   );
 
   Widget _tile(BuildContext context, LedgerMember member) {
-    final int count = widget.controller.entries
+    final int count = widget.controller.visibleEntries
         .where((entry) => entry.memberIds.contains(member.id))
         .length;
     final double funds = widget.controller.accounts
@@ -279,6 +281,18 @@ class _MembersPageState extends State<MembersPage> {
         ifAbsent: () => debt.amount,
       );
     }
+    for (final MemberDebtSettlement settlement
+        in widget.controller.debtSettlements) {
+      final (int, int) key = (
+        settlement.creditorMemberId,
+        settlement.debtorMemberId,
+      );
+      directional.update(
+        key,
+        (double value) => value - settlement.amount,
+        ifAbsent: () => -settlement.amount,
+      );
+    }
     final Set<(int, int)> visited = <(int, int)>{};
     final List<_DebtSummary> result = <_DebtSummary>[];
     for (final MapEntry<(int, int), double> item in directional.entries) {
@@ -302,6 +316,8 @@ class _MembersPageState extends State<MembersPage> {
           '已删除成员';
       result.add(
         _DebtSummary(
+          creditorMemberId: finalCreditor,
+          debtorMemberId: finalDebtor,
           creditor: name(finalCreditor),
           debtor: name(finalDebtor),
           amount: net.abs(),
@@ -309,6 +325,86 @@ class _MembersPageState extends State<MembersPage> {
       );
     }
     return result;
+  }
+
+  Future<void> _settleDebt(BuildContext context, _DebtSummary debt) async {
+    final TextEditingController amount = TextEditingController(
+      text: debt.amount.toStringAsFixed(2),
+    );
+    final TextEditingController note = TextEditingController();
+    final bool? save = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      builder: (BuildContext context) => Padding(
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.viewInsetsOf(context).bottom,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            SizedBox(
+              height: 54,
+              child: Row(
+                children: <Widget>[
+                  TextButton(
+                    onPressed: () => Navigator.pop(context),
+                    child: const Text('取消'),
+                  ),
+                  Expanded(
+                    child: Text(
+                      '${debt.debtor} 向 ${debt.creditor} 结算',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                  ),
+                  TextButton(
+                    onPressed: () => Navigator.pop(context, true),
+                    child: const Text('保存'),
+                  ),
+                ],
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 4, 16, 20),
+              child: Column(
+                children: <Widget>[
+                  TextField(
+                    controller: amount,
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    decoration: InputDecoration(
+                      labelText: '结算金额（最多 ¥${debt.amount.toStringAsFixed(2)}）',
+                      prefixText: '¥ ',
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: note,
+                    decoration: const InputDecoration(
+                      labelText: '备注',
+                      hintText: '如：现金归还、已另行转账',
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+    final double value = double.tryParse(amount.text) ?? 0;
+    final String memo = note.text.trim();
+    amount.dispose();
+    note.dispose();
+    if (save != true || value <= 0 || value - debt.amount > .004) return;
+    await widget.controller.settleMemberDebt(
+      creditorMemberId: debt.creditorMemberId,
+      debtorMemberId: debt.debtorMemberId,
+      amount: value,
+      note: memo,
+    );
   }
 
   Future<void> _edit(BuildContext context, [LedgerMember? member]) async {
@@ -504,11 +600,15 @@ class _MembersPageState extends State<MembersPage> {
 
 class _DebtSummary {
   const _DebtSummary({
+    required this.creditorMemberId,
+    required this.debtorMemberId,
     required this.creditor,
     required this.debtor,
     required this.amount,
   });
 
+  final int creditorMemberId;
+  final int debtorMemberId;
   final String creditor;
   final String debtor;
   final double amount;
@@ -577,7 +677,7 @@ class _MemberDetailPage extends StatelessWidget {
       final LedgerMember member = controller.members.firstWhere(
         (item) => item.id == memberId,
       );
-      final List<LedgerEntry> entries = controller.entries
+      final List<LedgerEntry> entries = controller.visibleEntries
           .where((entry) => entry.memberIds.contains(memberId))
           .toList();
       final double income = entries

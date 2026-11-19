@@ -30,6 +30,9 @@ class _EntrySheetState extends State<EntrySheet> {
   int _accountId = 1;
   int? _toAccountId = 2;
   final Set<int> _members = <int>{};
+  int? _recordedByMemberId;
+  EntryVisibility _visibility = EntryVisibility.all;
+  final Set<int> _visibleMemberIds = <int>{};
   final List<EntryFunding> _fundings = <EntryFunding>[];
   bool _recurring = false;
   bool _outsideBudget = false;
@@ -51,6 +54,11 @@ class _EntrySheetState extends State<EntrySheet> {
           .id;
     }
     _members.clear();
+    final List<LedgerMember> activeMembers = widget.controller.members
+        .where((LedgerMember member) => !member.archived)
+        .toList();
+    _recordedByMemberId = widget.controller.currentMemberId;
+    if (activeMembers.length == 1) _members.add(activeMembers.first.id);
     if (widget.controller.categories.isNotEmpty) {
       final List<LedgerCategory> expense = widget.controller.categoriesFor(
         EntryType.expense,
@@ -69,6 +77,12 @@ class _EntrySheetState extends State<EntrySheet> {
       _fundings
         ..clear()
         ..addAll(source.fundings);
+      _recordedByMemberId =
+          source.recordedByMemberId ?? widget.controller.currentMemberId;
+      _visibility = source.visibility;
+      _visibleMemberIds
+        ..clear()
+        ..addAll(source.visibleMemberIds);
       _recurring = source.recurring;
       _outsideBudget = source.outsideBudget;
       _frequency = source.recurringFrequency;
@@ -102,7 +116,7 @@ class _EntrySheetState extends State<EntrySheet> {
     final Set<int> activeIds = activeAccounts
         .map((account) => account.id)
         .toSet();
-    for (final LedgerEntry entry in widget.controller.entries) {
+    for (final LedgerEntry entry in widget.controller.visibleEntries) {
       if (entry.type == EntryType.expense || entry.type == EntryType.income) {
         return activeIds.contains(entry.accountId)
             ? entry.accountId
@@ -116,7 +130,7 @@ class _EntrySheetState extends State<EntrySheet> {
     final Set<String> names = available
         .map((LedgerCategory category) => category.name)
         .toSet();
-    for (final LedgerEntry entry in widget.controller.entries) {
+    for (final LedgerEntry entry in widget.controller.visibleEntries) {
       if (entry.type == EntryType.expense && names.contains(entry.category)) {
         return entry.category;
       }
@@ -169,6 +183,9 @@ class _EntrySheetState extends State<EntrySheet> {
         memberShares: _memberSharesForSave(amount),
         fundings: fundings,
         outsideBudget: _type == EntryType.expense && _outsideBudget,
+        recordedByMemberId: _recordedByMemberId,
+        visibility: _visibility,
+        visibleMemberIds: _visibleMemberIds.toList(),
         recurring: _type != EntryType.transfer && _recurring,
         recurringFrequency: _frequency,
       ),
@@ -246,6 +263,12 @@ class _EntrySheetState extends State<EntrySheet> {
                     value: _memberSummary(members),
                     onTap: () => _pickMembers(members),
                   ),
+                if (widget.controller.multiEnabled)
+                  _PickerField(
+                    title: '记录身份',
+                    value: _memberName(members, _recordedByMemberId),
+                    onTap: () => _pickRecorder(members),
+                  ),
                 _PickerField(
                   title: _type == EntryType.expense ? '支付来源' : '入账账户',
                   value: _fundingSummary(accounts, members, account),
@@ -281,6 +304,12 @@ class _EntrySheetState extends State<EntrySheet> {
                   title: '操作者（可多选）',
                   value: _memberSummary(members),
                   onTap: () => _pickMembers(members),
+                ),
+              if (widget.controller.multiEnabled)
+                _PickerField(
+                  title: '可见范围',
+                  value: _visibilitySummary(members),
+                  onTap: () => _pickVisibility(members),
                 ),
               Container(
                 margin: const EdgeInsets.only(top: 10),
@@ -421,6 +450,135 @@ class _EntrySheetState extends State<EntrySheet> {
       _members
         ..clear()
         ..addAll(result);
+    });
+  }
+
+  String _memberName(List<LedgerMember> members, int? memberId) =>
+      members
+          .where((LedgerMember member) => member.id == memberId)
+          .map((LedgerMember member) => member.name)
+          .firstOrNull ??
+      '系统记录';
+
+  Future<void> _pickRecorder(List<LedgerMember> members) async {
+    _dismissKeyboard();
+    final int? result = await showModalBottomSheet<int>(
+      context: context,
+      useSafeArea: true,
+      builder: (BuildContext context) => ListView(
+        shrinkWrap: true,
+        padding: const EdgeInsets.only(bottom: 16),
+        children: <Widget>[
+          const Padding(
+            padding: EdgeInsets.fromLTRB(18, 12, 18, 6),
+            child: Text(
+              '选择记录身份',
+              style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
+            ),
+          ),
+          ...members.map(
+            (LedgerMember member) => ListTile(
+              leading: CircleAvatar(
+                backgroundColor: Color(member.colorValue),
+                child: Text(
+                  member.name.substring(0, 1),
+                  style: const TextStyle(color: Colors.white),
+                ),
+              ),
+              title: Text(member.name),
+              trailing: member.id == _recordedByMemberId
+                  ? const Icon(Icons.check)
+                  : null,
+              onTap: () => Navigator.pop(context, member.id),
+            ),
+          ),
+        ],
+      ),
+    );
+    if (result == null || !mounted) return;
+    setState(() => _recordedByMemberId = result);
+  }
+
+  String _visibilitySummary(List<LedgerMember> members) =>
+      switch (_visibility) {
+        EntryVisibility.all => '全体成员',
+        EntryVisibility.shared => '共同账本',
+        EntryVisibility.private => '仅记录身份',
+        EntryVisibility.selected =>
+          _visibleMemberIds.isEmpty
+              ? '指定成员'
+              : _visibleMemberIds
+                    .map((int id) => _memberName(members, id))
+                    .join('、'),
+      };
+
+  Future<void> _pickVisibility(List<LedgerMember> members) async {
+    _dismissKeyboard();
+    final EntryVisibility? result = await showModalBottomSheet<EntryVisibility>(
+      context: context,
+      useSafeArea: true,
+      builder: (BuildContext context) => ListView(
+        shrinkWrap: true,
+        padding: const EdgeInsets.only(bottom: 16),
+        children: <Widget>[
+          const Padding(
+            padding: EdgeInsets.fromLTRB(18, 12, 18, 6),
+            child: Text(
+              '谁可以看到这笔账',
+              style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
+            ),
+          ),
+          ...<EntryVisibility>[
+            EntryVisibility.all,
+            EntryVisibility.private,
+            EntryVisibility.selected,
+            EntryVisibility.shared,
+          ].map(
+            (EntryVisibility visibility) => ListTile(
+              leading: Icon(switch (visibility) {
+                EntryVisibility.all => Icons.groups_outlined,
+                EntryVisibility.private => Icons.lock_outline,
+                EntryVisibility.selected => Icons.group_add_outlined,
+                EntryVisibility.shared => Icons.menu_book_outlined,
+              }),
+              title: Text(switch (visibility) {
+                EntryVisibility.all => '全体成员',
+                EntryVisibility.private => '仅记录身份',
+                EntryVisibility.selected => '指定成员',
+                EntryVisibility.shared => '共同账本',
+              }),
+              onTap: () => Navigator.pop(context, visibility),
+            ),
+          ),
+        ],
+      ),
+    );
+    if (result == null || !mounted) return;
+    if (result == EntryVisibility.selected) {
+      final Set<int>? selected = await showModalBottomSheet<Set<int>>(
+        context: context,
+        isScrollControlled: true,
+        useSafeArea: true,
+        builder: (BuildContext context) => _MemberPickerSheet(
+          title: '选择可见成员',
+          members: members
+              .where((LedgerMember member) => member.id != _recordedByMemberId)
+              .toList(),
+          selectedIds: _visibleMemberIds,
+        ),
+      );
+      if (!mounted || selected == null) return;
+      setState(() {
+        _visibility = result;
+        _visibleMemberIds
+          ..clear()
+          ..addAll(selected);
+      });
+      return;
+    }
+    setState(() {
+      _visibility = result;
+      _visibleMemberIds.clear();
     });
   }
 
@@ -636,142 +794,155 @@ class _EntrySheetState extends State<EntrySheet> {
       }
     }
     String icon = existing?.icon ?? categoryIconGroups[group]!.first;
+    int? categoryMemberId = existing?.memberId;
     final bool? save = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
       builder: (BuildContext context) => StatefulBuilder(
-        builder: (BuildContext context, StateSetter update) =>
-            FractionallySizedBox(
-              heightFactor: .88,
-              child: Padding(
-                padding: EdgeInsets.only(
-                  bottom: MediaQuery.viewInsetsOf(context).bottom,
-                ),
-                child: Column(
-                  children: <Widget>[
-                    SizedBox(
-                      height: 52,
-                      child: Row(
-                        children: <Widget>[
-                          TextButton(
-                            onPressed: () => Navigator.pop(context),
-                            child: const Text('取消'),
-                          ),
-                          Expanded(
-                            child: Text(
-                              existing == null ? '自定义标签' : '编辑标签',
-                              textAlign: TextAlign.center,
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                          ),
-                          TextButton(
-                            onPressed: () => Navigator.pop(context, true),
-                            child: const Text('保存'),
-                          ),
-                        ],
-                      ),
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 4, 16, 10),
-                      child: TextField(
-                        controller: name,
-                        autofocus: false,
-                        decoration: const InputDecoration(
-                          labelText: '名称',
-                          hintText: '如：宠物',
-                        ),
-                      ),
-                    ),
-                    SizedBox(
-                      height: 46,
-                      child: ListView.separated(
-                        padding: const EdgeInsets.symmetric(horizontal: 16),
-                        scrollDirection: Axis.horizontal,
-                        itemCount: categoryIconGroups.length,
-                        separatorBuilder: (_, _) => const SizedBox(width: 8),
-                        itemBuilder: (BuildContext context, int index) {
-                          final String item = categoryIconGroups.keys.elementAt(
-                            index,
-                          );
-                          final bool selected = item == group;
-                          return ChoiceChip(
-                            label: Text(item),
-                            selected: selected,
-                            showCheckmark: false,
-                            onSelected: (_) => update(() {
-                              group = item;
-                              final List<String> icons =
-                                  categoryIconGroups[group]!;
-                              if (!icons.contains(icon)) icon = icons.first;
-                            }),
-                          );
-                        },
-                      ),
-                    ),
-                    const Divider(height: 1),
-                    Expanded(
-                      child: GridView.builder(
-                        padding: const EdgeInsets.fromLTRB(16, 14, 16, 22),
-                        gridDelegate:
-                            const SliverGridDelegateWithFixedCrossAxisCount(
-                              crossAxisCount: 6,
-                              mainAxisSpacing: 10,
-                              crossAxisSpacing: 10,
-                            ),
-                        itemCount: categoryIconGroups[group]!.length,
-                        itemBuilder: (BuildContext context, int index) {
-                          final String item = categoryIconGroups[group]![index];
-                          final bool selected = icon == item;
-                          return InkWell(
-                            onTap: () => update(() => icon = item),
-                            borderRadius: BorderRadius.circular(12),
-                            child: Container(
-                              decoration: BoxDecoration(
-                                color: selected
-                                    ? Theme.of(context).colorScheme.primary
-                                          .withValues(alpha: .12)
-                                    : Theme.of(
-                                        context,
-                                      ).colorScheme.surfaceContainerHighest,
-                                borderRadius: BorderRadius.circular(12),
-                                border: Border.all(
-                                  color: selected
-                                      ? Theme.of(context).colorScheme.primary
-                                      : Colors.transparent,
-                                  width: 2,
-                                ),
-                              ),
-                              child: Icon(categoryIconFromKey(item), size: 22),
-                            ),
-                          );
-                        },
-                      ),
-                    ),
-                    if (existing != null)
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-                        child: SizedBox(
-                          width: double.infinity,
-                          child: TextButton(
-                            onPressed: () async {
-                              if (await _deleteCategory(existing)) {
-                                if (context.mounted) Navigator.pop(context);
-                              }
-                            },
-                            style: TextButton.styleFrom(
-                              foregroundColor: AppTheme.expense,
-                            ),
-                            child: const Text('删除标签'),
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
-              ),
+        builder: (BuildContext context, StateSetter update) => FractionallySizedBox(
+          heightFactor: .88,
+          child: Padding(
+            padding: EdgeInsets.only(
+              bottom: MediaQuery.viewInsetsOf(context).bottom,
             ),
+            child: Column(
+              children: <Widget>[
+                SizedBox(
+                  height: 52,
+                  child: Row(
+                    children: <Widget>[
+                      TextButton(
+                        onPressed: () => Navigator.pop(context),
+                        child: const Text('取消'),
+                      ),
+                      Expanded(
+                        child: Text(
+                          existing == null ? '自定义标签' : '编辑标签',
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(fontWeight: FontWeight.w700),
+                        ),
+                      ),
+                      TextButton(
+                        onPressed: () => Navigator.pop(context, true),
+                        child: const Text('保存'),
+                      ),
+                    ],
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 4, 16, 10),
+                  child: TextField(
+                    controller: name,
+                    autofocus: false,
+                    decoration: const InputDecoration(
+                      labelText: '名称',
+                      hintText: '如：宠物',
+                    ),
+                  ),
+                ),
+                if (widget.controller.currentMemberId != null)
+                  SwitchListTile(
+                    title: const Text('当前身份专属标签'),
+                    subtitle: Text(
+                      categoryMemberId == null
+                          ? '所有成员都可以使用'
+                          : '仅 ${_memberName(widget.controller.members, categoryMemberId)} 使用',
+                    ),
+                    value: categoryMemberId != null,
+                    onChanged: (bool value) => update(
+                      () => categoryMemberId = value
+                          ? widget.controller.currentMemberId
+                          : null,
+                    ),
+                  ),
+                SizedBox(
+                  height: 46,
+                  child: ListView.separated(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    scrollDirection: Axis.horizontal,
+                    itemCount: categoryIconGroups.length,
+                    separatorBuilder: (_, _) => const SizedBox(width: 8),
+                    itemBuilder: (BuildContext context, int index) {
+                      final String item = categoryIconGroups.keys.elementAt(
+                        index,
+                      );
+                      final bool selected = item == group;
+                      return ChoiceChip(
+                        label: Text(item),
+                        selected: selected,
+                        showCheckmark: false,
+                        onSelected: (_) => update(() {
+                          group = item;
+                          final List<String> icons = categoryIconGroups[group]!;
+                          if (!icons.contains(icon)) icon = icons.first;
+                        }),
+                      );
+                    },
+                  ),
+                ),
+                const Divider(height: 1),
+                Expanded(
+                  child: GridView.builder(
+                    padding: const EdgeInsets.fromLTRB(16, 14, 16, 22),
+                    gridDelegate:
+                        const SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: 6,
+                          mainAxisSpacing: 10,
+                          crossAxisSpacing: 10,
+                        ),
+                    itemCount: categoryIconGroups[group]!.length,
+                    itemBuilder: (BuildContext context, int index) {
+                      final String item = categoryIconGroups[group]![index];
+                      final bool selected = icon == item;
+                      return InkWell(
+                        onTap: () => update(() => icon = item),
+                        borderRadius: BorderRadius.circular(12),
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: selected
+                                ? Theme.of(
+                                    context,
+                                  ).colorScheme.primary.withValues(alpha: .12)
+                                : Theme.of(
+                                    context,
+                                  ).colorScheme.surfaceContainerHighest,
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: selected
+                                  ? Theme.of(context).colorScheme.primary
+                                  : Colors.transparent,
+                              width: 2,
+                            ),
+                          ),
+                          child: Icon(categoryIconFromKey(item), size: 22),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+                if (existing != null)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                    child: SizedBox(
+                      width: double.infinity,
+                      child: TextButton(
+                        onPressed: () async {
+                          if (await _deleteCategory(existing)) {
+                            if (context.mounted) Navigator.pop(context);
+                          }
+                        },
+                        style: TextButton.styleFrom(
+                          foregroundColor: AppTheme.expense,
+                        ),
+                        child: const Text('删除标签'),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
     if (mounted) _dismissKeyboard();
@@ -788,9 +959,19 @@ class _EntrySheetState extends State<EntrySheet> {
       return;
     }
     if (existing == null) {
-      await widget.controller.addCategory(value, _type, icon);
+      await widget.controller.addCategory(
+        value,
+        _type,
+        icon,
+        memberId: categoryMemberId,
+      );
     } else {
-      await widget.controller.updateCategory(existing.name, value, icon);
+      await widget.controller.updateCategory(
+        existing.name,
+        value,
+        icon,
+        memberId: categoryMemberId,
+      );
     }
     if (mounted) setState(() => _category = value);
   }

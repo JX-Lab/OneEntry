@@ -95,7 +95,7 @@ class _HomePageState extends State<HomePage> {
       animation: widget.controller,
       builder: (BuildContext context, Widget? child) {
         final String query = _searchController.text.trim().toLowerCase();
-        final List<LedgerEntry> periodEntries = widget.controller.entries
+        final List<LedgerEntry> periodEntries = widget.controller.visibleEntries
             .where(
               (LedgerEntry entry) =>
                   (_year == null || entry.occurredAt.year == _year) &&
@@ -104,7 +104,7 @@ class _HomePageState extends State<HomePage> {
             )
             .toList();
         final List<LedgerEntry> searchScope = _searching
-            ? widget.controller.entries
+            ? widget.controller.visibleEntries
             : periodEntries;
         final List<LedgerEntry> entries = searchScope.where((
           LedgerEntry entry,
@@ -271,6 +271,22 @@ class _HomePageState extends State<HomePage> {
                               padding: const EdgeInsets.fromLTRB(12, 8, 12, 16),
                               child: Column(
                                 children: <Widget>[
+                                  if (widget.controller.members.length >
+                                      1) ...<Widget>[
+                                    _CurrentIdentityBar(
+                                      member: widget.controller.members
+                                          .where(
+                                            (LedgerMember member) =>
+                                                member.id ==
+                                                widget
+                                                    .controller
+                                                    .currentMemberId,
+                                          )
+                                          .firstOrNull,
+                                      onTap: _pickCurrentMember,
+                                    ),
+                                    const SizedBox(height: 10),
+                                  ],
                                   _SummaryCard(
                                     income: income,
                                     expense: expense,
@@ -287,18 +303,14 @@ class _HomePageState extends State<HomePage> {
                                   const SizedBox(height: 10),
                                   Row(
                                     children: <Widget>[
-                                      if (widget
-                                          .controller
-                                          .multiEnabled) ...<Widget>[
-                                        Expanded(
-                                          child: _QuickButton(
-                                            icon: Icons.people_outline,
-                                            label: '成员',
-                                            onTap: widget.onOpenMembers,
-                                          ),
+                                      Expanded(
+                                        child: _QuickButton(
+                                          icon: Icons.people_outline,
+                                          label: '成员',
+                                          onTap: widget.onOpenMembers,
                                         ),
-                                        const SizedBox(width: 10),
-                                      ],
+                                      ),
+                                      const SizedBox(width: 10),
                                       Expanded(
                                         child: _QuickButton(
                                           icon: Icons
@@ -641,6 +653,51 @@ class _HomePageState extends State<HomePage> {
     if (mounted) setState(() => _budgetLoading = false);
   }
 
+  Future<void> _pickCurrentMember() async {
+    final List<LedgerMember> members = widget.controller.members
+        .where((LedgerMember member) => !member.archived)
+        .toList();
+    final int? selected = await showModalBottomSheet<int>(
+      context: context,
+      useSafeArea: true,
+      builder: (BuildContext context) => ListView(
+        shrinkWrap: true,
+        padding: const EdgeInsets.only(bottom: 16),
+        children: <Widget>[
+          const Padding(
+            padding: EdgeInsets.fromLTRB(18, 12, 18, 6),
+            child: Text(
+              '切换当前身份',
+              style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
+            ),
+          ),
+          ...members.map(
+            (LedgerMember member) => ListTile(
+              leading: CircleAvatar(
+                backgroundColor: Color(member.colorValue),
+                child: Text(
+                  member.name.substring(0, 1),
+                  style: const TextStyle(color: Colors.white),
+                ),
+              ),
+              title: Text(member.name),
+              subtitle: Text(
+                member.id == widget.controller.currentMemberId
+                    ? '当前身份'
+                    : '切换后按其可见范围显示账目',
+              ),
+              trailing: member.id == widget.controller.currentMemberId
+                  ? const Icon(Icons.check)
+                  : null,
+              onTap: () => Navigator.pop(context, member.id),
+            ),
+          ),
+        ],
+      ),
+    );
+    if (selected != null) await widget.controller.setCurrentMember(selected);
+  }
+
   String _periodLabel() {
     final List<String> parts = <String>[
       if (_year != null) '${_year}年',
@@ -814,7 +871,7 @@ class _HomePageState extends State<HomePage> {
     }
   });
 
-  List<LedgerEntry> get _selectedEntries => widget.controller.entries
+  List<LedgerEntry> get _selectedEntries => widget.controller.visibleEntries
       .where((entry) => _selectedEntryIds.contains(entry.id))
       .toList();
 
@@ -1371,6 +1428,59 @@ class _HomeRow {
   final List<LedgerEntry>? group;
 }
 
+class _CurrentIdentityBar extends StatelessWidget {
+  const _CurrentIdentityBar({required this.member, required this.onTap});
+
+  final LedgerMember? member;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => Material(
+    color: Theme.of(context).colorScheme.surface,
+    borderRadius: BorderRadius.circular(14),
+    child: InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(14),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        child: Row(
+          children: <Widget>[
+            CircleAvatar(
+              radius: 16,
+              backgroundColor: member == null
+                  ? Theme.of(context).colorScheme.primary
+                  : Color(member!.colorValue),
+              child: Text(
+                member?.name.substring(0, 1) ?? '·',
+                style: const TextStyle(color: Colors.white),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  const Text(
+                    '当前身份',
+                    style: TextStyle(fontSize: 11, color: Color(0xFF8A9099)),
+                  ),
+                  Text(
+                    member?.name ?? '请选择',
+                    style: const TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                ],
+              ),
+            ),
+            const Text('切换', style: TextStyle(fontWeight: FontWeight.w600)),
+            const SizedBox(width: 2),
+            const Icon(Icons.expand_more, size: 20),
+          ],
+        ),
+      ),
+    ),
+  );
+}
+
 class _SummaryCard extends StatelessWidget {
   const _SummaryCard({
     required this.income,
@@ -1695,6 +1805,29 @@ class _EntryTile extends StatelessWidget {
     final String memberLabel = members
         .map((LedgerMember member) => member.name)
         .join('、');
+    final LedgerMember? recorder = controller.members
+        .where((LedgerMember member) => member.id == entry.recordedByMemberId)
+        .firstOrNull;
+    final bool showRecorder =
+        recorder != null &&
+        (entry.memberIds.length != 1 || entry.memberIds.first != recorder.id);
+    final Set<int> fundingOwnerIds = entry.fundings
+        .map((EntryFunding funding) => funding.memberId)
+        .whereType<int>()
+        .toSet();
+    final String payerLabel = controller.members
+        .where(
+          (LedgerMember member) =>
+              fundingOwnerIds.contains(member.id) &&
+              !entry.memberIds.contains(member.id),
+        )
+        .map((LedgerMember member) => member.name)
+        .join('、');
+    final String visibilityLabel = switch (entry.visibility) {
+      EntryVisibility.private => '仅自己',
+      EntryVisibility.selected => '指定可见',
+      _ => '',
+    };
     final double shownAmount = adjustment
         ? entry.adjustmentDelta.abs()
         : entry.amount;
@@ -1793,12 +1926,18 @@ class _EntryTile extends StatelessWidget {
             subtitle:
                 entry.note.isEmpty &&
                     !entry.outsideBudget &&
+                    !showRecorder &&
+                    payerLabel.isEmpty &&
+                    visibilityLabel.isEmpty &&
                     (!controller.multiEnabled || memberLabel.isEmpty)
                 ? null
                 : Text(
                     <String>[
                       if (controller.multiEnabled && memberLabel.isNotEmpty)
                         memberLabel,
+                      if (showRecorder) '${recorder.name}记录',
+                      if (payerLabel.isNotEmpty) '$payerLabel代付',
+                      if (visibilityLabel.isNotEmpty) visibilityLabel,
                       if (entry.outsideBudget) '预算外',
                       if (entry.note.isNotEmpty) entry.note,
                     ].join(' · '),

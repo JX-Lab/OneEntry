@@ -35,6 +35,10 @@ void main() {
     controller.members.add(
       LedgerMember(id: 1, name: '我', colorValue: 0xFF2E7CF6),
     );
+    controller.members.add(
+      LedgerMember(id: 2, name: '小明', colorValue: 0xFFF5A623),
+    );
+    controller.currentMemberId = 1;
     addTearDown(controller.dispose);
 
     await tester.pumpWidget(
@@ -108,6 +112,10 @@ void main() {
     controller.members.add(
       LedgerMember(id: 1, name: '我', colorValue: 0xFF2E7CF6),
     );
+    controller.members.add(
+      LedgerMember(id: 2, name: '小明', colorValue: 0xFFF5A623),
+    );
+    controller.currentMemberId = 1;
     addTearDown(controller.dispose);
 
     await tester.pumpWidget(
@@ -141,6 +149,10 @@ void main() {
     controller.members.add(
       LedgerMember(id: 1, name: '我', colorValue: 0xFF2E7CF6),
     );
+    controller.members.add(
+      LedgerMember(id: 2, name: '小明', colorValue: 0xFFF5A623),
+    );
+    controller.currentMemberId = 1;
     addTearDown(controller.dispose);
     LedgerEntry? saved;
 
@@ -158,7 +170,7 @@ void main() {
 
     await tester.tap(find.text('承担成员（可多选）'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('我'));
+    await tester.tap(find.text('我').last);
     await tester.pump();
     await tester.tap(find.text('完成 (1)'));
     await tester.pumpAndSettle();
@@ -171,6 +183,11 @@ void main() {
     await tester.tap(find.text('完成'));
     await tester.pumpAndSettle();
 
+    await tester.scrollUntilVisible(
+      find.text('预算外花销'),
+      260,
+      scrollable: find.byType(Scrollable).first,
+    );
     await tester.tap(find.text('预算外花销'));
     await tester.pump();
     await tester.tap(find.text('保存'));
@@ -178,11 +195,29 @@ void main() {
 
     expect(saved, isNotNull);
     expect(saved!.outsideBudget, isTrue);
+    expect(saved!.recordedByMemberId, 1);
     expect(saved!.fundings, hasLength(2));
     expect(
       saved!.fundings.fold<double>(0, (sum, item) => sum + item.amount),
       2,
     );
+  });
+
+  testWidgets('只有一个成员时保持普通个人记账界面', (WidgetTester tester) async {
+    final LedgerController controller =
+        LedgerController(LedgerRepository(AppDatabase()))
+          ..currentMemberId = 1
+          ..members.add(LedgerMember(id: 1, name: '我', colorValue: 0xFF2E7CF6));
+    addTearDown(controller.dispose);
+
+    await tester.pumpWidget(
+      MaterialApp(home: EntrySheet(controller: controller)),
+    );
+    await tester.pump();
+
+    expect(find.text('承担成员（可多选）'), findsNothing);
+    expect(find.text('记录身份'), findsNothing);
+    expect(find.text('可见范围'), findsNothing);
   });
 }
 

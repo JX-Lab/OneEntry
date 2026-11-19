@@ -425,7 +425,7 @@ class _AccountDetailPage extends StatelessWidget {
       final LedgerAccount account = controller.accounts.firstWhere(
         (item) => item.id == accountId,
       );
-      final List<LedgerEntry> entries = controller.entries
+      final List<LedgerEntry> entries = controller.visibleEntries
           .where(
             (entry) =>
                 entry.accountId == accountId ||

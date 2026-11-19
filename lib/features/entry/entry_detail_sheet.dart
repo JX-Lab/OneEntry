@@ -11,6 +11,13 @@ Future<void> showEntryDetailSheet({
   required VoidCallback onEdit,
   VoidCallback? onRepeat,
 }) async {
+  List<EntryHistory> history = const <EntryHistory>[];
+  try {
+    history = await controller.entryHistory(entry);
+  } on Object {
+    // Detail remains available if history storage is temporarily unavailable.
+  }
+  if (!context.mounted) return;
   final LedgerAccount? account = _account(controller, entry.accountId);
   final LedgerAccount? target = _account(controller, entry.toAccountId);
   final List<String> members = controller.members
@@ -32,6 +39,12 @@ Future<void> showEntryDetailSheet({
       ? '${account?.name ?? '未知账户'} → ${target?.name ?? '未知账户'}'
       : _fundingText(controller, entry, account?.name ?? '未知账户');
   final bool editable = entry.type != EntryType.adjustment;
+  final String recorder =
+      controller.members
+          .where((LedgerMember member) => member.id == entry.recordedByMemberId)
+          .map((LedgerMember member) => member.name)
+          .firstOrNull ??
+      '系统记录';
   await showModalBottomSheet<void>(
     context: context,
     useSafeArea: true,
@@ -57,7 +70,7 @@ Future<void> showEntryDetailSheet({
                 ? AppTheme.ledgerOf(context).income
                 : null,
           ),
-          _DetailRow(label: '账户', value: accountText),
+          _DetailRow(label: '支付', value: accountText),
           if (entry.type == EntryType.expense)
             _DetailRow(
               label: '预算',
@@ -67,11 +80,28 @@ Future<void> showEntryDetailSheet({
                   : null,
             ),
           _DetailRow(
-            label: '成员',
+            label: '承担',
             value: members.isEmpty ? '无' : members.join('、'),
           ),
+          _DetailRow(label: '记录者', value: recorder),
+          _DetailRow(label: '可见', value: _visibilityText(controller, entry)),
           _DetailRow(label: '时间', value: _dateTime(entry.occurredAt)),
           _DetailRow(label: '备注', value: entry.note.isEmpty ? '无' : entry.note),
+          if (history.isNotEmpty)
+            ExpansionTile(
+              tilePadding: EdgeInsets.zero,
+              title: const Text('修改历史'),
+              children: history
+                  .map(
+                    (EntryHistory item) => ListTile(
+                      dense: true,
+                      contentPadding: EdgeInsets.zero,
+                      title: Text(item.summary),
+                      subtitle: Text(_dateTime(item.occurredAt)),
+                    ),
+                  )
+                  .toList(),
+            ),
           const SizedBox(height: 14),
           if (editable)
             Row(
@@ -175,6 +205,24 @@ String _fundingText(
       })
       .join(' + ');
 }
+
+String _visibilityText(LedgerController controller, LedgerEntry entry) =>
+    switch (entry.visibility) {
+      EntryVisibility.all => '全体成员',
+      EntryVisibility.shared => '共同账本',
+      EntryVisibility.private => '仅记录身份',
+      EntryVisibility.selected =>
+        entry.visibleMemberIds
+            .map(
+              (int id) =>
+                  controller.members
+                      .where((LedgerMember member) => member.id == id)
+                      .map((LedgerMember member) => member.name)
+                      .firstOrNull ??
+                  '已删除成员',
+            )
+            .join('、'),
+    };
 
 String _typeName(LedgerEntry entry) => switch (entry.type) {
   EntryType.transfer => '转账',

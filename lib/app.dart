@@ -133,6 +133,8 @@ class _OneEntryAppState extends State<OneEntryApp> {
       memberShares: List<MemberShare>.from(entry.memberShares),
       fundings: List<EntryFunding>.from(entry.fundings),
       outsideBudget: entry.outsideBudget,
+      visibility: entry.visibility,
+      visibleMemberIds: List<int>.from(entry.visibleMemberIds),
     );
     final LedgerEntry? result = await _navigatorKey.currentState!
         .push<LedgerEntry>(

@@ -70,12 +70,10 @@ class _SettingsPageState extends State<SettingsPage>
                 _Section(
                   title: '记账方式',
                   children: <Widget>[
-                    SwitchListTile(
-                      title: const Text('多人记账'),
-                      subtitle: const Text('每笔账目可关联多个成员'),
-                      value: widget.controller.multiEnabled,
-                      onChanged: (bool value) => widget.controller
-                          .setPreference('multi_enabled', value ? '1' : '0'),
+                    const ListTile(
+                      leading: Icon(Icons.diversity_1_outlined),
+                      title: Text('本地主体账本'),
+                      subtitle: Text('一个成员时就是个人账本；多个成员时启用多主体记录'),
                     ),
                     SwitchListTile(
                       title: const Text('语音记账'),
@@ -485,7 +483,7 @@ class _SettingsPageState extends State<SettingsPage>
 
   Future<void> _pickSplitMode() async {
     final String? value =
-        await _simpleChoice('多人统计', const <MapEntry<String, String>>[
+        await _simpleChoice('成员金额口径', const <MapEntry<String, String>>[
           MapEntry('equal', 'AA 均摊'),
           MapEntry('full', '整笔计入每位成员'),
           MapEntry('fund_ratio', '按成员当前资金比例'),

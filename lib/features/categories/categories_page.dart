@@ -435,7 +435,12 @@ class _CategoriesPageState extends State<CategoriesPage> {
     if (existing == null) {
       await widget.controller.addCategory(name, _type, icon);
     } else {
-      await widget.controller.updateCategory(existing.name, name, icon);
+      await widget.controller.updateCategory(
+        existing.name,
+        name,
+        icon,
+        memberId: existing.memberId,
+      );
     }
   }
 

@@ -118,7 +118,7 @@ int _defaultAccountId(
   final Set<int> activeIds = activeAccounts
       .map((account) => account.id)
       .toSet();
-  for (final LedgerEntry entry in controller.entries) {
+  for (final LedgerEntry entry in controller.visibleEntries) {
     if ((entry.type == EntryType.expense || entry.type == EntryType.income) &&
         activeIds.contains(entry.accountId)) {
       return entry.accountId;

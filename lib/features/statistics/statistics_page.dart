@@ -436,7 +436,7 @@ class _StatisticsDetailPage extends StatelessWidget {
   Widget build(BuildContext context) => AnimatedBuilder(
     animation: controller,
     builder: (BuildContext context, Widget? child) {
-      final List<LedgerEntry> entries = controller.entries
+      final List<LedgerEntry> entries = controller.visibleEntries
           .where((entry) => entryIds.contains(entry.id))
           .toList();
       final Map<String, List<LedgerEntry>> months =

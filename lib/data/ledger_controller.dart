@@ -12,17 +12,20 @@ class LedgerController extends ChangeNotifier {
   final List<LedgerAccount> accounts = <LedgerAccount>[];
   final List<LedgerMember> members = <LedgerMember>[];
   final List<MemberDebt> memberDebts = <MemberDebt>[];
+  final List<MemberDebtSettlement> debtSettlements = <MemberDebtSettlement>[];
   final List<LedgerEntry> entries = <LedgerEntry>[];
   final List<RecurringRule> recurringRules = <RecurringRule>[];
   final List<LedgerCategory> categories = <LedgerCategory>[];
   final Map<String, double> categoryBudgets = <String, double>{};
+  final Map<int, double> memberBudgets = <int, double>{};
 
   double monthlyBudget = 0;
   DateTime budgetMonth = DateTime(DateTime.now().year, DateTime.now().month);
   bool dailyReminderEnabled = false;
   int dailyReminderHour = 20;
   int dailyReminderMinute = 0;
-  bool multiEnabled = true;
+  bool get multiEnabled => members.length > 1;
+  int? currentMemberId;
   String splitMode = 'equal';
   String themeMode = 'system';
   String themeColor = 'indigo';
@@ -48,6 +51,9 @@ class LedgerController extends ChangeNotifier {
     memberDebts
       ..clear()
       ..addAll(snapshot.memberDebts);
+    debtSettlements
+      ..clear()
+      ..addAll(snapshot.debtSettlements);
     entries
       ..clear()
       ..addAll(snapshot.entries);
@@ -60,11 +66,24 @@ class LedgerController extends ChangeNotifier {
     categoryBudgets
       ..clear()
       ..addAll(snapshot.categoryBudgets);
+    memberBudgets
+      ..clear()
+      ..addAll(snapshot.memberBudgets);
     monthlyBudget = snapshot.monthlyBudget;
     dailyReminderEnabled = snapshot.dailyReminderEnabled;
     dailyReminderHour = snapshot.dailyReminderHour;
     dailyReminderMinute = snapshot.dailyReminderMinute;
-    multiEnabled = snapshot.multiEnabled;
+    final int? savedCurrent = snapshot.currentMemberId;
+    currentMemberId =
+        members.any(
+          (LedgerMember member) =>
+              !member.archived && member.id == savedCurrent,
+        )
+        ? savedCurrent
+        : members
+              .where((LedgerMember member) => !member.archived)
+              .map((LedgerMember member) => member.id)
+              .firstOrNull;
     splitMode = snapshot.splitMode;
     themeMode = snapshot.themeMode;
     themeColor = snapshot.themeColor;
@@ -101,7 +120,7 @@ class LedgerController extends ChangeNotifier {
   }
 
   List<LedgerEntry> entriesForMonth(DateTime month) {
-    return entries
+    return visibleEntries
         .where(
           (LedgerEntry entry) =>
               entry.occurredAt.year == month.year &&
@@ -111,6 +130,21 @@ class LedgerController extends ChangeNotifier {
       ..sort(
         (LedgerEntry a, LedgerEntry b) => b.occurredAt.compareTo(a.occurredAt),
       );
+  }
+
+  List<LedgerEntry> get visibleEntries => entries.where(canViewEntry).toList();
+
+  bool canViewEntry(LedgerEntry entry) {
+    final int? current = currentMemberId;
+    return switch (entry.visibility) {
+      EntryVisibility.all || EntryVisibility.shared => true,
+      EntryVisibility.private =>
+        current != null && entry.recordedByMemberId == current,
+      EntryVisibility.selected =>
+        current != null &&
+            (entry.recordedByMemberId == current ||
+                entry.visibleMemberIds.contains(current)),
+    };
   }
 
   double incomeForMonth(DateTime month) => entriesForMonth(month)
@@ -190,6 +224,44 @@ class LedgerController extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> setMemberBudget(
+    DateTime month,
+    int memberId,
+    double amount,
+  ) async {
+    await _repository.setMemberBudget(month, memberId, amount);
+    if (isBudgetMonth(month)) {
+      if (amount <= 0) {
+        memberBudgets.remove(memberId);
+      } else {
+        memberBudgets[memberId] = amount;
+      }
+      notifyListeners();
+    }
+  }
+
+  Future<void> setCurrentMember(int memberId) async {
+    await setPreference('current_member_id', '$memberId');
+  }
+
+  Future<void> settleMemberDebt({
+    required int creditorMemberId,
+    required int debtorMemberId,
+    required double amount,
+    String note = '',
+  }) async {
+    await _repository.settleMemberDebt(
+      creditorMemberId: creditorMemberId,
+      debtorMemberId: debtorMemberId,
+      amount: amount,
+      note: note,
+    );
+    await initialize();
+  }
+
+  Future<List<EntryHistory>> entryHistory(LedgerEntry entry) =>
+      _repository.entryHistory(entry.id);
+
   Future<void> setDailyReminder({
     required bool enabled,
     required int hour,
@@ -213,11 +285,16 @@ class LedgerController extends ChangeNotifier {
     final DateTime normalized = DateTime(month.year, month.month);
     if (isBudgetMonth(normalized) && initialized) return;
     final result = await _repository.loadBudget(normalized);
+    final Map<int, double> loadedMemberBudgets = await _repository
+        .loadMemberBudgets(normalized);
     budgetMonth = normalized;
     monthlyBudget = result.total;
     categoryBudgets
       ..clear()
       ..addAll(result.categories);
+    memberBudgets
+      ..clear()
+      ..addAll(loadedMemberBudgets);
     notifyListeners();
   }
 
@@ -287,8 +364,18 @@ class LedgerController extends ChangeNotifier {
     await initialize();
   }
 
-  Future<void> addCategory(String name, EntryType type, String icon) async {
-    await _repository.addCategory(name: name, type: type, icon: icon);
+  Future<void> addCategory(
+    String name,
+    EntryType type,
+    String icon, {
+    int? memberId,
+  }) async {
+    await _repository.addCategory(
+      name: name,
+      type: type,
+      icon: icon,
+      memberId: memberId,
+    );
     await initialize();
   }
 
@@ -300,12 +387,14 @@ class LedgerController extends ChangeNotifier {
   Future<void> updateCategory(
     String originalName,
     String name,
-    String icon,
-  ) async {
+    String icon, {
+    int? memberId,
+  }) async {
     await _repository.updateCategory(
       originalName: originalName,
       name: name,
       icon: icon,
+      memberId: memberId,
     );
     await initialize();
   }
@@ -386,8 +475,8 @@ class LedgerController extends ChangeNotifier {
   Future<void> setPreference(String key, String value) async {
     await _repository.setPreference(key, value);
     switch (key) {
-      case 'multi_enabled':
-        multiEnabled = value == '1';
+      case 'current_member_id':
+        currentMemberId = int.tryParse(value);
         break;
       case 'split_mode':
         splitMode = value;
@@ -428,7 +517,9 @@ class LedgerController extends ChangeNotifier {
 
   List<LedgerCategory> categoriesFor(EntryType type) => categories
       .where(
-        (LedgerCategory category) => category.type == type || category.both,
+        (LedgerCategory category) =>
+            (category.type == type || category.both) &&
+            (category.memberId == null || category.memberId == currentMemberId),
       )
       .toList();
 }

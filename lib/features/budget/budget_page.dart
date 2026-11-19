@@ -42,6 +42,7 @@ class _BudgetPageState extends State<BudgetPage> {
       final double budget = controller.monthlyBudget;
       final double progress = budget == 0 ? 0 : spent / budget;
       final Map<String, double> categorySpent = <String, double>{};
+      final Map<int, double> memberSpent = <int, double>{};
       for (final LedgerEntry entry
           in controller
               .entriesForMonth(_month)
@@ -53,6 +54,24 @@ class _BudgetPageState extends State<BudgetPage> {
           (value) => value + entry.amount,
           ifAbsent: () => entry.amount,
         );
+        if (entry.memberShares.isNotEmpty) {
+          for (final MemberShare share in entry.memberShares) {
+            memberSpent.update(
+              share.memberId,
+              (double value) => value + share.amount,
+              ifAbsent: () => share.amount,
+            );
+          }
+        } else if (entry.memberIds.isNotEmpty) {
+          final double share = entry.amount / entry.memberIds.length;
+          for (final int memberId in entry.memberIds) {
+            memberSpent.update(
+              memberId,
+              (double value) => value + share,
+              ifAbsent: () => share,
+            );
+          }
+        }
       }
       return Scaffold(
         appBar: AppBar(
@@ -80,6 +99,38 @@ class _BudgetPageState extends State<BudgetPage> {
                     editing: _editing,
                     onTap: _editing ? () => _editTotal(context, _month) : null,
                   ),
+                  if (controller.members.isNotEmpty) ...<Widget>[
+                    const Padding(
+                      padding: EdgeInsets.fromLTRB(4, 16, 4, 8),
+                      child: Text(
+                        '成员预算',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Color(0xFF8A9099),
+                        ),
+                      ),
+                    ),
+                    ...controller.members
+                        .where((LedgerMember member) => !member.archived)
+                        .map(
+                          (LedgerMember member) => Padding(
+                            padding: const EdgeInsets.only(bottom: 9),
+                            child: InkWell(
+                              borderRadius: BorderRadius.circular(14),
+                              onTap: _editing
+                                  ? () => _editMemberBudget(context, member)
+                                  : null,
+                              child: _CategoryBudget(
+                                name: member.name,
+                                spent: memberSpent[member.id] ?? 0,
+                                budget:
+                                    controller.memberBudgets[member.id] ?? 0,
+                                editing: _editing,
+                              ),
+                            ),
+                          ),
+                        ),
+                  ],
                   const Padding(
                     padding: EdgeInsets.fromLTRB(4, 16, 4, 8),
                     child: Text(
@@ -208,6 +259,20 @@ class _BudgetPageState extends State<BudgetPage> {
       current,
     );
     if (amount != null) await _saveCategory(context, month, category, amount);
+  }
+
+  Future<void> _editMemberBudget(
+    BuildContext context,
+    LedgerMember member,
+  ) async {
+    final double? amount = await _amountDialog(
+      context,
+      '${member.name}的本月预算（填 0 删除）',
+      controller.memberBudgets[member.id] ?? 0,
+    );
+    if (amount != null) {
+      await controller.setMemberBudget(_month, member.id, amount);
+    }
   }
 
   Future<void> _saveCategory(

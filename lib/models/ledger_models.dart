@@ -2,6 +2,8 @@ enum EntryType { expense, income, transfer, adjustment }
 
 enum AccountKind { asset, credit, loan }
 
+enum EntryVisibility { all, private, selected, shared }
+
 class AccountFund {
   const AccountFund({
     required this.accountId,
@@ -47,6 +49,36 @@ class MemberDebt {
   final int debtorMemberId;
   final double amount;
   final int? transactionId;
+}
+
+class MemberDebtSettlement {
+  const MemberDebtSettlement({
+    required this.creditorMemberId,
+    required this.debtorMemberId,
+    required this.amount,
+    required this.occurredAt,
+    this.note = '',
+  });
+
+  final int creditorMemberId;
+  final int debtorMemberId;
+  final double amount;
+  final DateTime occurredAt;
+  final String note;
+}
+
+class EntryHistory {
+  const EntryHistory({
+    required this.action,
+    required this.occurredAt,
+    required this.summary,
+    this.actorMemberId,
+  });
+
+  final String action;
+  final DateTime occurredAt;
+  final String summary;
+  final int? actorMemberId;
 }
 
 class LedgerAccount {
@@ -105,6 +137,9 @@ class LedgerEntry {
     this.memberShares = const <MemberShare>[],
     this.fundings = const <EntryFunding>[],
     this.outsideBudget = false,
+    this.recordedByMemberId,
+    this.visibility = EntryVisibility.all,
+    this.visibleMemberIds = const <int>[],
     this.recurring = false,
     this.recurringFrequency = 'month',
     this.adjustmentDelta = 0,
@@ -122,6 +157,9 @@ class LedgerEntry {
   final List<MemberShare> memberShares;
   final List<EntryFunding> fundings;
   final bool outsideBudget;
+  final int? recordedByMemberId;
+  final EntryVisibility visibility;
+  final List<int> visibleMemberIds;
   final bool recurring;
   final String recurringFrequency;
   final double adjustmentDelta;
@@ -138,6 +176,7 @@ class LedgerCategory {
     required this.icon,
     required this.custom,
     this.both = false,
+    this.memberId,
   });
 
   final String name;
@@ -145,6 +184,7 @@ class LedgerCategory {
   final String icon;
   final bool custom;
   final bool both;
+  final int? memberId;
 }
 
 class RecurringRule {

@@ -2,7 +2,7 @@ import 'package:path/path.dart' as p;
 import 'package:sqflite/sqflite.dart';
 
 class AppDatabase {
-  static const int schemaVersion = 6;
+  static const int schemaVersion = 7;
   static const String fileName = 'oneentry.db';
 
   Database? _database;
@@ -24,6 +24,7 @@ class AppDatabase {
         if (version >= 4) await _migrate3To4(db);
         if (version >= 5) await _migrate4To5(db);
         if (version >= 6) await _migrate5To6(db);
+        if (version >= 7) await _migrate6To7(db);
         await _seed(db);
       },
       onUpgrade: (Database db, int oldVersion, int newVersion) async {
@@ -48,6 +49,10 @@ class AppDatabase {
           if (version < 6 && newVersion >= 6) {
             await _migrate5To6(txn);
             version = 6;
+          }
+          if (version < 7 && newVersion >= 7) {
+            await _migrate6To7(txn);
+            version = 7;
           }
           if (version != newVersion) {
             throw StateError(
@@ -490,6 +495,88 @@ class AppDatabase {
     ''');
   }
 
+  Future<void> _migrate6To7(DatabaseExecutor db) async {
+    await db.execute(
+      'ALTER TABLE transactions ADD COLUMN recorded_by_member_id INTEGER REFERENCES members(id)',
+    );
+    await db.execute(
+      "ALTER TABLE transactions ADD COLUMN visibility TEXT NOT NULL DEFAULT 'all'",
+    );
+    await db.execute(
+      'ALTER TABLE categories ADD COLUMN member_id INTEGER REFERENCES members(id)',
+    );
+    await db.execute('''
+      CREATE TABLE transaction_visible_members (
+        transaction_id INTEGER NOT NULL REFERENCES transactions(id) ON DELETE CASCADE,
+        member_id INTEGER NOT NULL REFERENCES members(id) ON DELETE CASCADE,
+        PRIMARY KEY(transaction_id, member_id)
+      )
+    ''');
+    await db.execute('''
+      CREATE TABLE member_budgets (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        period TEXT NOT NULL,
+        member_id INTEGER NOT NULL REFERENCES members(id) ON DELETE CASCADE,
+        amount_minor INTEGER NOT NULL CHECK(amount_minor >= 0),
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        UNIQUE(period, member_id)
+      )
+    ''');
+    await db.execute('''
+      CREATE TABLE member_debt_settlements (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        creditor_member_id INTEGER NOT NULL REFERENCES members(id),
+        debtor_member_id INTEGER NOT NULL REFERENCES members(id),
+        amount_minor INTEGER NOT NULL CHECK(amount_minor > 0),
+        occurred_at INTEGER NOT NULL,
+        note TEXT NOT NULL DEFAULT '',
+        created_at INTEGER NOT NULL,
+        CHECK(creditor_member_id != debtor_member_id)
+      )
+    ''');
+    await db.execute('''
+      CREATE TABLE entry_history (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        transaction_id INTEGER REFERENCES transactions(id) ON DELETE SET NULL,
+        transaction_uuid TEXT NOT NULL,
+        action TEXT NOT NULL,
+        actor_member_id INTEGER REFERENCES members(id) ON DELETE SET NULL,
+        summary TEXT NOT NULL DEFAULT '',
+        occurred_at INTEGER NOT NULL
+      )
+    ''');
+    await db.execute(
+      'CREATE INDEX idx_member_budgets_period ON member_budgets(period, member_id)',
+    );
+    await db.execute(
+      'CREATE INDEX idx_entry_history_transaction ON entry_history(transaction_uuid, occurred_at DESC)',
+    );
+
+    final int now = DateTime.now().millisecondsSinceEpoch;
+    final int memberCount =
+        Sqflite.firstIntValue(
+          await db.rawQuery('SELECT COUNT(*) FROM members'),
+        ) ??
+        0;
+    if (memberCount > 0) {
+      final List<Map<String, Object?>> members = await db.query(
+        'members',
+        columns: <String>['id'],
+        where: 'archived_at IS NULL',
+        orderBy: 'sort_order, id',
+        limit: 1,
+      );
+      if (members.isNotEmpty) {
+        await db.insert('settings', <String, Object?>{
+          'key': 'current_member_id',
+          'value': '${members.first['id']}',
+          'updated_at': now,
+        }, conflictAlgorithm: ConflictAlgorithm.ignore);
+      }
+    }
+  }
+
   Future<void> _mergeCategory(
     DatabaseExecutor db, {
     required String from,
@@ -685,6 +772,19 @@ class AppDatabase {
       'updated_at': now,
     });
     await batch.commit(noResult: true);
+    final List<Map<String, Object?>> seededMembers = await db.query(
+      'members',
+      columns: <String>['id'],
+      orderBy: 'sort_order, id',
+      limit: 1,
+    );
+    if (seededMembers.isNotEmpty) {
+      await db.insert('settings', <String, Object?>{
+        'key': 'current_member_id',
+        'value': '${seededMembers.first['id']}',
+        'updated_at': now,
+      }, conflictAlgorithm: ConflictAlgorithm.ignore);
+    }
     for (final Map<String, Object?> account in await db.query(
       'accounts',
       columns: <String>['id', 'balance_minor'],

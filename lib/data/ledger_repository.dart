@@ -10,15 +10,18 @@ class LedgerSnapshot {
     required this.accounts,
     required this.members,
     required this.memberDebts,
+    required this.debtSettlements,
     required this.entries,
     required this.monthlyBudget,
     required this.dailyReminderEnabled,
     required this.dailyReminderHour,
     required this.dailyReminderMinute,
     required this.categoryBudgets,
+    required this.memberBudgets,
     required this.recurringRules,
     required this.categories,
     required this.multiEnabled,
+    required this.currentMemberId,
     required this.splitMode,
     required this.themeMode,
     required this.themeColor,
@@ -34,15 +37,18 @@ class LedgerSnapshot {
   final List<LedgerAccount> accounts;
   final List<LedgerMember> members;
   final List<MemberDebt> memberDebts;
+  final List<MemberDebtSettlement> debtSettlements;
   final List<LedgerEntry> entries;
   final double monthlyBudget;
   final bool dailyReminderEnabled;
   final int dailyReminderHour;
   final int dailyReminderMinute;
   final Map<String, double> categoryBudgets;
+  final Map<int, double> memberBudgets;
   final List<RecurringRule> recurringRules;
   final List<LedgerCategory> categories;
   final bool multiEnabled;
+  final int? currentMemberId;
   final String splitMode;
   final String themeMode;
   final String themeColor;
@@ -70,6 +76,10 @@ class LedgerRepository {
     'transaction_fundings',
     'account_funds',
     'member_debts',
+    'transaction_visible_members',
+    'member_budgets',
+    'member_debt_settlements',
+    'entry_history',
     'budgets',
     'settings',
     'import_jobs',
@@ -149,6 +159,15 @@ class LedgerRepository {
             ),
           );
     }
+    final Map<int, List<int>> transactionVisibleMembers = <int, List<int>>{};
+    for (final Map<String, Object?> row in await db.query(
+      'transaction_visible_members',
+      orderBy: 'transaction_id, member_id',
+    )) {
+      transactionVisibleMembers
+          .putIfAbsent(row['transaction_id'] as int, () => <int>[])
+          .add(row['member_id'] as int);
+    }
     final List<LedgerEntry> entries = transactionRows
         .map(
           (Map<String, Object?> row) => _entryFromRow(
@@ -156,9 +175,24 @@ class LedgerRepository {
             transactionMembers[row['id'] as int] ?? const <int>[],
             transactionMemberShares[row['id'] as int] ?? const <MemberShare>[],
             transactionFundings[row['id'] as int] ?? const <EntryFunding>[],
+            transactionVisibleMembers[row['id'] as int] ?? const <int>[],
           ),
         )
         .toList();
+    final List<MemberDebtSettlement> debtSettlements =
+        (await db.query('member_debt_settlements', orderBy: 'occurred_at, id'))
+            .map(
+              (Map<String, Object?> row) => MemberDebtSettlement(
+                creditorMemberId: row['creditor_member_id'] as int,
+                debtorMemberId: row['debtor_member_id'] as int,
+                amount: (row['amount_minor'] as int) / 100,
+                occurredAt: DateTime.fromMillisecondsSinceEpoch(
+                  row['occurred_at'] as int,
+                ),
+                note: row['note'] as String? ?? '',
+              ),
+            )
+            .toList();
     final List<MemberDebt> memberDebts =
         (await db.query('member_debts', orderBy: 'id'))
             .map(
@@ -200,9 +234,18 @@ class LedgerRepository {
       for (final Map<String, Object?> row in categoryBudgetRows)
         row['name'] as String: (row['amount_minor'] as int) / 100,
     };
+    final Map<int, double> memberBudgets = <int, double>{
+      for (final Map<String, Object?> row in await db.query(
+        'member_budgets',
+        columns: <String>['member_id', 'amount_minor'],
+        where: 'period = ?',
+        whereArgs: <Object?>[period],
+      ))
+        row['member_id'] as int: (row['amount_minor'] as int) / 100,
+    };
     final List<Map<String, Object?>> categoryRows = await db.query(
       'categories',
-      columns: <String>['uuid', 'name', 'type', 'icon'],
+      columns: <String>['uuid', 'name', 'type', 'icon', 'member_id'],
       where: 'archived_at IS NULL',
       orderBy: 'sort_order, id',
     );
@@ -216,6 +259,7 @@ class LedgerRepository {
       accounts: accounts,
       members: members,
       memberDebts: memberDebts,
+      debtSettlements: debtSettlements,
       entries: entries,
       monthlyBudget: budget,
       dailyReminderEnabled: settings['daily_reminder_enabled'] == '1',
@@ -224,9 +268,11 @@ class LedgerRepository {
       dailyReminderMinute:
           int.tryParse(settings['daily_reminder_minute'] ?? '') ?? 0,
       categoryBudgets: categoryBudgets,
+      memberBudgets: memberBudgets,
       recurringRules: ruleRows.map(_ruleFromRow).toList(),
       categories: categoryRows.map(_categoryFromRow).toList(),
       multiEnabled: settings['multi_enabled'] != '0',
+      currentMemberId: int.tryParse(settings['current_member_id'] ?? ''),
       splitMode: settings['split_mode'] ?? 'equal',
       themeMode: settings['theme_mode'] ?? 'system',
       themeColor: settings['theme_color'] ?? 'indigo',
@@ -274,6 +320,97 @@ class LedgerRepository {
     );
   }
 
+  Future<Map<int, double>> loadMemberBudgets(DateTime month) async {
+    final Database db = await _appDatabase.database;
+    final String period =
+        '${month.year}-${month.month.toString().padLeft(2, '0')}';
+    return <int, double>{
+      for (final Map<String, Object?> row in await db.query(
+        'member_budgets',
+        columns: <String>['member_id', 'amount_minor'],
+        where: 'period = ?',
+        whereArgs: <Object?>[period],
+      ))
+        row['member_id'] as int: (row['amount_minor'] as int) / 100,
+    };
+  }
+
+  Future<void> setMemberBudget(
+    DateTime month,
+    int memberId,
+    double amount,
+  ) async {
+    final Database db = await _appDatabase.database;
+    final String period =
+        '${month.year}-${month.month.toString().padLeft(2, '0')}';
+    final int now = DateTime.now().millisecondsSinceEpoch;
+    await db.transaction((Transaction txn) async {
+      await txn.delete(
+        'member_budgets',
+        where: 'period = ? AND member_id = ?',
+        whereArgs: <Object?>[period, memberId],
+      );
+      if (amount > 0) {
+        await txn.insert('member_budgets', <String, Object?>{
+          'period': period,
+          'member_id': memberId,
+          'amount_minor': _minor(amount),
+          'created_at': now,
+          'updated_at': now,
+        });
+      }
+    });
+  }
+
+  Future<void> settleMemberDebt({
+    required int creditorMemberId,
+    required int debtorMemberId,
+    required double amount,
+    String note = '',
+  }) async {
+    if (amount <= 0) throw StateError('结算金额必须大于 0');
+    final Database db = await _appDatabase.database;
+    final int now = DateTime.now().millisecondsSinceEpoch;
+    await db.insert('member_debt_settlements', <String, Object?>{
+      'creditor_member_id': creditorMemberId,
+      'debtor_member_id': debtorMemberId,
+      'amount_minor': _minor(amount),
+      'occurred_at': now,
+      'note': note,
+      'created_at': now,
+    });
+  }
+
+  Future<List<EntryHistory>> entryHistory(int transactionId) async {
+    final Database db = await _appDatabase.database;
+    final List<Map<String, Object?>> transactionRows = await db.query(
+      'transactions',
+      columns: <String>['uuid'],
+      where: 'id = ?',
+      whereArgs: <Object?>[transactionId],
+      limit: 1,
+    );
+    if (transactionRows.isEmpty) return const <EntryHistory>[];
+    final String uuid = transactionRows.first['uuid'] as String;
+    return (await db.query(
+          'entry_history',
+          where: 'transaction_uuid = ?',
+          whereArgs: <Object?>[uuid],
+          orderBy: 'occurred_at DESC, id DESC',
+        ))
+        .map(
+          (Map<String, Object?> row) => EntryHistory(
+            action: row['action'] as String,
+            occurredAt: DateTime.fromMillisecondsSinceEpoch(
+              row['occurred_at'] as int,
+            ),
+            summary: row['summary'] as String? ?? '',
+            actorMemberId: row['actor_member_id'] as int?,
+          ),
+        )
+        .toList();
+  }
+
   Future<LedgerEntry> addEntry(LedgerEntry draft) async {
     final Database db = await _appDatabase.database;
     final int now = DateTime.now().millisecondsSinceEpoch;
@@ -300,9 +437,10 @@ class LedgerRepository {
           'updated_at': now,
         });
       }
+      final String transactionUuid = _uuid('transaction', now);
       final int transactionId = await txn
           .insert('transactions', <String, Object?>{
-            'uuid': _uuid('transaction', now),
+            'uuid': transactionUuid,
             'type': draft.type.name,
             'amount_minor': _minor(draft.amount),
             'account_id': draft.accountId,
@@ -315,6 +453,8 @@ class LedgerRepository {
             'timezone': draft.occurredAt.timeZoneName,
             'note': draft.note,
             'outside_budget': draft.outsideBudget ? 1 : 0,
+            'recorded_by_member_id': draft.recordedByMemberId,
+            'visibility': draft.visibility.name,
             'recurring_rule_id': recurringRuleId,
             'created_at': now,
             'updated_at': now,
@@ -336,6 +476,16 @@ class LedgerRepository {
         fundings,
         _minor(draft.amount),
       );
+      await _insertVisibleMembers(txn, transactionId, draft.visibleMemberIds);
+      await _insertHistory(
+        txn,
+        transactionId: transactionId,
+        transactionUuid: transactionUuid,
+        action: 'created',
+        actorMemberId: draft.recordedByMemberId,
+        summary: '创建账目 ¥${draft.amount.toStringAsFixed(2)}',
+        occurredAt: now,
+      );
       return LedgerEntry(
         id: transactionId,
         type: draft.type,
@@ -349,6 +499,9 @@ class LedgerRepository {
         memberShares: memberShares,
         fundings: fundings,
         outsideBudget: draft.outsideBudget,
+        recordedByMemberId: draft.recordedByMemberId,
+        visibility: draft.visibility,
+        visibleMemberIds: List<int>.from(draft.visibleMemberIds),
         recurring: draft.recurring,
         recurringFrequency: draft.recurringFrequency,
       );
@@ -380,6 +533,8 @@ class LedgerRepository {
           'timezone': next.occurredAt.timeZoneName,
           'note': next.note,
           'outside_budget': next.outsideBudget ? 1 : 0,
+          'recorded_by_member_id': next.recordedByMemberId,
+          'visibility': next.visibility.name,
           'updated_at': now,
         },
         where: 'id = ?',
@@ -400,6 +555,11 @@ class LedgerRepository {
         where: 'transaction_id = ?',
         whereArgs: <Object?>[previous.id],
       );
+      await txn.delete(
+        'transaction_visible_members',
+        where: 'transaction_id = ?',
+        whereArgs: <Object?>[previous.id],
+      );
       await _insertMembers(
         txn,
         previous.id,
@@ -417,6 +577,23 @@ class LedgerRepository {
         fundings,
         _minor(next.amount),
       );
+      await _insertVisibleMembers(txn, previous.id, next.visibleMemberIds);
+      final List<Map<String, Object?>> uuidRows = await txn.query(
+        'transactions',
+        columns: <String>['uuid'],
+        where: 'id = ?',
+        whereArgs: <Object?>[previous.id],
+        limit: 1,
+      );
+      await _insertHistory(
+        txn,
+        transactionId: previous.id,
+        transactionUuid: uuidRows.first['uuid'] as String,
+        action: 'updated',
+        actorMemberId: next.recordedByMemberId,
+        summary: _entryUpdateSummary(previous, next),
+        occurredAt: now,
+      );
     });
   }
 
@@ -424,6 +601,24 @@ class LedgerRepository {
     final Database db = await _appDatabase.database;
     await db.transaction((Transaction txn) async {
       await _applyBalance(txn, entry, -1);
+      final List<Map<String, Object?>> rows = await txn.query(
+        'transactions',
+        columns: <String>['uuid'],
+        where: 'id = ?',
+        whereArgs: <Object?>[entry.id],
+        limit: 1,
+      );
+      if (rows.isNotEmpty) {
+        await _insertHistory(
+          txn,
+          transactionId: entry.id,
+          transactionUuid: rows.first['uuid'] as String,
+          action: 'deleted',
+          actorMemberId: entry.recordedByMemberId,
+          summary: '删除账目 ¥${entry.amount.toStringAsFixed(2)}',
+          occurredAt: DateTime.now().millisecondsSinceEpoch,
+        );
+      }
       await txn.delete(
         'transactions',
         where: 'id = ?',
@@ -627,6 +822,23 @@ class LedgerRepository {
         'member_debts',
         where: 'creditor_member_id = ? OR debtor_member_id = ?',
         whereArgs: <Object?>[id, id],
+      );
+      await txn.delete(
+        'member_debt_settlements',
+        where: 'creditor_member_id = ? OR debtor_member_id = ?',
+        whereArgs: <Object?>[id, id],
+      );
+      await txn.update(
+        'transactions',
+        <String, Object?>{'recorded_by_member_id': null},
+        where: 'recorded_by_member_id = ?',
+        whereArgs: <Object?>[id],
+      );
+      await txn.update(
+        'categories',
+        <String, Object?>{'member_id': null},
+        where: 'member_id = ?',
+        whereArgs: <Object?>[id],
       );
       await txn.delete(
         'transaction_members',
@@ -881,6 +1093,7 @@ class LedgerRepository {
     required String name,
     required EntryType type,
     required String icon,
+    int? memberId,
   }) async {
     final Database db = await _appDatabase.database;
     final int now = DateTime.now().millisecondsSinceEpoch;
@@ -896,6 +1109,7 @@ class LedgerRepository {
       'name': name,
       'type': type.name,
       'icon': icon,
+      'member_id': memberId,
       'sort_order': order,
       'created_at': now,
       'updated_at': now,
@@ -919,6 +1133,7 @@ class LedgerRepository {
     required String originalName,
     required String name,
     required String icon,
+    int? memberId,
   }) async {
     final Database db = await _appDatabase.database;
     await db.update(
@@ -926,6 +1141,7 @@ class LedgerRepository {
       <String, Object?>{
         'name': name,
         'icon': icon,
+        'member_id': memberId,
         'updated_at': DateTime.now().millisecondsSinceEpoch,
       },
       where: 'name = ?',
@@ -1187,6 +1403,26 @@ class LedgerRepository {
             _minor(entry.amount),
           );
         }
+        if (values.length > 1 || changeMembers) {
+          final List<Map<String, Object?>> uuidRows = await txn.query(
+            'transactions',
+            columns: <String>['uuid'],
+            where: 'id = ?',
+            whereArgs: <Object?>[entry.id],
+            limit: 1,
+          );
+          if (uuidRows.isNotEmpty) {
+            await _insertHistory(
+              txn,
+              transactionId: entry.id,
+              transactionUuid: uuidRows.first['uuid'] as String,
+              action: 'updated',
+              actorMemberId: entry.recordedByMemberId,
+              summary: '批量修改账目',
+              occurredAt: now,
+            );
+          }
+        }
       }
     });
   }
@@ -1196,6 +1432,24 @@ class LedgerRepository {
     await db.transaction((Transaction txn) async {
       for (final LedgerEntry entry in entries) {
         await _applyBalance(txn, entry, -1);
+        final List<Map<String, Object?>> uuidRows = await txn.query(
+          'transactions',
+          columns: <String>['uuid'],
+          where: 'id = ?',
+          whereArgs: <Object?>[entry.id],
+          limit: 1,
+        );
+        if (uuidRows.isNotEmpty) {
+          await _insertHistory(
+            txn,
+            transactionId: entry.id,
+            transactionUuid: uuidRows.first['uuid'] as String,
+            action: 'deleted',
+            actorMemberId: entry.recordedByMemberId,
+            summary: '批量删除账目 ¥${entry.amount.toStringAsFixed(2)}',
+            occurredAt: DateTime.now().millisecondsSinceEpoch,
+          );
+        }
         await txn.delete(
           'transactions',
           where: 'id = ?',
@@ -1296,6 +1550,10 @@ class LedgerRepository {
     final int now = DateTime.now().millisecondsSinceEpoch;
     await db.transaction((Transaction txn) async {
       for (final String table in <String>[
+        'entry_history',
+        'transaction_visible_members',
+        'member_debt_settlements',
+        'member_budgets',
         'member_debts',
         'transaction_fundings',
         'transaction_members',
@@ -1329,12 +1587,17 @@ class LedgerRepository {
         'created_at': now,
         'updated_at': now,
       });
-      await txn.insert('members', <String, Object?>{
+      final int memberId = await txn.insert('members', <String, Object?>{
         'uuid': _uuid('member', now),
         'name': '我',
         'color_value': 0xFF2E7CF6,
         'sort_order': 0,
         'created_at': now,
+        'updated_at': now,
+      });
+      await txn.insert('settings', <String, Object?>{
+        'key': 'current_member_id',
+        'value': '$memberId',
         'updated_at': now,
       });
       const List<(String, String, String)> defaults =
@@ -1456,6 +1719,7 @@ class LedgerRepository {
         }
       }
       if (sourceVersion < 6) await _backfillV6Tables(txn);
+      if (sourceVersion < 7) await _backfillV7Tables(txn);
     });
   }
 
@@ -1486,6 +1750,24 @@ class LedgerRepository {
           WHERE f.transaction_id = transactions.id
         )
     ''');
+  }
+
+  Future<void> _backfillV7Tables(DatabaseExecutor db) async {
+    final int now = DateTime.now().millisecondsSinceEpoch;
+    final List<Map<String, Object?>> members = await db.query(
+      'members',
+      columns: <String>['id'],
+      where: 'archived_at IS NULL',
+      orderBy: 'sort_order, id',
+      limit: 1,
+    );
+    if (members.isNotEmpty) {
+      await db.insert('settings', <String, Object?>{
+        'key': 'current_member_id',
+        'value': '${members.first['id']}',
+        'updated_at': now,
+      }, conflictAlgorithm: ConflictAlgorithm.ignore);
+    }
   }
 
   Future<({int imported, int skipped, int members, int accounts})> importTonglv(
@@ -1737,6 +2019,7 @@ class LedgerRepository {
       icon: row['icon'] as String? ?? 'tag',
       custom: (row['uuid'] as String? ?? '').startsWith('custom-category-'),
       both: rawType == 'both',
+      memberId: row['member_id'] as int?,
     );
   }
 
@@ -1764,6 +2047,7 @@ class LedgerRepository {
     List<int> memberIds,
     List<MemberShare> memberShares,
     List<EntryFunding> fundings,
+    List<int> visibleMemberIds,
   ) {
     final EntryType type = EntryType.values.byName(row['type'] as String);
     return LedgerEntry(
@@ -1783,6 +2067,11 @@ class LedgerRepository {
       memberShares: memberShares,
       fundings: fundings,
       outsideBudget: ((row['outside_budget'] as int?) ?? 0) == 1,
+      recordedByMemberId: row['recorded_by_member_id'] as int?,
+      visibility: EntryVisibility.values.byName(
+        row['visibility'] as String? ?? 'all',
+      ),
+      visibleMemberIds: visibleMemberIds,
       recurring: row['recurring_rule_id'] != null,
       recurringFrequency: (row['recurring_frequency'] as String?) ?? 'month',
       adjustmentDelta: ((row['adjustment_delta_minor'] as int?) ?? 0) / 100,
@@ -2017,6 +2306,64 @@ class LedgerRepository {
         'sort_order': index,
       });
     }
+  }
+
+  Future<void> _insertVisibleMembers(
+    DatabaseExecutor db,
+    int transactionId,
+    List<int> memberIds,
+  ) async {
+    for (final int memberId in memberIds.toSet()) {
+      await db.insert('transaction_visible_members', <String, Object?>{
+        'transaction_id': transactionId,
+        'member_id': memberId,
+      });
+    }
+  }
+
+  Future<void> _insertHistory(
+    DatabaseExecutor db, {
+    required int transactionId,
+    required String transactionUuid,
+    required String action,
+    required int? actorMemberId,
+    required String summary,
+    required int occurredAt,
+  }) async {
+    await db.insert('entry_history', <String, Object?>{
+      'transaction_id': transactionId,
+      'transaction_uuid': transactionUuid,
+      'action': action,
+      'actor_member_id': actorMemberId,
+      'summary': summary,
+      'occurred_at': occurredAt,
+    });
+  }
+
+  String _entryUpdateSummary(LedgerEntry previous, LedgerEntry next) {
+    final List<String> changes = <String>[];
+    if (_minor(previous.amount) != _minor(next.amount)) changes.add('金额');
+    if (previous.category != next.category) changes.add('分类');
+    if (previous.memberIds
+            .toSet()
+            .difference(next.memberIds.toSet())
+            .isNotEmpty ||
+        next.memberIds
+            .toSet()
+            .difference(previous.memberIds.toSet())
+            .isNotEmpty) {
+      changes.add('承担成员');
+    }
+    if (previous.fundings.length != next.fundings.length ||
+        previous.accountId != next.accountId) {
+      changes.add('支付来源');
+    }
+    if (previous.visibility != next.visibility ||
+        previous.visibleMemberIds.length != next.visibleMemberIds.length) {
+      changes.add('可见范围');
+    }
+    if (previous.note != next.note) changes.add('备注');
+    return changes.isEmpty ? '保存账目' : '修改${changes.join('、')}';
   }
 
   Future<void> _insertDebts(
