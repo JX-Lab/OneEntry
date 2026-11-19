@@ -91,7 +91,7 @@ abstract final class AppTheme {
   static const List<AppAccent> accents = <AppAccent>[
     AppAccent(
       key: 'indigo',
-      label: '交汇靛',
+      label: '账簿靛',
       primary: brandIris,
       secondary: brandIrisLight,
       action: Color(0xFF4338CA),

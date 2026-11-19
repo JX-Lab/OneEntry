@@ -471,7 +471,7 @@ class _HomePageState extends State<HomePage> {
                                           style: TextStyle(
                                             color: Colors.white,
                                             fontSize: 16,
-                                            fontWeight: FontWeight.w600,
+                                            fontWeight: FontWeight.w700,
                                           ),
                                         ),
                                       ],
@@ -1670,41 +1670,33 @@ class _VoiceButton extends StatelessWidget {
           height: 50,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            color: state == _VoiceState.idle
-                ? Theme.of(context).colorScheme.surface
-                : null,
-            gradient: state == _VoiceState.idle
-                ? null
-                : LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: state == _VoiceState.listening
-                        ? const <Color>[AppTheme.expense, Color(0xFFE53935)]
-                        : <Color>[
-                            AppTheme.accentOf(context).primary,
-                            AppTheme.accentOf(context).secondary,
-                          ],
-                  ),
-            border: Border.all(
-              color: state == _VoiceState.idle
-                  ? Theme.of(context).colorScheme.outlineVariant
-                  : Colors.transparent,
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: state == _VoiceState.listening
+                  ? const <Color>[AppTheme.expense, Color(0xFFE53935)]
+                  : <Color>[
+                      AppTheme.accentOf(context).primary,
+                      AppTheme.accentOf(context).secondary,
+                    ],
             ),
-            boxShadow: state == _VoiceState.idle
-                ? const <BoxShadow>[]
-                : <BoxShadow>[
-                    BoxShadow(
-                      color: AppTheme.expense.withValues(alpha: .28),
-                      blurRadius: 16,
-                      offset: const Offset(0, 7),
-                    ),
-                  ],
+            boxShadow: <BoxShadow>[
+              BoxShadow(
+                color:
+                    (state == _VoiceState.listening
+                            ? AppTheme.expense
+                            : AppTheme.accentOf(context).primary)
+                        .withValues(alpha: .26),
+                blurRadius: 16,
+                offset: const Offset(0, 7),
+              ),
+            ],
           ),
           child: Center(
             child: switch (state) {
               _VoiceState.idle => const Icon(
                 Icons.mic_none_rounded,
-                color: AppTheme.brandIris,
+                color: Colors.white,
               ),
               _VoiceState.listening => const Icon(
                 Icons.close_rounded,

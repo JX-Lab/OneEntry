@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-labelledby="title desc">
-  <title id="title">一笔交汇标志</title>
-  <desc id="desc">四条保持独立的环形笔迹彼此交叠，共同围出一个共享中心。</desc>
+  <title id="title">一笔共同账本标志</title>
+  <desc id="desc">一本打开的账簿带有三枚彩色书签，账页中的三行记录分别对应不同主体。</desc>
   <defs>
     <linearGradient id="background" x1="0" y1="0" x2="1" y2="1">
       <stop offset="0" stop-color="#29265C"/>
@@ -8,10 +8,20 @@
     </linearGradient>
   </defs>
   <rect width="1024" height="1024" rx="232" fill="url(#background)"/>
-  <g fill="none" stroke-width="54" stroke-linecap="round" stroke-linejoin="round">
-    <ellipse cx="398" cy="398" rx="180" ry="138" transform="rotate(-12 398 398)" stroke="#F8F6FF"/>
-    <ellipse cx="626" cy="398" rx="180" ry="138" transform="rotate(12 626 398)" stroke="#B9F1EA"/>
-    <ellipse cx="398" cy="626" rx="180" ry="138" transform="rotate(12 398 626)" stroke="#FFD8CE"/>
-    <ellipse cx="626" cy="626" rx="180" ry="138" transform="rotate(-12 626 626)" stroke="#D9CEFF"/>
+  <path d="M316 232h92v214l-46-36-46 36z" fill="#FFB7A7"/>
+  <path d="M466 210h92v220l-46-36-46 36z" fill="#8FE1D7"/>
+  <path d="M616 232h92v214l-46-36-46 36z" fill="#C7B9FF"/>
+  <path d="M512 348c-71-57-177-76-286-34v428c114-34 214-14 286 42z" fill="#F8F6FF"/>
+  <path d="M512 348c71-57 177-76 286-34v428c-114-34-214-14-286 42z" fill="#F1EEFF"/>
+  <path d="M512 348v436" fill="none" stroke="#D6D0ED" stroke-width="20" stroke-linecap="round"/>
+  <g fill="none" stroke="#403B78" stroke-width="24" stroke-linecap="round">
+    <path d="M340 448h104"/><path d="M340 548h124"/><path d="M340 648h88"/>
+    <path d="M566 448h112"/><path d="M566 548h152"/><path d="M566 648h126"/>
+  </g>
+  <circle cx="298" cy="448" r="17" fill="#FF8F7A"/>
+  <circle cx="298" cy="548" r="17" fill="#5AD7CC"/>
+  <circle cx="298" cy="648" r="17" fill="#A793FF"/>
+  <g fill="none" stroke="#403B78" stroke-width="18" stroke-linecap="round">
+    <path d="M734 426v44m-22-22h44"/><path d="M722 548h44"/><path d="M734 626v44m-22-22h44"/>
   </g>
 </svg>

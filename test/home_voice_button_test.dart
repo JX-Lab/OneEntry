@@ -138,7 +138,7 @@ void main() {
     );
   });
 
-  testWidgets('首页卡片和主按钮使用渐变，语音入口保持从属', (WidgetTester tester) async {
+  testWidgets('语音与手动记账按钮使用同一组渐变色', (WidgetTester tester) async {
     final LedgerController controller = LedgerController(
       LedgerRepository(AppDatabase()),
     );
@@ -181,16 +181,23 @@ void main() {
     final int verticalInkCount = inkGradients.where(isVertical).length;
 
     expect(verticalBoxCount, greaterThanOrEqualTo(1));
-    expect(verticalInkCount, greaterThanOrEqualTo(1));
-    final Ink voiceInk = tester.widget<Ink>(
-      find
-          .ancestor(
-            of: find.byIcon(Icons.mic_none_rounded),
-            matching: find.byType(Ink),
-          )
-          .first,
-    );
-    expect((voiceInk.decoration as BoxDecoration).gradient, isNull);
+    expect(verticalInkCount, greaterThanOrEqualTo(2));
+    final Finder voiceInk = find
+        .ancestor(
+          of: find.byIcon(Icons.mic_none_rounded),
+          matching: find.byType(Ink),
+        )
+        .first;
+    final Finder manualInk = find
+        .ancestor(of: find.text('记一笔'), matching: find.byType(Ink))
+        .first;
+    final LinearGradient voiceGradient =
+        (tester.widget<Ink>(voiceInk).decoration as BoxDecoration).gradient!
+            as LinearGradient;
+    final LinearGradient manualGradient =
+        (tester.widget<Ink>(manualInk).decoration as BoxDecoration).gradient!
+            as LinearGradient;
+    expect(voiceGradient.colors, manualGradient.colors);
   });
 
   testWidgets('四位数月预算在手机宽度下不溢出', (WidgetTester tester) async {

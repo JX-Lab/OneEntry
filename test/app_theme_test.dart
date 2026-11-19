@@ -13,7 +13,7 @@ void main() {
     }
   });
 
-  test('未知主题色会回退到默认交汇靛', () {
+  test('未知主题色会回退到默认账簿靛', () {
     expect(AppTheme.accentFor('missing').key, AppTheme.defaultAccentKey);
   });
 
