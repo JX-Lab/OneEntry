@@ -94,7 +94,7 @@ Future<void> showEntryDetailSheet({
                   : null,
             ),
           _DetailRow(
-            label: '承担',
+            label: entry.type == EntryType.income ? '收入归属' : '付款成员',
             value: members.isEmpty ? '无' : members.join('、'),
           ),
           _DetailRow(label: '记录者', value: recorder),

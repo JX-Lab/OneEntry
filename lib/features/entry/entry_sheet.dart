@@ -472,7 +472,11 @@ class _EntrySheetState extends State<EntrySheet> {
       isScrollControlled: true,
       useSafeArea: true,
       builder: (BuildContext context) => _MemberPickerSheet(
-        title: _type == EntryType.transfer ? '选择操作者' : '选择成员',
+        title: _type == EntryType.transfer
+            ? '选择操作者'
+            : _type == EntryType.income
+            ? '选择收入归属'
+            : '选择付款成员',
         members: members,
         selectedIds: _members,
       ),
@@ -489,6 +493,7 @@ class _EntrySheetState extends State<EntrySheet> {
         ..clear()
         ..addAll(result);
     });
+    if (result.length > 1) await _editPayerSplit(members);
   }
 
   Future<void> _editPayerSplit(List<LedgerMember> members) async {
@@ -505,6 +510,7 @@ class _EntrySheetState extends State<EntrySheet> {
           isScrollControlled: true,
           useSafeArea: true,
           builder: (BuildContext context) => _PayerSplitSheet(
+            title: _type == EntryType.income ? '收入分配' : '付款分摊',
             total: amount,
             members: members
                 .where((LedgerMember member) => _members.contains(member.id))
@@ -1160,43 +1166,14 @@ class _EntrySheetState extends State<EntrySheet> {
 
   Future<void> _pickDateTime() async {
     _dismissKeyboard();
-    final DateTime now = DateTime.now();
-    final DateTime? date = await showDatePicker(
+    final DateTime? selected = await showModalBottomSheet<DateTime>(
       context: context,
-      initialDate: DateTime(
-        _occurredAt.year,
-        _occurredAt.month,
-        _occurredAt.day,
-      ),
-      firstDate: DateTime(1970),
-      lastDate: DateTime(now.year, now.month, now.day),
-      initialEntryMode: DatePickerEntryMode.calendar,
+      isScrollControlled: true,
+      useSafeArea: true,
+      builder: (BuildContext context) =>
+          _DateTimeEditorSheet(initial: _occurredAt),
     );
-    if (!mounted) return;
-    _dismissKeyboard();
-    if (date == null) return;
-    final TimeOfDay? time = await showTimePicker(
-      context: context,
-      initialTime: TimeOfDay.fromDateTime(_occurredAt),
-      initialEntryMode: TimePickerEntryMode.dial,
-      helpText: '选择时分',
-    );
-    if (!mounted) return;
-    _dismissKeyboard();
-    if (time == null) return;
-    DateTime selected = DateTime(
-      date.year,
-      date.month,
-      date.day,
-      time.hour,
-      time.minute,
-    );
-    if (selected.isAfter(now)) {
-      selected = now;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('时间不能超过当前时间，已设为现在')));
-    }
+    if (!mounted || selected == null) return;
     setState(() => _occurredAt = selected);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _dismissKeyboard();
@@ -1207,6 +1184,191 @@ class _EntrySheetState extends State<EntrySheet> {
     _amountFocusNode.unfocus();
     FocusManager.instance.primaryFocus?.unfocus();
   }
+}
+
+class _DateTimeEditorSheet extends StatefulWidget {
+  const _DateTimeEditorSheet({required this.initial});
+  final DateTime initial;
+
+  @override
+  State<_DateTimeEditorSheet> createState() => _DateTimeEditorSheetState();
+}
+
+class _DateTimeEditorSheetState extends State<_DateTimeEditorSheet> {
+  late DateTime _value = widget.initial;
+  late final TextEditingController _date = TextEditingController(
+    text: _formatDate(_value),
+  );
+  late final TextEditingController _time = TextEditingController(
+    text: _formatTime(_value),
+  );
+  String? _error;
+
+  static String _formatDate(DateTime value) =>
+      '${value.year}-${value.month.toString().padLeft(2, '0')}-${value.day.toString().padLeft(2, '0')}';
+  static String _formatTime(DateTime value) =>
+      '${value.hour.toString().padLeft(2, '0')}:${value.minute.toString().padLeft(2, '0')}';
+
+  @override
+  void dispose() {
+    _date.dispose();
+    _time.dispose();
+    super.dispose();
+  }
+
+  DateTime? _parse() {
+    final RegExpMatch? dateMatch = RegExp(
+      r'^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})$',
+    ).firstMatch(_date.text.trim());
+    final RegExpMatch? timeMatch = RegExp(
+      r'^(\d{1,2}):(\d{1,2})$',
+    ).firstMatch(_time.text.trim());
+    if (dateMatch == null || timeMatch == null) return null;
+    final int year = int.parse(dateMatch.group(1)!);
+    final int month = int.parse(dateMatch.group(2)!);
+    final int day = int.parse(dateMatch.group(3)!);
+    final int hour = int.parse(timeMatch.group(1)!);
+    final int minute = int.parse(timeMatch.group(2)!);
+    if (month < 1 ||
+        month > 12 ||
+        day < 1 ||
+        day > 31 ||
+        hour > 23 ||
+        minute > 59) {
+      return null;
+    }
+    final DateTime value = DateTime(year, month, day, hour, minute);
+    if (value.year != year || value.month != month || value.day != day) {
+      return null;
+    }
+    return value;
+  }
+
+  Future<void> _pickDate() async {
+    final DateTime now = DateTime.now();
+    final DateTime? value = await showDatePicker(
+      context: context,
+      initialDate: _value,
+      firstDate: DateTime(1970),
+      lastDate: DateTime(now.year, now.month, now.day),
+    );
+    if (value == null) return;
+    setState(() {
+      _value = DateTime(
+        value.year,
+        value.month,
+        value.day,
+        _value.hour,
+        _value.minute,
+      );
+      _date.text = _formatDate(_value);
+      _error = null;
+    });
+  }
+
+  Future<void> _pickTime() async {
+    final TimeOfDay? value = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.fromDateTime(_value),
+    );
+    if (value == null) return;
+    setState(() {
+      _value = DateTime(
+        _value.year,
+        _value.month,
+        _value.day,
+        value.hour,
+        value.minute,
+      );
+      _time.text = _formatTime(_value);
+      _error = null;
+    });
+  }
+
+  void _save() {
+    final DateTime? value = _parse();
+    if (value == null) {
+      setState(() => _error = '请输入有效的日期和时间');
+      return;
+    }
+    if (value.isAfter(DateTime.now())) {
+      setState(() => _error = '时间不能超过现在');
+      return;
+    }
+    Navigator.pop(context, value);
+  }
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
+    child: Column(
+      mainAxisSize: MainAxisSize.min,
+      children: <Widget>[
+        SizedBox(
+          height: 54,
+          child: Row(
+            children: <Widget>[
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('取消'),
+              ),
+              const Expanded(
+                child: Text(
+                  '日期与时间',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontWeight: FontWeight.w700),
+                ),
+              ),
+              TextButton(onPressed: _save, child: const Text('确定')),
+            ],
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 20),
+          child: Row(
+            children: <Widget>[
+              Expanded(
+                flex: 3,
+                child: TextField(
+                  controller: _date,
+                  keyboardType: TextInputType.datetime,
+                  decoration: InputDecoration(
+                    labelText: '日期',
+                    hintText: '2026-11-20',
+                    suffixIcon: IconButton(
+                      tooltip: '选择日期',
+                      onPressed: _pickDate,
+                      icon: const Icon(Icons.calendar_month_outlined),
+                    ),
+                    errorText: _error,
+                  ),
+                  onChanged: (_) => setState(() => _error = null),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                flex: 2,
+                child: TextField(
+                  controller: _time,
+                  keyboardType: TextInputType.datetime,
+                  decoration: InputDecoration(
+                    labelText: '时间',
+                    hintText: '20:05',
+                    suffixIcon: IconButton(
+                      tooltip: '选择时间',
+                      onPressed: _pickTime,
+                      icon: const Icon(Icons.schedule_outlined),
+                    ),
+                  ),
+                  onChanged: (_) => setState(() => _error = null),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    ),
+  );
 }
 
 class _TypeTabs extends StatelessWidget {
@@ -1515,12 +1677,14 @@ class _PayerSplitResult {
 
 class _PayerSplitSheet extends StatefulWidget {
   const _PayerSplitSheet({
+    required this.title,
     required this.total,
     required this.members,
     required this.custom,
     required this.initial,
   });
 
+  final String title;
   final double total;
   final List<LedgerMember> members;
   final bool custom;
@@ -1574,11 +1738,11 @@ class _PayerSplitSheetState extends State<_PayerSplitSheet> {
                   onPressed: () => Navigator.pop(context),
                   child: const Text('取消'),
                 ),
-                const Expanded(
+                Expanded(
                   child: Text(
-                    '付款分摊',
+                    widget.title,
                     textAlign: TextAlign.center,
-                    style: TextStyle(fontWeight: FontWeight.w700),
+                    style: const TextStyle(fontWeight: FontWeight.w700),
                   ),
                 ),
                 TextButton(
@@ -1704,7 +1868,10 @@ class _FundingEditorSheetState extends State<_FundingEditorSheet> {
       if (source != null) _rows.add(_FundingDraft(source, item.amount));
     }
     if (_rows.isEmpty && sources.isNotEmpty) {
-      _rows.add(_FundingDraft(sources.first, widget.total));
+      final double initial = widget.type == EntryType.expense
+          ? widget.total.clamp(0, sources.first.available).toDouble()
+          : widget.total;
+      _rows.add(_FundingDraft(sources.first, initial));
     }
   }
 
@@ -1741,31 +1908,9 @@ class _FundingEditorSheetState extends State<_FundingEditorSheet> {
     final _FundingSource? source = await showModalBottomSheet<_FundingSource>(
       context: context,
       useSafeArea: true,
-      builder: (BuildContext context) => ListView(
-        shrinkWrap: true,
-        padding: const EdgeInsets.only(bottom: 16),
-        children: <Widget>[
-          const Padding(
-            padding: EdgeInsets.fromLTRB(18, 16, 18, 8),
-            child: Text(
-              '选择账户',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
-            ),
-          ),
-          ..._sources().map(
-            (_FundingSource item) => ListTile(
-              leading: CircleAvatar(
-                child: Icon(_entryAccountIcon(item.account.icon)),
-              ),
-              title: Text(item.label),
-              subtitle: widget.type == EntryType.expense
-                  ? Text('可用 ¥${item.available.toStringAsFixed(2)}')
-                  : const Text('收入将进入这个账户'),
-              onTap: () => Navigator.pop(context, item),
-            ),
-          ),
-        ],
-      ),
+      isScrollControlled: true,
+      builder: (BuildContext context) =>
+          _FundingSourcePickerSheet(sources: _sources(), type: widget.type),
     );
     if (source == null || !mounted) return;
     setState(() {
@@ -1852,29 +1997,21 @@ class _FundingEditorSheetState extends State<_FundingEditorSheet> {
             ),
           ),
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 4, 16, 10),
-            child: Container(
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                borderRadius: BorderRadius.circular(14),
-              ),
-              child: Row(
-                children: <Widget>[
-                  Expanded(
-                    child: _FundingMetric(label: '账目金额', value: widget.total),
-                  ),
-                  Expanded(
-                    child: _FundingMetric(label: '已分配', value: _allocated),
-                  ),
-                  Expanded(
-                    child: _FundingMetric(
-                      label: '还需分配',
-                      value: _remaining,
-                      warning: !complete,
-                    ),
-                  ),
-                ],
+            padding: const EdgeInsets.fromLTRB(18, 0, 18, 10),
+            child: Text(
+              complete
+                  ? '已分配 ¥${widget.total.toStringAsFixed(2)}'
+                  : !withinAvailable
+                  ? '有账户超过可用余额'
+                  : _remaining > 0
+                  ? '还需从其他账户分配 ¥${_remaining.toStringAsFixed(2)}'
+                  : '已多分配 ¥${(-_remaining).toStringAsFixed(2)}',
+              style: TextStyle(
+                fontSize: 12,
+                color: complete
+                    ? const Color(0xFF8A9099)
+                    : AppTheme.ledgerOf(context).expense,
+                fontWeight: FontWeight.w600,
               ),
             ),
           ),
@@ -1887,26 +2024,6 @@ class _FundingEditorSheetState extends State<_FundingEditorSheet> {
                 label: const Text('按账户顺序自动补足'),
               ),
             ),
-          AnimatedSwitcher(
-            duration: const Duration(milliseconds: 180),
-            child: complete
-                ? const SizedBox(height: 8, key: ValueKey<String>('complete'))
-                : Padding(
-                    key: const ValueKey<String>('remaining'),
-                    padding: const EdgeInsets.fromLTRB(18, 8, 18, 0),
-                    child: Text(
-                      !withinAvailable
-                          ? '有一项超过可用资金'
-                          : _remaining > 0
-                          ? '还差 ¥${_remaining.toStringAsFixed(2)}'
-                          : '已多分配 ¥${(-_remaining).toStringAsFixed(2)}',
-                      style: TextStyle(
-                        color: AppTheme.ledgerOf(context).expense,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-          ),
           Expanded(
             child: ListView.separated(
               padding: const EdgeInsets.fromLTRB(12, 8, 12, 16),
@@ -1978,49 +2095,85 @@ class _FundingEditorSheetState extends State<_FundingEditorSheet> {
               },
             ),
           ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-            child: OutlinedButton.icon(
-              onPressed: _remaining > .004 ? _addOrReplace : null,
-              icon: const Icon(Icons.add),
-              label: const Text('添加资金来源'),
+          if (_remaining > .004)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+              child: OutlinedButton.icon(
+                onPressed: _addOrReplace,
+                icon: const Icon(Icons.add),
+                label: const Text('添加账户'),
+              ),
             ),
-          ),
         ],
       ),
     );
   }
 }
 
-class _FundingMetric extends StatelessWidget {
-  const _FundingMetric({
-    required this.label,
-    required this.value,
-    this.warning = false,
-  });
-
-  final String label;
-  final double value;
-  final bool warning;
+class _FundingSourcePickerSheet extends StatefulWidget {
+  const _FundingSourcePickerSheet({required this.sources, required this.type});
+  final List<_FundingSource> sources;
+  final EntryType type;
 
   @override
-  Widget build(BuildContext context) => Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: <Widget>[
-      Text(
-        label,
-        style: const TextStyle(fontSize: 11, color: Color(0xFF8A9099)),
+  State<_FundingSourcePickerSheet> createState() =>
+      _FundingSourcePickerSheetState();
+}
+
+class _FundingSourcePickerSheetState extends State<_FundingSourcePickerSheet> {
+  final TextEditingController _search = TextEditingController();
+
+  @override
+  void dispose() {
+    _search.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final String query = _search.text.trim().toLowerCase();
+    final List<_FundingSource> filtered = widget.sources
+        .where(
+          (_FundingSource item) => item.label.toLowerCase().contains(query),
+        )
+        .toList();
+    return SizedBox(
+      height: (MediaQuery.sizeOf(context).height * .72).clamp(360, 620),
+      child: Column(
+        children: <Widget>[
+          _PickerSheetHeader(
+            title: '选择账户',
+            onClose: () => Navigator.pop(context),
+          ),
+          _PickerSearchField(
+            controller: _search,
+            hintText: '搜索账户',
+            onChanged: () => setState(() {}),
+          ),
+          Expanded(
+            child: filtered.isEmpty
+                ? const _PickerEmpty(message: '没有匹配的账户')
+                : ListView.builder(
+                    padding: const EdgeInsets.fromLTRB(8, 0, 8, 16),
+                    itemCount: filtered.length,
+                    itemBuilder: (BuildContext context, int index) {
+                      final _FundingSource item = filtered[index];
+                      return _SelectorRow(
+                        icon: _entryAccountIcon(item.account.icon),
+                        title: item.label,
+                        subtitle: widget.type == EntryType.expense
+                            ? '可用 ¥${item.available.toStringAsFixed(2)}'
+                            : '收入将进入这个账户',
+                        selected: false,
+                        onTap: () => Navigator.pop(context, item),
+                      );
+                    },
+                  ),
+          ),
+        ],
       ),
-      const SizedBox(height: 3),
-      Text(
-        '¥${value.abs().toStringAsFixed(2)}',
-        style: TextStyle(
-          fontWeight: FontWeight.w700,
-          color: warning ? AppTheme.ledgerOf(context).expense : null,
-        ),
-      ),
-    ],
-  );
+    );
+  }
 }
 
 class _AccountPickerSheet extends StatefulWidget {

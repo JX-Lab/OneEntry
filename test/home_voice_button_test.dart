@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:yibi/data/app_database.dart';
 import 'package:yibi/data/ledger_controller.dart';
@@ -8,7 +7,7 @@ import 'package:yibi/features/home/home_page.dart';
 import 'package:yibi/models/ledger_models.dart';
 
 void main() {
-  testWidgets('首页显示语音和手动记账按钮', (WidgetTester tester) async {
+  testWidgets('首页只显示手动记账按钮', (WidgetTester tester) async {
     final LedgerController controller = LedgerController(
       LedgerRepository(AppDatabase()),
     );
@@ -19,7 +18,6 @@ void main() {
         home: HomePage(
           controller: controller,
           onAddEntry: () {},
-          onVoiceEntry: (_) {},
           onEditEntry: (_) {},
           onDeleteEntry: (_) {},
           onOpenStatistics: () {},
@@ -33,7 +31,7 @@ void main() {
     await tester.pump();
 
     expect(tester.takeException(), isNull);
-    expect(find.byIcon(Icons.mic_none_rounded), findsOneWidget);
+    expect(find.byIcon(Icons.mic_none_rounded), findsNothing);
     expect(find.text('记一笔'), findsOneWidget);
     expect(tester.widget<Scaffold>(find.byType(Scaffold)).extendBody, isTrue);
     expect(tester.widget<AppBar>(find.byType(AppBar)).centerTitle, isFalse);
@@ -70,7 +68,6 @@ void main() {
         home: HomePage(
           controller: controller,
           onAddEntry: () {},
-          onVoiceEntry: (_) {},
           onEditEntry: (_) {},
           onDeleteEntry: (_) {},
           onOpenStatistics: () {},
@@ -109,7 +106,6 @@ void main() {
         home: HomePage(
           controller: controller,
           onAddEntry: () {},
-          onVoiceEntry: (_) {},
           onEditEntry: (_) {},
           onDeleteEntry: (_) {},
           onOpenStatistics: () {},
@@ -138,68 +134,6 @@ void main() {
     );
   });
 
-  testWidgets('语音与手动记账按钮使用同一组渐变色', (WidgetTester tester) async {
-    final LedgerController controller = LedgerController(
-      LedgerRepository(AppDatabase()),
-    );
-    addTearDown(controller.dispose);
-
-    await tester.pumpWidget(
-      MaterialApp(
-        home: HomePage(
-          controller: controller,
-          onAddEntry: () {},
-          onVoiceEntry: (_) {},
-          onEditEntry: (_) {},
-          onDeleteEntry: (_) {},
-          onOpenStatistics: () {},
-          onOpenSettings: () {},
-          onOpenAccounts: () {},
-          onOpenMembers: () {},
-          onOpenBudget: (_) {},
-        ),
-      ),
-    );
-
-    final Iterable<LinearGradient> boxGradients = tester
-        .widgetList<DecoratedBox>(find.byType(DecoratedBox))
-        .map((DecoratedBox box) => box.decoration)
-        .whereType<BoxDecoration>()
-        .map((BoxDecoration decoration) => decoration.gradient)
-        .whereType<LinearGradient>();
-    final Iterable<LinearGradient> inkGradients = tester
-        .widgetList<Ink>(find.byType(Ink))
-        .map((Ink ink) => ink.decoration)
-        .whereType<BoxDecoration>()
-        .map((BoxDecoration decoration) => decoration.gradient)
-        .whereType<LinearGradient>();
-    bool isVertical(LinearGradient gradient) =>
-        gradient.begin == Alignment.topCenter &&
-        gradient.end == Alignment.bottomCenter;
-
-    final int verticalBoxCount = boxGradients.where(isVertical).length;
-    final int verticalInkCount = inkGradients.where(isVertical).length;
-
-    expect(verticalBoxCount, greaterThanOrEqualTo(1));
-    expect(verticalInkCount, greaterThanOrEqualTo(2));
-    final Finder voiceInk = find
-        .ancestor(
-          of: find.byIcon(Icons.mic_none_rounded),
-          matching: find.byType(Ink),
-        )
-        .first;
-    final Finder manualInk = find
-        .ancestor(of: find.text('记一笔'), matching: find.byType(Ink))
-        .first;
-    final LinearGradient voiceGradient =
-        (tester.widget<Ink>(voiceInk).decoration as BoxDecoration).gradient!
-            as LinearGradient;
-    final LinearGradient manualGradient =
-        (tester.widget<Ink>(manualInk).decoration as BoxDecoration).gradient!
-            as LinearGradient;
-    expect(voiceGradient.colors, manualGradient.colors);
-  });
-
   testWidgets('四位数月预算在手机宽度下不溢出', (WidgetTester tester) async {
     await tester.binding.setSurfaceSize(const Size(390, 844));
     addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -226,7 +160,6 @@ void main() {
         home: HomePage(
           controller: controller,
           onAddEntry: () {},
-          onVoiceEntry: (_) {},
           onEditEntry: (_) {},
           onDeleteEntry: (_) {},
           onOpenStatistics: () {},
@@ -241,90 +174,5 @@ void main() {
 
     expect(find.text('本月预算 ¥5000.00'), findsOneWidget);
     expect(tester.takeException(), isNull);
-  });
-
-  testWidgets('关闭语音记账后首页不显示麦克风', (WidgetTester tester) async {
-    final LedgerController controller = LedgerController(
-      LedgerRepository(AppDatabase()),
-    );
-    controller.voiceEnabled = false;
-    addTearDown(controller.dispose);
-
-    await tester.pumpWidget(
-      MaterialApp(
-        home: HomePage(
-          controller: controller,
-          onAddEntry: () {},
-          onVoiceEntry: (_) {},
-          onEditEntry: (_) {},
-          onDeleteEntry: (_) {},
-          onOpenStatistics: () {},
-          onOpenSettings: () {},
-          onOpenAccounts: () {},
-          onOpenMembers: () {},
-          onOpenBudget: (_) {},
-        ),
-      ),
-    );
-
-    expect(find.byIcon(Icons.mic_none_rounded), findsNothing);
-    expect(find.text('记一笔'), findsOneWidget);
-  });
-
-  testWidgets('语音识别超过 15 秒会自动取消', (WidgetTester tester) async {
-    const MethodChannel speech = MethodChannel('com.junxu.yibi/speech');
-    bool cancelled = false;
-    bool stopped = false;
-    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-        .setMockMethodCallHandler(speech, (MethodCall call) async {
-          switch (call.method) {
-            case 'requestPermission':
-            case 'isAvailable':
-            case 'start':
-              return true;
-            case 'cancel':
-              cancelled = true;
-              return null;
-            case 'stop':
-              stopped = true;
-              return null;
-          }
-          return null;
-        });
-    addTearDown(
-      () => TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-          .setMockMethodCallHandler(speech, null),
-    );
-    final LedgerController controller = LedgerController(
-      LedgerRepository(AppDatabase()),
-    );
-    addTearDown(controller.dispose);
-
-    await tester.pumpWidget(
-      MaterialApp(
-        home: HomePage(
-          controller: controller,
-          onAddEntry: () {},
-          onVoiceEntry: (_) {},
-          onEditEntry: (_) {},
-          onDeleteEntry: (_) {},
-          onOpenStatistics: () {},
-          onOpenSettings: () {},
-          onOpenAccounts: () {},
-          onOpenMembers: () {},
-          onOpenBudget: (_) {},
-        ),
-      ),
-    );
-    await tester.tap(find.byIcon(Icons.mic_none_rounded));
-    await tester.pump(const Duration(milliseconds: 500));
-    await tester.pump(const Duration(seconds: 10));
-    await tester.pump();
-    expect(stopped, isTrue);
-    await tester.pump(const Duration(seconds: 5));
-    await tester.pump();
-
-    expect(cancelled, isTrue);
-    expect(find.text('语音识别超时，请重试'), findsOneWidget);
   });
 }

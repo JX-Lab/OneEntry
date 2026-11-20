@@ -53,8 +53,8 @@ void main() {
 
     await tester.tap(find.text('付款成员（可多选）'));
     await tester.pumpAndSettle();
-    expect(find.text('选择成员'), findsOneWidget);
-    Navigator.of(tester.element(find.text('选择成员'))).pop();
+    expect(find.text('选择付款成员'), findsOneWidget);
+    Navigator.of(tester.element(find.text('选择付款成员'))).pop();
     await tester.pumpAndSettle();
 
     expect(
@@ -87,8 +87,8 @@ void main() {
 
     await tester.tap(find.text('时间'));
     await tester.pumpAndSettle();
-    expect(find.byType(DatePickerDialog), findsOneWidget);
-    Navigator.of(tester.element(find.byType(DatePickerDialog))).pop();
+    expect(find.text('日期与时间'), findsOneWidget);
+    Navigator.of(tester.element(find.text('日期与时间'))).pop();
     await tester.pumpAndSettle();
 
     expect(tester.widget<EditableText>(noteInput).focusNode.hasFocus, isFalse);
@@ -131,6 +131,8 @@ void main() {
 
     expect(find.text('组合付款'), findsOneWidget);
     expect(find.text('按账户顺序自动补足'), findsOneWidget);
+    expect(find.text('已分配 ¥2.00'), findsOneWidget);
+    expect(find.text('添加账户'), findsNothing);
   });
 
   testWidgets('组合付款可自动补足并保存预算外账目', (WidgetTester tester) async {
@@ -345,8 +347,7 @@ void main() {
     await tester.tap(find.text('完成 (2)'));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('付款分摊'));
-    await tester.pumpAndSettle();
+    expect(find.text('付款分摊'), findsWidgets);
     await tester.tap(find.text('自定义金额'));
     await tester.pump();
     final Finder splitInputs = find.descendant(

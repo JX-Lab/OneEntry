@@ -490,7 +490,7 @@ abstract final class AppTheme {
         dark
             ? const LedgerSemanticColors(
                 income: Color(0xFF74C0FC),
-                expense: Color(0xFFFF8A8A),
+                expense: Color(0xFFFF5A64),
                 transfer: Color(0xFFB8C0CC),
               )
             : const LedgerSemanticColors(

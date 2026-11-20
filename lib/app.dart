@@ -70,19 +70,6 @@ class _OneEntryAppState extends State<OneEntryApp> {
     }
   }
 
-  Future<void> _addVoiceEntry(LedgerEntry draft) async {
-    final LedgerEntry? result = await _navigatorKey.currentState!
-        .push<LedgerEntry>(
-          MaterialPageRoute<LedgerEntry>(
-            builder: (_) =>
-                EntrySheet(controller: widget.controller, draft: draft),
-          ),
-        );
-    if (result != null) {
-      await _saveNewEntry(result);
-    }
-  }
-
   Future<void> _handleRecurringNotification(LedgerEntry entry) async {
     if (!entry.recurring) return;
     try {
@@ -272,7 +259,6 @@ class _OneEntryAppState extends State<OneEntryApp> {
         home: HomePage(
           controller: widget.controller,
           onAddEntry: _addEntry,
-          onVoiceEntry: _addVoiceEntry,
           onEditEntry: _editEntry,
           onDeleteEntry: widget.controller.deleteEntry,
           onRepeatEntry: _repeatEntry,

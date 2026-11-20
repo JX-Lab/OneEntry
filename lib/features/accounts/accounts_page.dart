@@ -435,12 +435,21 @@ class _AccountDetailPage extends StatelessWidget {
                 ),
           )
           .toList();
+      double accountAmount(LedgerEntry entry) {
+        if (entry.fundings.isNotEmpty) {
+          return entry.fundings
+              .where((EntryFunding item) => item.accountId == accountId)
+              .fold(0, (double sum, EntryFunding item) => sum + item.amount);
+        }
+        return entry.accountId == accountId ? entry.amount : 0;
+      }
+
       final double income = entries
           .where((entry) => entry.type == EntryType.income)
-          .fold(0, (sum, entry) => sum + entry.amount);
+          .fold(0, (sum, entry) => sum + accountAmount(entry));
       final double expense = entries
           .where((entry) => entry.type == EntryType.expense)
-          .fold(0, (sum, entry) => sum + entry.amount);
+          .fold(0, (sum, entry) => sum + accountAmount(entry));
       final Map<String, List<LedgerEntry>> months =
           <String, List<LedgerEntry>>{};
       for (final LedgerEntry entry in entries) {
@@ -549,14 +558,39 @@ class _AccountDetailPage extends StatelessWidget {
             if (entries.isEmpty)
               const Center(child: Text('还没有相关账目'))
             else
-              ...months.entries.map(
-                (month) => Card(
+              ...months.entries.map((month) {
+                final double monthIncome = month.value
+                    .where((entry) => entry.type == EntryType.income)
+                    .fold(0, (sum, entry) => sum + accountAmount(entry));
+                final double monthExpense = month.value
+                    .where((entry) => entry.type == EntryType.expense)
+                    .fold(0, (sum, entry) => sum + accountAmount(entry));
+                return Card(
                   clipBehavior: Clip.antiAlias,
                   child: ExpansionTile(
                     initiallyExpanded: month.key == months.keys.first,
-                    title: Text(
-                      month.key,
-                      style: const TextStyle(fontWeight: FontWeight.w700),
+                    title: Row(
+                      children: <Widget>[
+                        Expanded(
+                          child: Text(
+                            month.key,
+                            style: const TextStyle(fontWeight: FontWeight.w700),
+                          ),
+                        ),
+                        Flexible(
+                          flex: 2,
+                          child: Text(
+                            '收 ${monthIncome.toStringAsFixed(2)}  支 ${monthExpense.toStringAsFixed(2)}',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            textAlign: TextAlign.right,
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: Color(0xFF8A9099),
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                     subtitle: Text('${month.value.length} 笔'),
                     children: month.value
@@ -632,8 +666,8 @@ class _AccountDetailPage extends StatelessWidget {
                         )
                         .toList(),
                   ),
-                ),
-              ),
+                );
+              }),
           ],
         ),
       );

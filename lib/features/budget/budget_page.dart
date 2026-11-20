@@ -41,6 +41,13 @@ class _BudgetPageState extends State<BudgetPage> {
       final double totalSpent = spent + outside;
       final double budget = controller.monthlyBudget;
       final double progress = budget == 0 ? 0 : spent / budget;
+      final List<LedgerMember> budgetMembers = controller.members
+          .where(
+            (LedgerMember member) =>
+                !member.archived &&
+                (controller.memberBudgets[member.id] ?? 0) > 0,
+          )
+          .toList();
       final Map<String, double> categorySpent = <String, double>{};
       final Map<int, double> memberSpent = <int, double>{};
       for (final LedgerEntry entry
@@ -99,37 +106,40 @@ class _BudgetPageState extends State<BudgetPage> {
                     editing: _editing,
                     onTap: _editing ? () => _editTotal(context, _month) : null,
                   ),
-                  if (controller.members.isNotEmpty) ...<Widget>[
+                  if (budgetMembers.isNotEmpty || _editing) ...<Widget>[
                     const Padding(
                       padding: EdgeInsets.fromLTRB(4, 16, 4, 8),
                       child: Text(
-                        '成员预算',
+                        '成员预算（可选）',
                         style: TextStyle(
                           fontSize: 12,
                           color: Color(0xFF8A9099),
                         ),
                       ),
                     ),
-                    ...controller.members
-                        .where((LedgerMember member) => !member.archived)
-                        .map(
-                          (LedgerMember member) => Padding(
-                            padding: const EdgeInsets.only(bottom: 9),
-                            child: InkWell(
-                              borderRadius: BorderRadius.circular(14),
-                              onTap: _editing
-                                  ? () => _editMemberBudget(context, member)
-                                  : null,
-                              child: _CategoryBudget(
-                                name: member.name,
-                                spent: memberSpent[member.id] ?? 0,
-                                budget:
-                                    controller.memberBudgets[member.id] ?? 0,
-                                editing: _editing,
-                              ),
-                            ),
+                    ...budgetMembers.map(
+                      (LedgerMember member) => Padding(
+                        padding: const EdgeInsets.only(bottom: 9),
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(14),
+                          onTap: _editing
+                              ? () => _editMemberBudget(context, member)
+                              : null,
+                          child: _CategoryBudget(
+                            name: member.name,
+                            spent: memberSpent[member.id] ?? 0,
+                            budget: controller.memberBudgets[member.id] ?? 0,
+                            editing: _editing,
                           ),
                         ),
+                      ),
+                    ),
+                    if (_editing)
+                      OutlinedButton.icon(
+                        onPressed: () => _addMemberBudget(context),
+                        icon: const Icon(Icons.person_add_alt_1_outlined),
+                        label: const Text('添加成员预算'),
+                      ),
                   ],
                   const Padding(
                     padding: EdgeInsets.fromLTRB(4, 16, 4, 8),
@@ -275,6 +285,41 @@ class _BudgetPageState extends State<BudgetPage> {
     }
   }
 
+  Future<void> _addMemberBudget(BuildContext context) async {
+    final List<LedgerMember> available = controller.members
+        .where(
+          (LedgerMember member) =>
+              !member.archived &&
+              (controller.memberBudgets[member.id] ?? 0) <= 0,
+        )
+        .toList();
+    if (available.isEmpty) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('所有成员都已有预算')));
+      return;
+    }
+    final int? memberId = await showModalBottomSheet<int>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      builder: (BuildContext context) =>
+          _MemberBudgetPickerSheet(members: available),
+    );
+    if (memberId == null || !context.mounted) return;
+    final LedgerMember member = available.firstWhere(
+      (LedgerMember item) => item.id == memberId,
+    );
+    final double? amount = await _amountDialog(
+      context,
+      '${member.name}的本月预算',
+      0,
+    );
+    if (amount != null && amount > 0) {
+      await controller.setMemberBudget(_month, member.id, amount);
+    }
+  }
+
   Future<void> _saveCategory(
     BuildContext context,
     DateTime month,
@@ -353,6 +398,94 @@ class _BudgetPageState extends State<BudgetPage> {
       ),
     );
     return result;
+  }
+}
+
+class _MemberBudgetPickerSheet extends StatefulWidget {
+  const _MemberBudgetPickerSheet({required this.members});
+  final List<LedgerMember> members;
+
+  @override
+  State<_MemberBudgetPickerSheet> createState() =>
+      _MemberBudgetPickerSheetState();
+}
+
+class _MemberBudgetPickerSheetState extends State<_MemberBudgetPickerSheet> {
+  final TextEditingController _search = TextEditingController();
+
+  @override
+  void dispose() {
+    _search.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final String query = _search.text.trim().toLowerCase();
+    final List<LedgerMember> filtered = widget.members
+        .where(
+          (LedgerMember member) => member.name.toLowerCase().contains(query),
+        )
+        .toList();
+    return SizedBox(
+      height: (MediaQuery.sizeOf(context).height * .7).clamp(360, 620),
+      child: Column(
+        children: <Widget>[
+          SizedBox(
+            height: 52,
+            child: Row(
+              children: <Widget>[
+                IconButton(
+                  onPressed: () => Navigator.pop(context),
+                  icon: const Icon(Icons.close),
+                ),
+                const Expanded(
+                  child: Text(
+                    '选择成员',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                ),
+                const SizedBox(width: 48),
+              ],
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+            child: TextField(
+              controller: _search,
+              decoration: const InputDecoration(
+                hintText: '搜索成员',
+                prefixIcon: Icon(Icons.search),
+              ),
+              onChanged: (_) => setState(() {}),
+            ),
+          ),
+          Expanded(
+            child: filtered.isEmpty
+                ? const Center(child: Text('没有匹配的成员'))
+                : ListView.builder(
+                    padding: const EdgeInsets.fromLTRB(8, 0, 8, 16),
+                    itemCount: filtered.length,
+                    itemBuilder: (BuildContext context, int index) {
+                      final LedgerMember member = filtered[index];
+                      return ListTile(
+                        leading: CircleAvatar(
+                          backgroundColor: Color(member.colorValue),
+                          child: Text(
+                            member.name.substring(0, 1),
+                            style: const TextStyle(color: Colors.white),
+                          ),
+                        ),
+                        title: Text(member.name),
+                        onTap: () => Navigator.pop(context, member.id),
+                      );
+                    },
+                  ),
+          ),
+        ],
+      ),
+    );
   }
 }
 

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -9,7 +11,6 @@ import 'data/ledger_repository.dart';
 import 'services/notification_service.dart';
 import 'services/snapshot_service.dart';
 import 'theme/app_theme.dart';
-import 'widgets/brand_mark.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -46,28 +47,12 @@ class _OneEntryBootstrapState extends State<OneEntryBootstrap> {
         LedgerRepository(database),
       );
       await controller.initialize();
-      try {
-        await SnapshotService.createIfDue(controller);
-      } catch (error, stackTrace) {
-        debugPrint('Automatic snapshot failed: $error\n$stackTrace');
-      }
-      try {
-        await NotificationService.initialize();
-        await NotificationService.scheduleDaily(
-          enabled: controller.dailyReminderEnabled,
-          hour: controller.dailyReminderHour,
-          minute: controller.dailyReminderMinute,
-        );
-        await NotificationService.scheduleRecurringCheck();
-      } catch (error, stackTrace) {
-        // A device-specific notification failure must never block bookkeeping.
-        debugPrint('Notification initialization failed: $error\n$stackTrace');
-      }
       if (!mounted) {
         controller.dispose();
         return;
       }
       setState(() => _controller = controller);
+      unawaited(_finishStartupTasks(controller));
     } catch (error, stackTrace) {
       debugPrint('OneEntry startup failed: $error\n$stackTrace');
       if (!mounted) return;
@@ -75,6 +60,25 @@ class _OneEntryBootstrapState extends State<OneEntryBootstrap> {
         _error = error;
         _stackTrace = stackTrace;
       });
+    }
+  }
+
+  Future<void> _finishStartupTasks(LedgerController controller) async {
+    try {
+      await SnapshotService.createIfDue(controller);
+    } catch (error, stackTrace) {
+      debugPrint('Automatic snapshot failed: $error\n$stackTrace');
+    }
+    try {
+      await NotificationService.initialize();
+      await NotificationService.scheduleDaily(
+        enabled: controller.dailyReminderEnabled,
+        hour: controller.dailyReminderHour,
+        minute: controller.dailyReminderMinute,
+      );
+      await NotificationService.scheduleRecurringCheck();
+    } catch (error, stackTrace) {
+      debugPrint('Notification initialization failed: $error\n$stackTrace');
     }
   }
 
@@ -106,62 +110,7 @@ class _LoadingPage extends StatelessWidget {
   const _LoadingPage();
 
   @override
-  Widget build(BuildContext context) => Scaffold(
-    body: DecoratedBox(
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: <Color>[Color(0xFF087F5B), AppTheme.green],
-        ),
-      ),
-      child: Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: <Widget>[
-            TweenAnimationBuilder<double>(
-              tween: Tween<double>(begin: .92, end: 1),
-              duration: const Duration(milliseconds: 460),
-              curve: Curves.easeOutCubic,
-              builder: (BuildContext context, double value, Widget? child) =>
-                  Opacity(
-                    opacity: value,
-                    child: Transform.scale(scale: value, child: child),
-                  ),
-              child: const BrandMark(size: 126),
-            ),
-            const SizedBox(height: 24),
-            const Text(
-              '一笔',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 24,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-            const SizedBox(height: 7),
-            const Text(
-              '不同的主体，共同的一本账',
-              style: TextStyle(
-                color: Color(0xFFD7F4E9),
-                fontSize: 14,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-            const SizedBox(height: 22),
-            const SizedBox(
-              width: 24,
-              height: 24,
-              child: CircularProgressIndicator(
-                strokeWidth: 2.5,
-                color: Colors.white,
-              ),
-            ),
-          ],
-        ),
-      ),
-    ),
-  );
+  Widget build(BuildContext context) => const Scaffold();
 }
 
 class _StartupErrorPage extends StatelessWidget {

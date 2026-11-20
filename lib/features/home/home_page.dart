@@ -4,21 +4,16 @@ import 'package:flutter/material.dart';
 
 import '../../data/ledger_controller.dart';
 import '../../models/ledger_models.dart';
-import '../../services/speech_recognition_service.dart';
-import '../../services/voice_entry_parser.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/swipe_action_tile.dart';
 import '../entry/entry_detail_sheet.dart';
 import '../entry/entry_sheet.dart' show categoryIconFromKey;
 import 'period_picker_sheet.dart';
 
-enum _VoiceState { idle, listening, processing }
-
 class HomePage extends StatefulWidget {
   const HomePage({
     required this.controller,
     required this.onAddEntry,
-    required this.onVoiceEntry,
     required this.onEditEntry,
     required this.onDeleteEntry,
     required this.onOpenStatistics,
@@ -32,7 +27,6 @@ class HomePage extends StatefulWidget {
 
   final LedgerController controller;
   final VoidCallback onAddEntry;
-  final ValueChanged<LedgerEntry> onVoiceEntry;
   final ValueChanged<LedgerEntry> onEditEntry;
   final ValueChanged<LedgerEntry> onDeleteEntry;
   final VoidCallback onOpenStatistics;
@@ -60,18 +54,11 @@ class _HomePageState extends State<HomePage> {
   bool _edgeToBottom = true;
   double _lastScrollOffset = 0;
   Timer? _edgeButtonTimer;
-  Timer? _voiceTimeoutTimer;
-  StreamSubscription<SpeechRecognitionEvent>? _speechSubscription;
-  _VoiceState _voiceState = _VoiceState.idle;
 
   @override
   void initState() {
     super.initState();
     _scrollController.addListener(_handleScroll);
-    SpeechRecognitionService.initialize();
-    _speechSubscription = SpeechRecognitionService.events.listen(
-      _handleSpeechEvent,
-    );
   }
 
   @override
@@ -81,11 +68,6 @@ class _HomePageState extends State<HomePage> {
       ..removeListener(_handleScroll)
       ..dispose();
     _edgeButtonTimer?.cancel();
-    _voiceTimeoutTimer?.cancel();
-    _speechSubscription?.cancel();
-    if (_voiceState != _VoiceState.idle) {
-      SpeechRecognitionService.cancel();
-    }
     super.dispose();
   }
 
@@ -406,15 +388,6 @@ class _HomePageState extends State<HomePage> {
                           minimum: const EdgeInsets.fromLTRB(16, 8, 16, 12),
                           child: Row(
                             children: <Widget>[
-                              if (widget.controller.voiceEnabled) ...<Widget>[
-                                _VoiceButton(
-                                  state: _voiceState,
-                                  onTap: _voiceState == _VoiceState.processing
-                                      ? null
-                                      : _toggleVoiceRecognition,
-                                ),
-                                const SizedBox(width: 10),
-                              ],
                               Expanded(
                                 child: InkWell(
                                   borderRadius: BorderRadius.circular(28),
@@ -493,119 +466,6 @@ class _HomePageState extends State<HomePage> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_scrollController.hasClients) _scrollController.jumpTo(0);
     });
-  }
-
-  Future<void> _toggleVoiceRecognition() async {
-    if (_voiceState == _VoiceState.listening) {
-      setState(() => _voiceState = _VoiceState.processing);
-      _startVoiceProcessingTimeout();
-      await SpeechRecognitionService.stop();
-      return;
-    }
-    try {
-      if (!await SpeechRecognitionService.requestPermission()) {
-        _showMicrophonePermissionMessage();
-        return;
-      }
-      await Future<void>.delayed(const Duration(milliseconds: 400));
-      if (!mounted) return;
-      if (!await SpeechRecognitionService.isAvailable()) {
-        _showVoiceMessage('当前设备没有可用的语音识别服务');
-        return;
-      }
-      if (await SpeechRecognitionService.start() && mounted) {
-        setState(() => _voiceState = _VoiceState.listening);
-        _startVoiceListeningTimeout();
-      }
-    } on Object catch (error) {
-      _showVoiceMessage('无法启动语音识别：$error');
-    }
-  }
-
-  void _handleSpeechEvent(SpeechRecognitionEvent event) {
-    if (!mounted) return;
-    switch (event.status) {
-      case SpeechRecognitionStatus.listening:
-        setState(() => _voiceState = _VoiceState.listening);
-      case SpeechRecognitionStatus.processing:
-        setState(() => _voiceState = _VoiceState.processing);
-        _startVoiceProcessingTimeout();
-      case SpeechRecognitionStatus.result:
-        _cancelVoiceTimeout();
-        setState(() => _voiceState = _VoiceState.idle);
-        final String transcript = event.text?.trim() ?? '';
-        final LedgerEntry? draft = parseVoiceEntry(
-          transcript,
-          widget.controller,
-        );
-        if (draft == null) {
-          _showVoiceMessage(
-            transcript.isEmpty ? '没有识别到记账内容' : '已听到「$transcript」，但没有找到金额',
-          );
-        } else {
-          widget.onVoiceEntry(draft);
-        }
-      case SpeechRecognitionStatus.error:
-        _cancelVoiceTimeout();
-        setState(() => _voiceState = _VoiceState.idle);
-        _showVoiceMessage(event.message ?? '语音识别失败');
-      case SpeechRecognitionStatus.idle:
-        _cancelVoiceTimeout();
-        setState(() => _voiceState = _VoiceState.idle);
-    }
-  }
-
-  void _showVoiceMessage(String message) {
-    if (!mounted) return;
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(message)));
-  }
-
-  void _startVoiceListeningTimeout() {
-    _cancelVoiceTimeout();
-    _voiceTimeoutTimer = Timer(const Duration(seconds: 10), () async {
-      if (!mounted || _voiceState == _VoiceState.idle) return;
-      if (_voiceState == _VoiceState.processing) {
-        _startVoiceProcessingTimeout();
-        return;
-      }
-      setState(() => _voiceState = _VoiceState.processing);
-      await SpeechRecognitionService.stop();
-      if (mounted && _voiceState != _VoiceState.idle) {
-        _startVoiceProcessingTimeout();
-      }
-    });
-  }
-
-  void _startVoiceProcessingTimeout() {
-    _cancelVoiceTimeout();
-    _voiceTimeoutTimer = Timer(const Duration(seconds: 5), () async {
-      if (!mounted || _voiceState == _VoiceState.idle) return;
-      _voiceTimeoutTimer = null;
-      await SpeechRecognitionService.cancel();
-      if (!mounted) return;
-      setState(() => _voiceState = _VoiceState.idle);
-      _showVoiceMessage('语音识别超时，请重试');
-    });
-  }
-
-  void _cancelVoiceTimeout() {
-    _voiceTimeoutTimer?.cancel();
-    _voiceTimeoutTimer = null;
-  }
-
-  void _showMicrophonePermissionMessage() {
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('需要麦克风权限才能语音记账'),
-        action: SnackBarAction(
-          label: '打开设置',
-          onPressed: SpeechRecognitionService.openSettings,
-        ),
-      ),
-    );
   }
 
   Future<void> _openPeriodPicker() async {
@@ -821,6 +681,7 @@ class _HomePageState extends State<HomePage> {
     final Set<int> accounts = <int>{};
     bool includeNoMember = false;
     bool includeNoNote = false;
+    String memberQuery = '';
     final List<String> categoryOptions =
         periodEntries.map((entry) => entry.category).toSet().toList()..sort();
     final bool? apply = await showModalBottomSheet<bool>(
@@ -903,6 +764,16 @@ class _HomePageState extends State<HomePage> {
                                 .toList(),
                           ),
                           const _FilterTitle('按成员（可多选）'),
+                          TextField(
+                            decoration: const InputDecoration(
+                              hintText: '搜索成员',
+                              prefixIcon: Icon(Icons.search, size: 20),
+                            ),
+                            onChanged: (String value) => update(
+                              () => memberQuery = value.trim().toLowerCase(),
+                            ),
+                          ),
+                          const SizedBox(height: 8),
                           Wrap(
                             spacing: 8,
                             runSpacing: 6,
@@ -915,7 +786,13 @@ class _HomePageState extends State<HomePage> {
                                 ),
                               ),
                               ...widget.controller.members
-                                  .where((member) => !member.archived)
+                                  .where(
+                                    (member) =>
+                                        !member.archived &&
+                                        member.name.toLowerCase().contains(
+                                          memberQuery,
+                                        ),
+                                  )
                                   .map(
                                     (member) => FilterChip(
                                       avatar: CircleAvatar(
@@ -1032,6 +909,7 @@ class _HomePageState extends State<HomePage> {
     String? category = categories.isEmpty ? null : categories.first;
     int? accountId = accounts.isEmpty ? null : accounts.first.id;
     final Set<int> memberIds = <int>{};
+    String memberQuery = '';
     final TextEditingController noteController = TextEditingController();
     final bool? save = await showModalBottomSheet<bool>(
       context: context,
@@ -1109,40 +987,60 @@ class _HomePageState extends State<HomePage> {
                 if (changeMembers)
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 16),
-                    child: Wrap(
-                      spacing: 8,
+                    child: Column(
                       children: <Widget>[
-                        FilterChip(
-                          label: const Text('无指定'),
-                          selected: memberIds.isEmpty,
-                          onSelected: (_) => update(memberIds.clear),
-                        ),
-                        FilterChip(
-                          label: const Text('全体成员'),
-                          selected:
-                              activeMembers.isNotEmpty &&
-                              memberIds.length == activeMembers.length &&
-                              activeMembers.every(
-                                (member) => memberIds.contains(member.id),
-                              ),
-                          onSelected: (_) => update(() {
-                            memberIds
-                              ..clear()
-                              ..addAll(
-                                activeMembers.map((member) => member.id),
-                              );
-                          }),
-                        ),
-                        ...activeMembers.map(
-                          (member) => FilterChip(
-                            label: Text(member.name),
-                            selected: memberIds.contains(member.id),
-                            onSelected: (_) => update(() {
-                              if (!memberIds.add(member.id)) {
-                                memberIds.remove(member.id);
-                              }
-                            }),
+                        TextField(
+                          decoration: const InputDecoration(
+                            hintText: '搜索成员',
+                            prefixIcon: Icon(Icons.search, size: 20),
                           ),
+                          onChanged: (String value) => update(
+                            () => memberQuery = value.trim().toLowerCase(),
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Wrap(
+                          spacing: 8,
+                          children: <Widget>[
+                            FilterChip(
+                              label: const Text('无指定'),
+                              selected: memberIds.isEmpty,
+                              onSelected: (_) => update(memberIds.clear),
+                            ),
+                            FilterChip(
+                              label: const Text('全体成员'),
+                              selected:
+                                  activeMembers.isNotEmpty &&
+                                  memberIds.length == activeMembers.length &&
+                                  activeMembers.every(
+                                    (member) => memberIds.contains(member.id),
+                                  ),
+                              onSelected: (_) => update(() {
+                                memberIds
+                                  ..clear()
+                                  ..addAll(
+                                    activeMembers.map((member) => member.id),
+                                  );
+                              }),
+                            ),
+                            ...activeMembers
+                                .where(
+                                  (member) => member.name
+                                      .toLowerCase()
+                                      .contains(memberQuery),
+                                )
+                                .map(
+                                  (member) => FilterChip(
+                                    label: Text(member.name),
+                                    selected: memberIds.contains(member.id),
+                                    onSelected: (_) => update(() {
+                                      if (!memberIds.add(member.id)) {
+                                        memberIds.remove(member.id);
+                                      }
+                                    }),
+                                  ),
+                                ),
+                          ],
                         ),
                       ],
                     ),
@@ -1528,75 +1426,6 @@ class _SummaryValue extends StatelessWidget {
   );
 }
 
-class _VoiceButton extends StatelessWidget {
-  const _VoiceButton({required this.state, required this.onTap});
-
-  final _VoiceState state;
-  final VoidCallback? onTap;
-
-  @override
-  Widget build(BuildContext context) => Tooltip(
-    message: switch (state) {
-      _VoiceState.idle => '语音记账',
-      _VoiceState.listening => '停止并识别',
-      _VoiceState.processing => '正在识别',
-    },
-    child: Material(
-      color: Colors.transparent,
-      shape: const CircleBorder(),
-      child: InkWell(
-        customBorder: const CircleBorder(),
-        onTap: onTap,
-        child: Ink(
-          width: 50,
-          height: 50,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            gradient: LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: state == _VoiceState.listening
-                  ? const <Color>[AppTheme.expense, Color(0xFFE53935)]
-                  : AppTheme.accessibleGradientOf(context),
-            ),
-            boxShadow: <BoxShadow>[
-              BoxShadow(
-                color:
-                    (state == _VoiceState.listening
-                            ? AppTheme.expense
-                            : AppTheme.accentOf(context).primary)
-                        .withValues(alpha: .26),
-                blurRadius: 16,
-                offset: const Offset(0, 7),
-              ),
-            ],
-          ),
-          child: Center(
-            child: switch (state) {
-              _VoiceState.idle => const Icon(
-                Icons.mic_none_rounded,
-                color: Colors.white,
-              ),
-              _VoiceState.listening => const Icon(
-                Icons.close_rounded,
-                color: Colors.white,
-              ),
-              _VoiceState.processing => const SizedBox(
-                width: 21,
-                height: 21,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2.4,
-                  color: Colors.white,
-                ),
-              ),
-            },
-          ),
-        ),
-      ),
-    ),
-  );
-}
-
 class _QuickButton extends StatelessWidget {
   const _QuickButton({
     required this.icon,
@@ -1673,34 +1502,6 @@ class _EntryTile extends StatelessWidget {
     final List<LedgerMember> members = controller.members
         .where((LedgerMember member) => entry.memberIds.contains(member.id))
         .toList();
-    final String memberLabel = members
-        .map((LedgerMember member) => member.name)
-        .join('、');
-    final List<int> recorderIds = entry.recorderIds.isNotEmpty
-        ? entry.recorderIds
-        : <int>[?entry.recordedByMemberId];
-    final String recorderLabel = controller.members
-        .where((LedgerMember member) => recorderIds.contains(member.id))
-        .map((LedgerMember member) => member.name)
-        .join('、');
-    final bool showRecorder = recorderLabel.isNotEmpty;
-    final Set<int> fundingOwnerIds = entry.walletSources
-        .where(
-          (WalletSource source) =>
-              source.sourceMemberId != null &&
-              source.payerMemberId != null &&
-              source.sourceMemberId != source.payerMemberId,
-        )
-        .map((WalletSource source) => source.sourceMemberId!)
-        .toSet();
-    final String payerLabel = controller.members
-        .where(
-          (LedgerMember member) =>
-              fundingOwnerIds.contains(member.id) &&
-              !entry.memberIds.contains(member.id),
-        )
-        .map((LedgerMember member) => member.name)
-        .join('、');
     final double shownAmount = adjustment
         ? entry.adjustmentDelta.abs()
         : entry.amount;
@@ -1796,19 +1597,10 @@ class _EntryTile extends StatelessWidget {
                   : entry.category,
               style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
             ),
-            subtitle:
-                entry.note.isEmpty &&
-                    !entry.outsideBudget &&
-                    !showRecorder &&
-                    payerLabel.isEmpty &&
-                    (!controller.multiEnabled || memberLabel.isEmpty)
+            subtitle: entry.note.isEmpty && !entry.outsideBudget
                 ? null
                 : Text(
                     <String>[
-                      if (controller.multiEnabled && memberLabel.isNotEmpty)
-                        memberLabel,
-                      if (showRecorder) '$recorderLabel记录',
-                      if (payerLabel.isNotEmpty) '$payerLabel代付',
                       if (entry.outsideBudget) '预算外',
                       if (entry.note.isNotEmpty) entry.note,
                     ].join(' · '),

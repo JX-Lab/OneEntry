@@ -85,118 +85,38 @@ class _MembersPageState extends State<MembersPage> {
           padding: const EdgeInsets.fromLTRB(12, 8, 12, 32),
           children: <Widget>[
             Container(
-              padding: const EdgeInsets.all(18),
               decoration: BoxDecoration(
                 color: Theme.of(context).colorScheme.surface,
                 borderRadius: BorderRadius.circular(16),
               ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: <Widget>[
-                  const Text(
-                    '成员概况',
-                    style: TextStyle(color: Color(0xFF8A9099), fontSize: 12),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    '${active.length} 人',
-                    style: const TextStyle(
-                      fontSize: 28,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  const Divider(height: 1),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: <Widget>[
-                      Expanded(
-                        child: _MemberCount(
-                          label: '总人数',
-                          value: widget.controller.members.length,
-                        ),
-                      ),
-                      Expanded(
-                        child: _MemberCount(
-                          label: '当前成员',
-                          value: active.length,
-                        ),
-                      ),
-                      Expanded(
-                        child: _MemberCount(
-                          label: '已归档',
-                          value: archived.length,
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-            const Padding(
-              padding: EdgeInsets.fromLTRB(4, 14, 4, 8),
-              child: Text(
-                '成员荷包',
-                style: TextStyle(fontSize: 12, color: Color(0xFF8A9099)),
-              ),
-            ),
-            Container(
-              decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.surface,
-                borderRadius: BorderRadius.circular(14),
-              ),
               child: ListTile(
-                leading: const CircleAvatar(child: Icon(Icons.groups_outlined)),
-                title: const Text('公共资金'),
-                subtitle: const Text('任何成员都可以选择使用，不产生借款'),
-                trailing: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: <Widget>[
-                    Text(
-                      '¥${widget.controller.commonFund.toStringAsFixed(2)}',
-                      style: const TextStyle(fontWeight: FontWeight.w700),
-                    ),
-                    const SizedBox(width: 6),
-                    const Icon(Icons.chevron_right, size: 20),
-                  ],
+                minTileHeight: 88,
+                leading: CircleAvatar(
+                  backgroundColor: Theme.of(
+                    context,
+                  ).colorScheme.primaryContainer,
+                  child: const Icon(Icons.account_balance_wallet_outlined),
                 ),
-                onTap: () => _editWallets(context),
+                title: const Text(
+                  '荷包与往来',
+                  style: TextStyle(fontWeight: FontWeight.w700),
+                ),
+                subtitle: Text(
+                  '公共 ¥${widget.controller.commonFund.toStringAsFixed(2)}'
+                  '${debts.isEmpty ? ' · 暂无待结算' : ' · ${debts.length} 笔待结算'}',
+                ),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => _WalletsAndDebtsPage(
+                      controller: widget.controller,
+                      onEditWallets: _editWallets,
+                      onSettleDebt: _settleDebt,
+                    ),
+                  ),
+                ),
               ),
             ),
-            if (debts.isNotEmpty) ...<Widget>[
-              const Padding(
-                padding: EdgeInsets.fromLTRB(4, 14, 4, 8),
-                child: Text(
-                  '成员往来',
-                  style: TextStyle(fontSize: 12, color: Color(0xFF8A9099)),
-                ),
-              ),
-              Container(
-                decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.surface,
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: Column(
-                  children: debts
-                      .map(
-                        (_DebtSummary debt) => ListTile(
-                          leading: const Icon(Icons.handshake_outlined),
-                          title: Text('${debt.debtor} 欠 ${debt.creditor}'),
-                          subtitle: const Text('点击记录已结算金额'),
-                          trailing: Text(
-                            '¥${debt.amount.toStringAsFixed(2)}',
-                            style: TextStyle(
-                              color: AppTheme.ledgerOf(context).expense,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                          onTap: () => _settleDebt(context, debt),
-                        ),
-                      )
-                      .toList(),
-                ),
-              ),
-            ],
             const Padding(
               padding: EdgeInsets.fromLTRB(4, 14, 4, 8),
               child: Text(
@@ -298,139 +218,23 @@ class _MembersPageState extends State<MembersPage> {
     );
   }
 
-  List<_DebtSummary> _debtSummaries() {
-    final Map<(int, int), double> directional = <(int, int), double>{};
-    for (final MemberDebt debt in widget.controller.memberDebts) {
-      final (int, int) key = (debt.creditorMemberId, debt.debtorMemberId);
-      directional.update(
-        key,
-        (double value) => value + debt.amount,
-        ifAbsent: () => debt.amount,
-      );
-    }
-    for (final MemberDebtSettlement settlement
-        in widget.controller.debtSettlements) {
-      final (int, int) key = (
-        settlement.creditorMemberId,
-        settlement.debtorMemberId,
-      );
-      directional.update(
-        key,
-        (double value) => value - settlement.amount,
-        ifAbsent: () => -settlement.amount,
-      );
-    }
-    final Set<(int, int)> visited = <(int, int)>{};
-    final List<_DebtSummary> result = <_DebtSummary>[];
-    for (final MapEntry<(int, int), double> item in directional.entries) {
-      final int creditorId = item.key.$1;
-      final int debtorId = item.key.$2;
-      final (int, int) canonical = creditorId < debtorId
-          ? (creditorId, debtorId)
-          : (debtorId, creditorId);
-      if (!visited.add(canonical)) continue;
-      final double forward = directional[(creditorId, debtorId)] ?? 0;
-      final double reverse = directional[(debtorId, creditorId)] ?? 0;
-      final double net = forward - reverse;
-      if (net.abs() < .005) continue;
-      final int finalCreditor = net > 0 ? creditorId : debtorId;
-      final int finalDebtor = net > 0 ? debtorId : creditorId;
-      String name(int id) =>
-          widget.controller.members
-              .where((LedgerMember member) => member.id == id)
-              .map((LedgerMember member) => member.name)
-              .firstOrNull ??
-          '已删除成员';
-      result.add(
-        _DebtSummary(
-          creditorMemberId: finalCreditor,
-          debtorMemberId: finalDebtor,
-          creditor: name(finalCreditor),
-          debtor: name(finalDebtor),
-          amount: net.abs(),
-        ),
-      );
-    }
-    return result;
-  }
+  List<_DebtSummary> _debtSummaries() =>
+      _calculateDebtSummaries(widget.controller);
 
   Future<void> _settleDebt(BuildContext context, _DebtSummary debt) async {
-    final TextEditingController amount = TextEditingController(
-      text: debt.amount.toStringAsFixed(2),
-    );
-    final TextEditingController note = TextEditingController();
-    final bool? save = await showModalBottomSheet<bool>(
-      context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      builder: (BuildContext context) => Padding(
-        padding: EdgeInsets.only(
-          bottom: MediaQuery.viewInsetsOf(context).bottom,
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: <Widget>[
-            SizedBox(
-              height: 54,
-              child: Row(
-                children: <Widget>[
-                  TextButton(
-                    onPressed: () => Navigator.pop(context),
-                    child: const Text('取消'),
-                  ),
-                  Expanded(
-                    child: Text(
-                      '${debt.debtor} 向 ${debt.creditor} 结算',
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(fontWeight: FontWeight.w700),
-                    ),
-                  ),
-                  TextButton(
-                    onPressed: () => Navigator.pop(context, true),
-                    child: const Text('保存'),
-                  ),
-                ],
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 4, 16, 20),
-              child: Column(
-                children: <Widget>[
-                  TextField(
-                    controller: amount,
-                    keyboardType: const TextInputType.numberWithOptions(
-                      decimal: true,
-                    ),
-                    decoration: InputDecoration(
-                      labelText: '结算金额（最多 ¥${debt.amount.toStringAsFixed(2)}）',
-                      prefixText: '¥ ',
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: note,
-                    decoration: const InputDecoration(
-                      labelText: '备注',
-                      hintText: '如：现金归还、已另行转账',
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-    final double value = double.tryParse(amount.text) ?? 0;
-    final String memo = note.text.trim();
-    amount.dispose();
-    note.dispose();
-    if (save != true || value <= 0 || value - debt.amount > .004) return;
+    final _DebtSettlementResult? result =
+        await showModalBottomSheet<_DebtSettlementResult>(
+          context: context,
+          isScrollControlled: true,
+          useSafeArea: true,
+          builder: (BuildContext context) => _DebtSettlementSheet(debt: debt),
+        );
+    if (result == null) return;
     await widget.controller.settleMemberDebt(
       creditorMemberId: debt.creditorMemberId,
       debtorMemberId: debt.debtorMemberId,
-      amount: value,
-      note: memo,
+      amount: result.amount,
+      note: result.note,
     );
   }
 
@@ -657,6 +461,234 @@ class _MembersPageState extends State<MembersPage> {
       '#${(value & 0xFFFFFF).toRadixString(16).padLeft(6, '0').toUpperCase()}';
 }
 
+class _WalletsAndDebtsPage extends StatelessWidget {
+  const _WalletsAndDebtsPage({
+    required this.controller,
+    required this.onEditWallets,
+    required this.onSettleDebt,
+  });
+
+  final LedgerController controller;
+  final Future<void> Function(BuildContext context) onEditWallets;
+  final Future<void> Function(BuildContext context, _DebtSummary debt)
+  onSettleDebt;
+
+  @override
+  Widget build(BuildContext context) => AnimatedBuilder(
+    animation: controller,
+    builder: (BuildContext context, Widget? child) {
+      final List<_DebtSummary> debts = _calculateDebtSummaries(controller);
+      final List<LedgerMember> members = controller.members
+          .where(
+            (LedgerMember member) =>
+                !member.archived ||
+                (controller.memberWallets[member.id] ?? 0) > 0,
+          )
+          .toList();
+      return Scaffold(
+        appBar: AppBar(
+          title: const Text('荷包与往来'),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => onEditWallets(context),
+              child: const Text('分配'),
+            ),
+          ],
+        ),
+        body: ListView(
+          padding: const EdgeInsets.fromLTRB(12, 8, 12, 32),
+          children: <Widget>[
+            const Padding(
+              padding: EdgeInsets.fromLTRB(4, 4, 4, 8),
+              child: Text(
+                '荷包',
+                style: TextStyle(fontSize: 12, color: Color(0xFF8A9099)),
+              ),
+            ),
+            Card(
+              clipBehavior: Clip.antiAlias,
+              child: Column(
+                children: <Widget>[
+                  ListTile(
+                    leading: const CircleAvatar(
+                      child: Icon(Icons.groups_outlined),
+                    ),
+                    title: const Text('公共资金'),
+                    subtitle: const Text('未分配给成员的资金，不产生借款'),
+                    trailing: Text(
+                      '¥${controller.commonFund.toStringAsFixed(2)}',
+                      style: const TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                    onTap: () => onEditWallets(context),
+                  ),
+                  ...members.map(
+                    (LedgerMember member) => ListTile(
+                      leading: CircleAvatar(
+                        backgroundColor: Color(member.colorValue),
+                        child: Text(
+                          member.name.substring(0, 1),
+                          style: const TextStyle(color: Colors.white),
+                        ),
+                      ),
+                      title: Text('${member.name}的荷包'),
+                      subtitle: member.archived ? const Text('已归档成员') : null,
+                      trailing: Text(
+                        '¥${(controller.memberWallets[member.id] ?? 0).toStringAsFixed(2)}',
+                        style: const TextStyle(fontWeight: FontWeight.w700),
+                      ),
+                      onTap: () => onEditWallets(context),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const Padding(
+              padding: EdgeInsets.fromLTRB(4, 16, 4, 8),
+              child: Text(
+                '待结算往来',
+                style: TextStyle(fontSize: 12, color: Color(0xFF8A9099)),
+              ),
+            ),
+            if (debts.isEmpty)
+              const Card(
+                child: Padding(
+                  padding: EdgeInsets.all(22),
+                  child: Center(child: Text('暂无成员借款')),
+                ),
+              )
+            else
+              Card(
+                clipBehavior: Clip.antiAlias,
+                child: Column(
+                  children: debts
+                      .map(
+                        (_DebtSummary debt) => ListTile(
+                          leading: const Icon(Icons.handshake_outlined),
+                          title: Text('${debt.debtor} 欠 ${debt.creditor}'),
+                          subtitle: const Text('点击记录结算'),
+                          trailing: Text(
+                            '¥${debt.amount.toStringAsFixed(2)}',
+                            style: TextStyle(
+                              color: AppTheme.ledgerOf(context).expense,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          onTap: () => onSettleDebt(context, debt),
+                        ),
+                      )
+                      .toList(),
+                ),
+              ),
+          ],
+        ),
+      );
+    },
+  );
+}
+
+class _DebtSettlementResult {
+  const _DebtSettlementResult({required this.amount, required this.note});
+  final double amount;
+  final String note;
+}
+
+class _DebtSettlementSheet extends StatefulWidget {
+  const _DebtSettlementSheet({required this.debt});
+  final _DebtSummary debt;
+
+  @override
+  State<_DebtSettlementSheet> createState() => _DebtSettlementSheetState();
+}
+
+class _DebtSettlementSheetState extends State<_DebtSettlementSheet> {
+  late final TextEditingController _amount = TextEditingController(
+    text: widget.debt.amount.toStringAsFixed(2),
+  );
+  final TextEditingController _note = TextEditingController();
+
+  @override
+  void dispose() {
+    _amount.dispose();
+    _note.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final double value = double.tryParse(_amount.text) ?? 0;
+    final bool valid = value > 0 && value - widget.debt.amount <= .004;
+    return Padding(
+      padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          SizedBox(
+            height: 54,
+            child: Row(
+              children: <Widget>[
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('取消'),
+                ),
+                Expanded(
+                  child: Text(
+                    '${widget.debt.debtor} 向 ${widget.debt.creditor} 结算',
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                ),
+                TextButton(
+                  onPressed: valid
+                      ? () => Navigator.pop(
+                          context,
+                          _DebtSettlementResult(
+                            amount: value,
+                            note: _note.text.trim(),
+                          ),
+                        )
+                      : null,
+                  child: const Text('保存'),
+                ),
+              ],
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 20),
+            child: Column(
+              children: <Widget>[
+                TextField(
+                  controller: _amount,
+                  autofocus: true,
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
+                  decoration: InputDecoration(
+                    labelText:
+                        '结算金额（最多 ¥${widget.debt.amount.toStringAsFixed(2)}）',
+                    prefixText: '¥ ',
+                    errorText: value - widget.debt.amount > .004
+                        ? '不能超过待结算金额'
+                        : null,
+                  ),
+                  onChanged: (_) => setState(() {}),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _note,
+                  decoration: const InputDecoration(
+                    labelText: '备注',
+                    hintText: '如：现金归还、已另行转账',
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _WalletAllocationResult {
   const _WalletAllocationResult({
     required this.commonFund,
@@ -683,7 +715,6 @@ class _GlobalWalletAllocationSheet extends StatefulWidget {
 
 class _GlobalWalletAllocationSheetState
     extends State<_GlobalWalletAllocationSheet> {
-  late final TextEditingController _common;
   final Map<int, TextEditingController> _memberInputs =
       <int, TextEditingController>{};
 
@@ -697,7 +728,6 @@ class _GlobalWalletAllocationSheetState
   @override
   void initState() {
     super.initState();
-    _common = TextEditingController(text: widget.commonFund.toStringAsFixed(2));
     for (final LedgerMember member in widget.members) {
       _memberInputs[member.id] = TextEditingController(
         text: (widget.balances[member.id] ?? 0).toStringAsFixed(2),
@@ -707,7 +737,6 @@ class _GlobalWalletAllocationSheetState
 
   @override
   void dispose() {
-    _common.dispose();
     for (final TextEditingController input in _memberInputs.values) {
       input.dispose();
     }
@@ -716,14 +745,16 @@ class _GlobalWalletAllocationSheetState
 
   @override
   Widget build(BuildContext context) {
-    final double total =
-        (double.tryParse(_common.text) ?? 0) +
-        _memberInputs.values.fold<double>(
-          0,
-          (double sum, TextEditingController input) =>
-              sum + (double.tryParse(input.text) ?? 0),
-        );
-    final bool complete = (total - _expected).abs() < .005;
+    final List<double> values = _memberInputs.values
+        .map((TextEditingController input) => double.tryParse(input.text) ?? 0)
+        .toList();
+    final double memberTotal = values.fold<double>(
+      0,
+      (sum, value) => sum + value,
+    );
+    final double commonFund = _expected - memberTotal;
+    final bool valid =
+        values.every((double value) => value >= 0) && commonFund >= -.004;
     return FractionallySizedBox(
       heightFactor: .86,
       child: Column(
@@ -744,11 +775,11 @@ class _GlobalWalletAllocationSheetState
                   ),
                 ),
                 TextButton(
-                  onPressed: complete
+                  onPressed: valid
                       ? () => Navigator.pop(
                           context,
                           _WalletAllocationResult(
-                            commonFund: double.tryParse(_common.text) ?? 0,
+                            commonFund: commonFund < 0 ? 0 : commonFund,
                             memberBalances: <int, double>{
                               for (final MapEntry<int, TextEditingController>
                                   item
@@ -766,11 +797,11 @@ class _GlobalWalletAllocationSheetState
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
             child: Text(
-              complete
-                  ? '总资金 ¥${_expected.toStringAsFixed(2)} 已全部分配'
-                  : '合计必须保持 ¥${_expected.toStringAsFixed(2)}，还差 ¥${(_expected - total).abs().toStringAsFixed(2)}',
+              valid
+                  ? '未分配的 ¥${commonFund.toStringAsFixed(2)} 将保留为公共资金'
+                  : '成员荷包已超出总资金 ¥${_expected.toStringAsFixed(2)}',
               style: TextStyle(
-                color: complete ? null : AppTheme.ledgerOf(context).expense,
+                color: valid ? null : AppTheme.ledgerOf(context).expense,
                 fontWeight: FontWeight.w600,
               ),
             ),
@@ -779,18 +810,6 @@ class _GlobalWalletAllocationSheetState
             child: ListView(
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 20),
               children: <Widget>[
-                TextField(
-                  controller: _common,
-                  keyboardType: const TextInputType.numberWithOptions(
-                    decimal: true,
-                  ),
-                  decoration: const InputDecoration(
-                    labelText: '公共资金',
-                    prefixText: '¥ ',
-                  ),
-                  onChanged: (_) => setState(() {}),
-                ),
-                const SizedBox(height: 12),
                 ...widget.members.map(
                   (LedgerMember member) => Padding(
                     padding: const EdgeInsets.only(bottom: 12),
@@ -832,20 +851,59 @@ class _DebtSummary {
   final double amount;
 }
 
-class _MemberCount extends StatelessWidget {
-  const _MemberCount({required this.label, required this.value});
-  final String label;
-  final int value;
-
-  @override
-  Widget build(BuildContext context) => Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: <Widget>[
-      Text(label, style: const TextStyle(color: Color(0xFF8A9099))),
-      const SizedBox(height: 3),
-      Text('$value', style: const TextStyle(fontWeight: FontWeight.w700)),
-    ],
-  );
+List<_DebtSummary> _calculateDebtSummaries(LedgerController controller) {
+  final Map<(int, int), double> directional = <(int, int), double>{};
+  for (final MemberDebt debt in controller.memberDebts) {
+    final (int, int) key = (debt.creditorMemberId, debt.debtorMemberId);
+    directional.update(
+      key,
+      (double value) => value + debt.amount,
+      ifAbsent: () => debt.amount,
+    );
+  }
+  for (final MemberDebtSettlement settlement in controller.debtSettlements) {
+    final (int, int) key = (
+      settlement.creditorMemberId,
+      settlement.debtorMemberId,
+    );
+    directional.update(
+      key,
+      (double value) => value - settlement.amount,
+      ifAbsent: () => -settlement.amount,
+    );
+  }
+  final Set<(int, int)> visited = <(int, int)>{};
+  final List<_DebtSummary> result = <_DebtSummary>[];
+  for (final MapEntry<(int, int), double> item in directional.entries) {
+    final int creditorId = item.key.$1;
+    final int debtorId = item.key.$2;
+    final (int, int) canonical = creditorId < debtorId
+        ? (creditorId, debtorId)
+        : (debtorId, creditorId);
+    if (!visited.add(canonical)) continue;
+    final double net =
+        (directional[(creditorId, debtorId)] ?? 0) -
+        (directional[(debtorId, creditorId)] ?? 0);
+    if (net.abs() < .005) continue;
+    final int finalCreditor = net > 0 ? creditorId : debtorId;
+    final int finalDebtor = net > 0 ? debtorId : creditorId;
+    String name(int id) =>
+        controller.members
+            .where((LedgerMember member) => member.id == id)
+            .map((LedgerMember member) => member.name)
+            .firstOrNull ??
+        '已删除成员';
+    result.add(
+      _DebtSummary(
+        creditorMemberId: finalCreditor,
+        debtorMemberId: finalDebtor,
+        creditor: name(finalCreditor),
+        debtor: name(finalDebtor),
+        amount: net.abs(),
+      ),
+    );
+  }
+  return result;
 }
 
 class _ColorSlider extends StatelessWidget {
@@ -1020,14 +1078,39 @@ class _MemberDetailPage extends StatelessWidget {
             if (entries.isEmpty)
               const Center(child: Text('还没有相关账目'))
             else
-              ...months.entries.map(
-                (month) => Card(
+              ...months.entries.map((month) {
+                final double monthIncome = month.value
+                    .where((entry) => entry.type == EntryType.income)
+                    .fold(0, (sum, entry) => sum + _memberAmount(entry));
+                final double monthExpense = month.value
+                    .where((entry) => entry.type == EntryType.expense)
+                    .fold(0, (sum, entry) => sum + _memberAmount(entry));
+                return Card(
                   clipBehavior: Clip.antiAlias,
                   child: ExpansionTile(
                     initiallyExpanded: month.key == months.keys.first,
-                    title: Text(
-                      month.key,
-                      style: const TextStyle(fontWeight: FontWeight.w700),
+                    title: Row(
+                      children: <Widget>[
+                        Expanded(
+                          child: Text(
+                            month.key,
+                            style: const TextStyle(fontWeight: FontWeight.w700),
+                          ),
+                        ),
+                        Flexible(
+                          flex: 2,
+                          child: Text(
+                            '收 ${monthIncome.toStringAsFixed(2)}  支 ${monthExpense.toStringAsFixed(2)}',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            textAlign: TextAlign.right,
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: Color(0xFF8A9099),
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                     subtitle: Text('${month.value.length} 笔'),
                     children: month.value
@@ -1092,8 +1175,8 @@ class _MemberDetailPage extends StatelessWidget {
                         )
                         .toList(),
                   ),
-                ),
-              ),
+                );
+              }),
           ],
         ),
       );

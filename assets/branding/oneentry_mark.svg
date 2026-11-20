@@ -2,7 +2,7 @@
   <title id="title">一笔系统网络荷包标志</title>
   <desc id="desc">三个节点沿双轨道围绕中央翡翠绿荷包，表达多主体共同记账。</desc>
   <rect width="1024" height="1024" rx="232" fill="#0EB078"/>
-  <g fill="#F7F5EF" stroke="#F7F5EF">
+  <g transform="translate(82 82) scale(.84)" fill="#F7F5EF" stroke="#F7F5EF">
     <circle cx="512" cy="512" r="304" fill="none" stroke-width="25"/>
     <circle cx="512" cy="512" r="220" fill="none" stroke-width="14"/>
     <circle cx="268" cy="330" r="40" stroke="none"/>
@@ -10,7 +10,7 @@
     <circle cx="430" cy="706" r="34" stroke="none"/>
     <path d="M462 364c24 18 76 18 100 0l-10 44c68 32 102 80 102 140 0 72-56 118-142 118s-142-46-142-118c0-60 34-108 102-140z" stroke="none"/>
   </g>
-  <g fill="none" stroke="#0EB078" stroke-width="30" stroke-linecap="round" stroke-linejoin="round">
+  <g transform="translate(82 82) scale(.84)" fill="none" stroke="#0EB078" stroke-width="30" stroke-linecap="round" stroke-linejoin="round">
     <path d="M442 420h140"/>
     <path d="M466 474l46 64 46-64"/>
     <path d="M512 536v88"/>

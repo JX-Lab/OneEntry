@@ -2,7 +2,7 @@
   <defs>
     <mask id="purse-cut">
       <rect width="1024" height="1024" fill="white"/>
-      <g fill="none" stroke="black" stroke-width="30" stroke-linecap="round" stroke-linejoin="round">
+      <g transform="translate(82 82) scale(.84)" fill="none" stroke="black" stroke-width="30" stroke-linecap="round" stroke-linejoin="round">
         <path d="M442 420h140"/>
         <path d="M466 474l46 64 46-64"/>
         <path d="M512 536v88"/>
@@ -11,7 +11,7 @@
       </g>
     </mask>
   </defs>
-  <g fill="#FFFFFF" stroke="#FFFFFF" mask="url(#purse-cut)">
+  <g transform="translate(82 82) scale(.84)" fill="#FFFFFF" stroke="#FFFFFF" mask="url(#purse-cut)">
     <circle cx="512" cy="512" r="304" fill="none" stroke-width="25"/>
     <circle cx="512" cy="512" r="220" fill="none" stroke-width="14"/>
     <circle cx="268" cy="330" r="40" stroke="none"/>
