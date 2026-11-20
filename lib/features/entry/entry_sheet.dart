@@ -31,8 +31,6 @@ class _EntrySheetState extends State<EntrySheet> {
   int? _toAccountId = 2;
   final Set<int> _members = <int>{};
   int? _recordedByMemberId;
-  EntryVisibility _visibility = EntryVisibility.all;
-  final Set<int> _visibleMemberIds = <int>{};
   final List<EntryFunding> _fundings = <EntryFunding>[];
   bool _recurring = false;
   bool _outsideBudget = false;
@@ -57,7 +55,7 @@ class _EntrySheetState extends State<EntrySheet> {
     final List<LedgerMember> activeMembers = widget.controller.members
         .where((LedgerMember member) => !member.archived)
         .toList();
-    _recordedByMemberId = widget.controller.currentMemberId;
+    _recordedByMemberId = null;
     if (activeMembers.length == 1) _members.add(activeMembers.first.id);
     if (widget.controller.categories.isNotEmpty) {
       final List<LedgerCategory> expense = widget.controller.categoriesFor(
@@ -77,12 +75,7 @@ class _EntrySheetState extends State<EntrySheet> {
       _fundings
         ..clear()
         ..addAll(source.fundings);
-      _recordedByMemberId =
-          source.recordedByMemberId ?? widget.controller.currentMemberId;
-      _visibility = source.visibility;
-      _visibleMemberIds
-        ..clear()
-        ..addAll(source.visibleMemberIds);
+      _recordedByMemberId = source.recordedByMemberId;
       _recurring = source.recurring;
       _outsideBudget = source.outsideBudget;
       _frequency = source.recurringFrequency;
@@ -184,8 +177,7 @@ class _EntrySheetState extends State<EntrySheet> {
         fundings: fundings,
         outsideBudget: _type == EntryType.expense && _outsideBudget,
         recordedByMemberId: _recordedByMemberId,
-        visibility: _visibility,
-        visibleMemberIds: _visibleMemberIds.toList(),
+        visibility: EntryVisibility.all,
         recurring: _type != EntryType.transfer && _recurring,
         recurringFrequency: _frequency,
       ),
@@ -205,6 +197,7 @@ class _EntrySheetState extends State<EntrySheet> {
     final Color surface = Theme.of(context).colorScheme.surface;
     final List<LedgerCategory> categories = widget.controller.categoriesFor(
       _type,
+      memberId: _recordedByMemberId,
     );
 
     return Scaffold(
@@ -265,7 +258,7 @@ class _EntrySheetState extends State<EntrySheet> {
                   ),
                 if (widget.controller.multiEnabled)
                   _PickerField(
-                    title: '记录身份',
+                    title: '记录者（可不选）',
                     value: _memberName(members, _recordedByMemberId),
                     onTap: () => _pickRecorder(members),
                   ),
@@ -305,11 +298,11 @@ class _EntrySheetState extends State<EntrySheet> {
                   value: _memberSummary(members),
                   onTap: () => _pickMembers(members),
                 ),
-              if (widget.controller.multiEnabled)
+              if (widget.controller.multiEnabled && _type == EntryType.transfer)
                 _PickerField(
-                  title: '可见范围',
-                  value: _visibilitySummary(members),
-                  onTap: () => _pickVisibility(members),
+                  title: '记录者（可不选）',
+                  value: _memberName(members, _recordedByMemberId),
+                  onTap: () => _pickRecorder(members),
                 ),
               Container(
                 margin: const EdgeInsets.only(top: 10),
@@ -476,6 +469,14 @@ class _EntrySheetState extends State<EntrySheet> {
               style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
             ),
           ),
+          ListTile(
+            leading: const CircleAvatar(child: Icon(Icons.remove)),
+            title: const Text('不记录'),
+            trailing: _recordedByMemberId == null
+                ? const Icon(Icons.check)
+                : null,
+            onTap: () => Navigator.pop(context, -1),
+          ),
           ...members.map(
             (LedgerMember member) => ListTile(
               leading: CircleAvatar(
@@ -496,89 +497,16 @@ class _EntrySheetState extends State<EntrySheet> {
       ),
     );
     if (result == null || !mounted) return;
-    setState(() => _recordedByMemberId = result);
-  }
-
-  String _visibilitySummary(List<LedgerMember> members) =>
-      switch (_visibility) {
-        EntryVisibility.all => '全体成员',
-        EntryVisibility.shared => '共同账本',
-        EntryVisibility.private => '仅记录身份',
-        EntryVisibility.selected =>
-          _visibleMemberIds.isEmpty
-              ? '指定成员'
-              : _visibleMemberIds
-                    .map((int id) => _memberName(members, id))
-                    .join('、'),
-      };
-
-  Future<void> _pickVisibility(List<LedgerMember> members) async {
-    _dismissKeyboard();
-    final EntryVisibility? result = await showModalBottomSheet<EntryVisibility>(
-      context: context,
-      useSafeArea: true,
-      builder: (BuildContext context) => ListView(
-        shrinkWrap: true,
-        padding: const EdgeInsets.only(bottom: 16),
-        children: <Widget>[
-          const Padding(
-            padding: EdgeInsets.fromLTRB(18, 12, 18, 6),
-            child: Text(
-              '谁可以看到这笔账',
-              style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
-            ),
-          ),
-          ...<EntryVisibility>[
-            EntryVisibility.all,
-            EntryVisibility.private,
-            EntryVisibility.selected,
-            EntryVisibility.shared,
-          ].map(
-            (EntryVisibility visibility) => ListTile(
-              leading: Icon(switch (visibility) {
-                EntryVisibility.all => Icons.groups_outlined,
-                EntryVisibility.private => Icons.lock_outline,
-                EntryVisibility.selected => Icons.group_add_outlined,
-                EntryVisibility.shared => Icons.menu_book_outlined,
-              }),
-              title: Text(switch (visibility) {
-                EntryVisibility.all => '全体成员',
-                EntryVisibility.private => '仅记录身份',
-                EntryVisibility.selected => '指定成员',
-                EntryVisibility.shared => '共同账本',
-              }),
-              onTap: () => Navigator.pop(context, visibility),
-            ),
-          ),
-        ],
-      ),
-    );
-    if (result == null || !mounted) return;
-    if (result == EntryVisibility.selected) {
-      final Set<int>? selected = await showModalBottomSheet<Set<int>>(
-        context: context,
-        isScrollControlled: true,
-        useSafeArea: true,
-        builder: (BuildContext context) => _MemberPickerSheet(
-          title: '选择可见成员',
-          members: members
-              .where((LedgerMember member) => member.id != _recordedByMemberId)
-              .toList(),
-          selectedIds: _visibleMemberIds,
-        ),
-      );
-      if (!mounted || selected == null) return;
-      setState(() {
-        _visibility = result;
-        _visibleMemberIds
-          ..clear()
-          ..addAll(selected);
-      });
-      return;
-    }
     setState(() {
-      _visibility = result;
-      _visibleMemberIds.clear();
+      _recordedByMemberId = result < 0 ? null : result;
+      final List<LedgerCategory> available = widget.controller.categoriesFor(
+        _type,
+        memberId: _recordedByMemberId,
+      );
+      if (!available.any((LedgerCategory item) => item.name == _category) &&
+          available.isNotEmpty) {
+        _category = available.first.name;
+      }
     });
   }
 
@@ -589,9 +517,15 @@ class _EntrySheetState extends State<EntrySheet> {
       ];
     }
     if (_fundings.isEmpty) {
-      return <EntryFunding>[
-        EntryFunding(accountId: _accountId, amount: amount),
-      ];
+      final List<EntryFunding> suggested = _suggestFundings(amount);
+      final int allocated = suggested.fold<int>(
+        0,
+        (int sum, EntryFunding item) => sum + (item.amount * 100).round(),
+      );
+      if (allocated != (amount * 100).round()) {
+        throw StateError('所有可用账户合计仍不足，请调整金额或使用信用账户');
+      }
+      return suggested;
     }
     if (_fundings.length == 1) {
       final EntryFunding only = _fundings.first;
@@ -612,6 +546,72 @@ class _EntrySheetState extends State<EntrySheet> {
       throw StateError('组合付款合计必须等于账目金额');
     }
     return List<EntryFunding>.from(_fundings);
+  }
+
+  List<EntryFunding> _suggestFundings(double amount) {
+    final List<LedgerAccount> active = widget.controller.accounts
+        .where(
+          (LedgerAccount account) =>
+              !account.archived && account.kind != AccountKind.loan,
+        )
+        .toList();
+    active.sort((LedgerAccount a, LedgerAccount b) {
+      if (a.id == _accountId) return -1;
+      if (b.id == _accountId) return 1;
+      return widget.controller.accounts
+          .indexOf(a)
+          .compareTo(widget.controller.accounts.indexOf(b));
+    });
+    int remaining = (amount * 100).round();
+    final List<EntryFunding> result = <EntryFunding>[];
+    for (final LedgerAccount account in active) {
+      final List<AccountFund> funds = account.funds.isEmpty
+          ? <AccountFund>[
+              AccountFund(accountId: account.id, balance: account.balance),
+            ]
+          : List<AccountFund>.from(account.funds);
+      funds.sort((AccountFund a, AccountFund b) {
+        int rank(AccountFund fund) => fund.memberId == null
+            ? 0
+            : _members.contains(fund.memberId)
+            ? 1
+            : 2;
+        return rank(a).compareTo(rank(b));
+      });
+      int accountAllocated = 0;
+      for (final AccountFund fund in funds) {
+        if (fund.memberId != null && !_members.contains(fund.memberId)) {
+          continue;
+        }
+        final int available = (fund.balance * 100).round().clamp(0, remaining);
+        if (available <= 0) continue;
+        result.add(
+          EntryFunding(
+            accountId: account.id,
+            memberId: fund.memberId,
+            amount: available / 100,
+          ),
+        );
+        accountAllocated += available;
+        remaining -= available;
+        if (remaining == 0) return result;
+      }
+      if (account.kind == AccountKind.credit && remaining > 0) {
+        final int creditAvailable =
+            ((account.availableToSpend * 100).round() - accountAllocated).clamp(
+              0,
+              remaining,
+            );
+        if (creditAvailable > 0) {
+          result.add(
+            EntryFunding(accountId: account.id, amount: creditAvailable / 100),
+          );
+          remaining -= creditAvailable;
+          if (remaining == 0) return result;
+        }
+      }
+    }
+    return result;
   }
 
   List<MemberShare> _memberSharesForSave(double amount) {
@@ -731,11 +731,7 @@ class _EntrySheetState extends State<EntrySheet> {
             accounts: accounts,
             members: members,
             selectedMemberIds: _members,
-            initial: _fundings.isEmpty
-                ? <EntryFunding>[
-                    EntryFunding(accountId: _accountId, amount: amount),
-                  ]
-                : _fundings,
+            initial: _fundings.isEmpty ? _suggestFundings(amount) : _fundings,
           ),
         );
     if (!mounted || result == null || result.isEmpty) return;
@@ -771,6 +767,7 @@ class _EntrySheetState extends State<EntrySheet> {
       } else {
         final List<LedgerCategory> available = widget.controller.categoriesFor(
           _type,
+          memberId: _recordedByMemberId,
         );
         if (!available.any((item) => item.name == _category) &&
             available.isNotEmpty) {
@@ -841,7 +838,7 @@ class _EntrySheetState extends State<EntrySheet> {
                     ),
                   ),
                 ),
-                if (widget.controller.currentMemberId != null)
+                if (_recordedByMemberId != null)
                   SwitchListTile(
                     title: const Text('当前身份专属标签'),
                     subtitle: Text(
@@ -851,9 +848,8 @@ class _EntrySheetState extends State<EntrySheet> {
                     ),
                     value: categoryMemberId != null,
                     onChanged: (bool value) => update(
-                      () => categoryMemberId = value
-                          ? widget.controller.currentMemberId
-                          : null,
+                      () =>
+                          categoryMemberId = value ? _recordedByMemberId : null,
                     ),
                   ),
                 SizedBox(

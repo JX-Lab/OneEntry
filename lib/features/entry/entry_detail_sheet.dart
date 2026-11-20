@@ -84,7 +84,6 @@ Future<void> showEntryDetailSheet({
             value: members.isEmpty ? '无' : members.join('、'),
           ),
           _DetailRow(label: '记录者', value: recorder),
-          _DetailRow(label: '可见', value: _visibilityText(controller, entry)),
           _DetailRow(label: '时间', value: _dateTime(entry.occurredAt)),
           _DetailRow(label: '备注', value: entry.note.isEmpty ? '无' : entry.note),
           if (history.isNotEmpty)
@@ -205,24 +204,6 @@ String _fundingText(
       })
       .join(' + ');
 }
-
-String _visibilityText(LedgerController controller, LedgerEntry entry) =>
-    switch (entry.visibility) {
-      EntryVisibility.all => '全体成员',
-      EntryVisibility.shared => '共同账本',
-      EntryVisibility.private => '仅记录身份',
-      EntryVisibility.selected =>
-        entry.visibleMemberIds
-            .map(
-              (int id) =>
-                  controller.members
-                      .where((LedgerMember member) => member.id == id)
-                      .map((LedgerMember member) => member.name)
-                      .firstOrNull ??
-                  '已删除成员',
-            )
-            .join('、'),
-    };
 
 String _typeName(LedgerEntry entry) => switch (entry.type) {
   EntryType.transfer => '转账',

@@ -8,6 +8,21 @@ import 'package:yibi/features/settings/settings_page.dart';
 import 'package:yibi/services/launcher_icon_service.dart';
 import 'package:yibi/theme/app_theme.dart';
 
+class _ReminderRepository extends LedgerRepository {
+  _ReminderRepository() : super(AppDatabase());
+
+  bool? enabled;
+
+  @override
+  Future<void> setDailyReminder({
+    required bool enabled,
+    required int hour,
+    required int minute,
+  }) async {
+    this.enabled = enabled;
+  }
+}
+
 void main() {
   testWidgets('设置页可以打开主题色选择', (WidgetTester tester) async {
     await tester.binding.setSurfaceSize(const Size(800, 1000));
@@ -90,5 +105,45 @@ void main() {
     expect(selectedMode, 'theme');
     expect(find.text('跟随主题  ›'), findsOneWidget);
     expect(await LauncherIconService.currentMode(), 'brand');
+  });
+
+  testWidgets('没有精确闹钟权限也能开启每日提醒', (WidgetTester tester) async {
+    await tester.binding.setSurfaceSize(const Size(800, 1000));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    const MethodChannel channel = MethodChannel('com.junxu.yibi/notifications');
+    bool? scheduled;
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, (MethodCall call) async {
+          if (call.method == 'requestPermission') return true;
+          if (call.method == 'canScheduleExactAlarms') return false;
+          if (call.method == 'scheduleDaily') {
+            scheduled =
+                (call.arguments as Map<Object?, Object?>)['enabled'] as bool?;
+            return null;
+          }
+          if (call.method == 'dailyReminderStatus') {
+            return <String, int>{};
+          }
+          return null;
+        });
+    addTearDown(
+      () => TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, null),
+    );
+    final _ReminderRepository repository = _ReminderRepository();
+    final LedgerController controller = LedgerController(repository);
+    addTearDown(controller.dispose);
+
+    await tester.pumpWidget(
+      MaterialApp(home: SettingsPage(controller: controller)),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('每日记账提醒'));
+    await tester.pumpAndSettle();
+
+    expect(repository.enabled, isTrue);
+    expect(scheduled, isTrue);
+    expect(controller.dailyReminderEnabled, isTrue);
+    expect(find.text('提升提醒准时性（可选）'), findsOneWidget);
   });
 }

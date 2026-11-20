@@ -158,7 +158,7 @@ void main() {
     expect(controller.multiEnabled, isTrue);
   });
 
-  test('私密账目只对记录身份可见', () {
+  test('共同账本中的历史可见性标记不会隐藏账目', () {
     final LedgerController controller = LedgerController(
       _FakeLedgerRepository(),
     );
@@ -188,7 +188,7 @@ void main() {
     controller.currentMemberId = 1;
     expect(controller.visibleEntries.map((entry) => entry.id), <int>[1, 2]);
     controller.currentMemberId = 2;
-    expect(controller.visibleEntries.map((entry) => entry.id), <int>[2]);
+    expect(controller.visibleEntries.map((entry) => entry.id), <int>[1, 2]);
   });
 
   test('成员专属分类只对当前身份显示', () {
@@ -221,7 +221,9 @@ void main() {
 
     controller.currentMemberId = 1;
     expect(
-      controller.categoriesFor(EntryType.expense).map((item) => item.name),
+      controller
+          .categoriesFor(EntryType.expense, memberId: 1)
+          .map((item) => item.name),
       <String>['餐饮', 'A 专属'],
     );
   });

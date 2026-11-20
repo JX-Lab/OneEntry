@@ -177,7 +177,7 @@ void main() {
 
     await tester.tap(find.text('支付来源'));
     await tester.pumpAndSettle();
-    expect(find.text('有一项超过可用资金'), findsOneWidget);
+    expect(find.text('有一项超过可用资金'), findsNothing);
     await tester.tap(find.text('按账户顺序自动补足'));
     await tester.pump();
     await tester.tap(find.text('完成'));
@@ -195,7 +195,7 @@ void main() {
 
     expect(saved, isNotNull);
     expect(saved!.outsideBudget, isTrue);
-    expect(saved!.recordedByMemberId, 1);
+    expect(saved!.recordedByMemberId, isNull);
     expect(saved!.fundings, hasLength(2));
     expect(
       saved!.fundings.fold<double>(0, (sum, item) => sum + item.amount),
@@ -216,8 +216,51 @@ void main() {
     await tester.pump();
 
     expect(find.text('承担成员（可多选）'), findsNothing);
-    expect(find.text('记录身份'), findsNothing);
+    expect(find.text('记录者（可不选）'), findsNothing);
     expect(find.text('可见范围'), findsNothing);
+  });
+
+  testWidgets('默认账户余额不足时按账户顺序自动补足', (WidgetTester tester) async {
+    final LedgerController controller =
+        LedgerController(LedgerRepository(AppDatabase()))
+          ..accounts.addAll(<LedgerAccount>[
+            LedgerAccount(
+              id: 1,
+              name: '支付宝',
+              balance: 1,
+              funds: const <AccountFund>[AccountFund(accountId: 1, balance: 1)],
+            ),
+            LedgerAccount(
+              id: 2,
+              name: '银行卡',
+              balance: 9,
+              funds: const <AccountFund>[AccountFund(accountId: 2, balance: 9)],
+            ),
+          ])
+          ..members.add(LedgerMember(id: 1, name: '我', colorValue: 0xFF2E7CF6));
+    addTearDown(controller.dispose);
+    LedgerEntry? saved;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: _EntryHarness(
+          controller: controller,
+          onSaved: (LedgerEntry value) => saved = value,
+        ),
+      ),
+    );
+    await tester.tap(find.text('打开记账'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).first, '2');
+    await tester.tap(find.text('保存'));
+    await tester.pumpAndSettle();
+
+    expect(saved, isNotNull);
+    expect(saved!.fundings, hasLength(2));
+    expect(saved!.fundings[0].accountId, 1);
+    expect(saved!.fundings[0].amount, 1);
+    expect(saved!.fundings[1].accountId, 2);
+    expect(saved!.fundings[1].amount, 1);
   });
 }
 

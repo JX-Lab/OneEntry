@@ -717,133 +717,17 @@ class _AccountDetailPage extends StatelessWidget {
   }
 
   Future<void> _editFunds(BuildContext context, LedgerAccount account) async {
-    final Map<int?, TextEditingController> inputs =
-        <int?, TextEditingController>{};
-    final Map<int?, double> existing = <int?, double>{
-      for (final AccountFund fund in _accountFunds(account))
-        fund.memberId: fund.balance,
-    };
-    inputs[null] = TextEditingController(
-      text: (existing[null] ?? 0).toStringAsFixed(2),
-    );
-    for (final LedgerMember member in controller.members.where(
-      (LedgerMember item) => !item.archived || existing.containsKey(item.id),
-    )) {
-      inputs[member.id] = TextEditingController(
-        text: (existing[member.id] ?? 0).toStringAsFixed(2),
-      );
-    }
-    final Map<int?, double>?
-    result = await showModalBottomSheet<Map<int?, double>>(
-      context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      builder: (BuildContext context) => StatefulBuilder(
-        builder: (BuildContext context, StateSetter update) {
-          final double total = inputs.values.fold<double>(
-            0,
-            (double sum, TextEditingController input) =>
-                sum + (double.tryParse(input.text) ?? 0),
-          );
-          final double remaining = account.balance - total;
-          final bool complete = remaining.abs() < .005;
-          return FractionallySizedBox(
-            heightFactor: .86,
-            child: Column(
-              children: <Widget>[
-                SizedBox(
-                  height: 56,
-                  child: Row(
-                    children: <Widget>[
-                      TextButton(
-                        onPressed: () => Navigator.pop(context),
-                        child: const Text('取消'),
-                      ),
-                      const Expanded(
-                        child: Text(
-                          '分配账户资金',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(fontWeight: FontWeight.w700),
-                        ),
-                      ),
-                      TextButton(
-                        onPressed: complete
-                            ? () => Navigator.pop(context, <int?, double>{
-                                for (final MapEntry<int?, TextEditingController>
-                                    item
-                                    in inputs.entries)
-                                  item.key:
-                                      double.tryParse(item.value.text) ?? 0,
-                              })
-                            : null,
-                        child: const Text('保存'),
-                      ),
-                    ],
-                  ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-                  child: Container(
-                    padding: const EdgeInsets.all(14),
-                    decoration: BoxDecoration(
-                      color: Theme.of(
-                        context,
-                      ).colorScheme.surfaceContainerHighest,
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                    child: Row(
-                      children: <Widget>[
-                        Expanded(
-                          child: Text(
-                            '账户余额 ¥${account.balance.toStringAsFixed(2)}',
-                          ),
-                        ),
-                        Text(
-                          complete
-                              ? '已全部分配'
-                              : '还差 ¥${remaining.abs().toStringAsFixed(2)}',
-                          style: TextStyle(
-                            fontWeight: FontWeight.w600,
-                            color: complete
-                                ? null
-                                : AppTheme.ledgerOf(context).expense,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-                Expanded(
-                  child: ListView(
-                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 20),
-                    children: inputs.entries.map((item) {
-                      return Padding(
-                        padding: const EdgeInsets.only(bottom: 10),
-                        child: TextField(
-                          controller: item.value,
-                          keyboardType: const TextInputType.numberWithOptions(
-                            decimal: true,
-                            signed: true,
-                          ),
-                          decoration: InputDecoration(
-                            labelText: _fundOwnerName(item.key),
-                            prefixText: '¥ ',
-                          ),
-                          onChanged: (_) => update(() {}),
-                        ),
-                      );
-                    }).toList(),
-                  ),
-                ),
-              ],
-            ),
-          );
-        },
-      ),
-    );
-    for (final TextEditingController input in inputs.values) {
-      input.dispose();
-    }
+    final Map<int?, double>? result =
+        await showModalBottomSheet<Map<int?, double>>(
+          context: context,
+          isScrollControlled: true,
+          useSafeArea: true,
+          builder: (BuildContext context) => _AccountFundAllocationSheet(
+            account: account,
+            funds: _accountFunds(account),
+            members: controller.members,
+          ),
+        );
     if (result == null) return;
     try {
       await controller.setAccountFunds(account.id, result);
@@ -890,6 +774,168 @@ class _AccountDetailPage extends StatelessWidget {
     if (confirmed != true) return;
     await controller.deleteAccount(account.id);
     if (context.mounted) Navigator.pop(context);
+  }
+}
+
+class _AccountFundAllocationSheet extends StatefulWidget {
+  const _AccountFundAllocationSheet({
+    required this.account,
+    required this.funds,
+    required this.members,
+  });
+
+  final LedgerAccount account;
+  final List<AccountFund> funds;
+  final List<LedgerMember> members;
+
+  @override
+  State<_AccountFundAllocationSheet> createState() =>
+      _AccountFundAllocationSheetState();
+}
+
+class _AccountFundAllocationSheetState
+    extends State<_AccountFundAllocationSheet> {
+  final Map<int?, TextEditingController> _inputs =
+      <int?, TextEditingController>{};
+
+  @override
+  void initState() {
+    super.initState();
+    final Map<int?, double> existing = <int?, double>{
+      for (final AccountFund fund in widget.funds) fund.memberId: fund.balance,
+    };
+    _inputs[null] = TextEditingController(
+      text: (existing[null] ?? 0).toStringAsFixed(2),
+    );
+    for (final LedgerMember member in widget.members.where(
+      (LedgerMember item) => !item.archived || existing.containsKey(item.id),
+    )) {
+      _inputs[member.id] = TextEditingController(
+        text: (existing[member.id] ?? 0).toStringAsFixed(2),
+      );
+    }
+  }
+
+  @override
+  void dispose() {
+    for (final TextEditingController input in _inputs.values) {
+      input.dispose();
+    }
+    super.dispose();
+  }
+
+  String _ownerName(int? memberId) {
+    if (memberId == null) return '共同资金';
+    return widget.members
+            .where((LedgerMember member) => member.id == memberId)
+            .map((LedgerMember member) => member.name)
+            .firstOrNull ??
+        '已删除成员';
+  }
+
+  Map<int?, double> _result() => <int?, double>{
+    for (final MapEntry<int?, TextEditingController> item in _inputs.entries)
+      item.key: double.tryParse(item.value.text) ?? 0,
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    final double total = _inputs.values.fold<double>(
+      0,
+      (double sum, TextEditingController input) =>
+          sum + (double.tryParse(input.text) ?? 0),
+    );
+    final double remaining = widget.account.balance - total;
+    final bool complete = remaining.abs() < .005;
+    return FractionallySizedBox(
+      heightFactor: .86,
+      child: Column(
+        children: <Widget>[
+          SizedBox(
+            height: 56,
+            child: Row(
+              children: <Widget>[
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('取消'),
+                ),
+                const Expanded(
+                  child: Text(
+                    '分配账户资金',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                ),
+                TextButton(
+                  onPressed: complete
+                      ? () {
+                          FocusManager.instance.primaryFocus?.unfocus();
+                          Navigator.pop(context, _result());
+                        }
+                      : null,
+                  child: const Text('保存'),
+                ),
+              ],
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+            child: Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Row(
+                children: <Widget>[
+                  Expanded(
+                    child: Text(
+                      '账户余额 ¥${widget.account.balance.toStringAsFixed(2)}',
+                    ),
+                  ),
+                  Text(
+                    complete
+                        ? '已全部分配'
+                        : '还差 ¥${remaining.abs().toStringAsFixed(2)}',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      color: complete
+                          ? null
+                          : AppTheme.ledgerOf(context).expense,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          Expanded(
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 20),
+              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+              children: _inputs.entries
+                  .map(
+                    (MapEntry<int?, TextEditingController> item) => Padding(
+                      padding: const EdgeInsets.only(bottom: 10),
+                      child: TextField(
+                        controller: item.value,
+                        keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true,
+                          signed: true,
+                        ),
+                        decoration: InputDecoration(
+                          labelText: _ownerName(item.key),
+                          prefixText: '¥ ',
+                        ),
+                        onChanged: (_) => setState(() {}),
+                      ),
+                    ),
+                  )
+                  .toList(),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 

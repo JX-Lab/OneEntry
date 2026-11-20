@@ -70,11 +70,6 @@ class _SettingsPageState extends State<SettingsPage>
                 _Section(
                   title: '记账方式',
                   children: <Widget>[
-                    const ListTile(
-                      leading: Icon(Icons.diversity_1_outlined),
-                      title: Text('本地主体账本'),
-                      subtitle: Text('一个成员时就是个人账本；多个成员时启用多主体记录'),
-                    ),
                     SwitchListTile(
                       title: const Text('语音记账'),
                       subtitle: const Text('关闭后首页不显示麦克风按钮'),
@@ -129,8 +124,8 @@ class _SettingsPageState extends State<SettingsPage>
                           Icons.warning_amber_rounded,
                           color: Color(0xFFE67E22),
                         ),
-                        title: const Text('需要允许准时提醒'),
-                        subtitle: const Text('点击打开系统「闹钟和提醒」权限'),
+                        title: const Text('提升提醒准时性（可选）'),
+                        subtitle: const Text('未授权时仍会提醒，但系统可能延迟；点击授权'),
                         onTap: () => _requestExactAlarmPermission(
                           hour: widget.controller.dailyReminderHour,
                           minute: widget.controller.dailyReminderMinute,
@@ -365,16 +360,13 @@ class _SettingsPageState extends State<SettingsPage>
       await _refreshExactAlarmAccess();
       return;
     }
-    if (enabled && !await NotificationService.canScheduleExactAlarms()) {
-      if (mounted) setState(() => _exactAlarmAllowed = false);
-      await _requestExactAlarmPermission(
-        hour: widget.controller.dailyReminderHour,
-        minute: widget.controller.dailyReminderMinute,
-      );
-      return;
-    }
     await _applyDailyReminder(enabled: enabled);
     await _refreshExactAlarmAccess();
+    if (enabled && _exactAlarmAllowed == false && mounted) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('提醒已开启；未授权准时提醒时可能有少量延迟')));
+    }
   }
 
   Future<void> _applyDailyReminder({
@@ -406,19 +398,12 @@ class _SettingsPageState extends State<SettingsPage>
       ),
     );
     if (selected == null) return;
-    if (!await NotificationService.canScheduleExactAlarms()) {
-      if (mounted) setState(() => _exactAlarmAllowed = false);
-      await _requestExactAlarmPermission(
-        hour: selected.hour,
-        minute: selected.minute,
-      );
-      return;
-    }
     await _applyDailyReminder(
       enabled: true,
       hour: selected.hour,
       minute: selected.minute,
     );
+    await _refreshExactAlarmAccess();
   }
 
   Future<void> _requestExactAlarmPermission({

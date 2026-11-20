@@ -132,20 +132,7 @@ class LedgerController extends ChangeNotifier {
       );
   }
 
-  List<LedgerEntry> get visibleEntries => entries.where(canViewEntry).toList();
-
-  bool canViewEntry(LedgerEntry entry) {
-    final int? current = currentMemberId;
-    return switch (entry.visibility) {
-      EntryVisibility.all || EntryVisibility.shared => true,
-      EntryVisibility.private =>
-        current != null && entry.recordedByMemberId == current,
-      EntryVisibility.selected =>
-        current != null &&
-            (entry.recordedByMemberId == current ||
-                entry.visibleMemberIds.contains(current)),
-    };
-  }
+  List<LedgerEntry> get visibleEntries => entries;
 
   double incomeForMonth(DateTime month) => entriesForMonth(month)
       .where((LedgerEntry entry) => entry.type == EntryType.income)
@@ -515,11 +502,12 @@ class LedgerController extends ChangeNotifier {
     notifyListeners();
   }
 
-  List<LedgerCategory> categoriesFor(EntryType type) => categories
-      .where(
-        (LedgerCategory category) =>
-            (category.type == type || category.both) &&
-            (category.memberId == null || category.memberId == currentMemberId),
-      )
-      .toList();
+  List<LedgerCategory> categoriesFor(EntryType type, {int? memberId}) =>
+      categories
+          .where(
+            (LedgerCategory category) =>
+                (category.type == type || category.both) &&
+                (category.memberId == null || category.memberId == memberId),
+          )
+          .toList();
 }
