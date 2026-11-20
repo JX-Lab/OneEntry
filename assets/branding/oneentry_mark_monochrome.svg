@@ -1,9 +1,21 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
-  <g fill="#FFFFFF">
-    <path d="M316 232h92v214l-46-36-46 36z"/>
-    <path d="M466 210h92v220l-46-36-46 36z"/>
-    <path d="M616 232h92v214l-46-36-46 36z"/>
-    <path d="M512 348c-71-57-177-76-286-34v428c114-34 214-14 286 42z"/>
-    <path d="M512 348c71-57 177-76 286-34v428c-114-34-214-14-286 42z"/>
+  <defs>
+    <mask id="currency-cut">
+      <rect width="1024" height="1024" fill="white"/>
+      <g fill="none" stroke="black" stroke-width="32" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M462 432l50 70 50-70"/>
+        <path d="M512 500v116"/>
+        <path d="M470 528h84"/>
+        <path d="M470 576h84"/>
+      </g>
+    </mask>
+  </defs>
+  <g fill="#FFFFFF" stroke="#FFFFFF" mask="url(#currency-cut)">
+    <circle cx="512" cy="512" r="304" fill="none" stroke-width="25"/>
+    <circle cx="512" cy="512" r="220" fill="none" stroke-width="14"/>
+    <circle cx="268" cy="330" r="40" stroke="none"/>
+    <circle cx="756" cy="362" r="48" stroke="none"/>
+    <circle cx="430" cy="706" r="34" stroke="none"/>
+    <circle cx="512" cy="512" r="150" stroke="none"/>
   </g>
 </svg>

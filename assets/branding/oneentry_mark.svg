@@ -1,27 +1,19 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-labelledby="title desc">
-  <title id="title">一笔共同账本标志</title>
-  <desc id="desc">一本打开的账簿带有三枚彩色书签，账页中的三行记录分别对应不同主体。</desc>
-  <defs>
-    <linearGradient id="background" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#29265C"/>
-      <stop offset="1" stop-color="#5B5FEF"/>
-    </linearGradient>
-  </defs>
-  <rect width="1024" height="1024" rx="232" fill="url(#background)"/>
-  <path d="M316 232h92v214l-46-36-46 36z" fill="#FFB7A7"/>
-  <path d="M466 210h92v220l-46-36-46 36z" fill="#8FE1D7"/>
-  <path d="M616 232h92v214l-46-36-46 36z" fill="#C7B9FF"/>
-  <path d="M512 348c-71-57-177-76-286-34v428c114-34 214-14 286 42z" fill="#F8F6FF"/>
-  <path d="M512 348c71-57 177-76 286-34v428c-114-34-214-14-286 42z" fill="#F1EEFF"/>
-  <path d="M512 348v436" fill="none" stroke="#D6D0ED" stroke-width="20" stroke-linecap="round"/>
-  <g fill="none" stroke="#403B78" stroke-width="24" stroke-linecap="round">
-    <path d="M340 448h104"/><path d="M340 548h124"/><path d="M340 648h88"/>
-    <path d="M566 448h112"/><path d="M566 548h152"/><path d="M566 648h126"/>
+  <title id="title">一笔系统网络金额标志</title>
+  <desc id="desc">三个节点沿双轨道围绕中央人民币符号，表达多主体共同记账。</desc>
+  <rect width="1024" height="1024" rx="232" fill="#145C5A"/>
+  <g fill="#F7F5EF" stroke="#F7F5EF">
+    <circle cx="512" cy="512" r="304" fill="none" stroke-width="25"/>
+    <circle cx="512" cy="512" r="220" fill="none" stroke-width="14"/>
+    <circle cx="268" cy="330" r="40" stroke="none"/>
+    <circle cx="756" cy="362" r="48" stroke="none"/>
+    <circle cx="430" cy="706" r="34" stroke="none"/>
+    <circle cx="512" cy="512" r="150" stroke="none"/>
   </g>
-  <circle cx="298" cy="448" r="17" fill="#FF8F7A"/>
-  <circle cx="298" cy="548" r="17" fill="#5AD7CC"/>
-  <circle cx="298" cy="648" r="17" fill="#A793FF"/>
-  <g fill="none" stroke="#403B78" stroke-width="18" stroke-linecap="round">
-    <path d="M734 426v44m-22-22h44"/><path d="M722 548h44"/><path d="M734 626v44m-22-22h44"/>
+  <g fill="none" stroke="#145C5A" stroke-width="32" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M462 432l50 70 50-70"/>
+    <path d="M512 500v116"/>
+    <path d="M470 528h84"/>
+    <path d="M470 576h84"/>
   </g>
 </svg>

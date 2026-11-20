@@ -26,7 +26,7 @@ class _SettingsPageState extends State<SettingsPage>
   int? _pendingReminderMinute;
   List<LedgerSnapshotInfo>? _snapshots;
   DailyReminderStatus? _dailyReminderStatus;
-  String _launcherIconMode = 'brand';
+  String _launcherIconMode = 'theme';
 
   @override
   void initState() {
@@ -592,7 +592,7 @@ class _SettingsPageState extends State<SettingsPage>
         : value;
     if (next == null) return;
     await widget.controller.setPreference('theme_color', next);
-    await LauncherIconService.syncTheme(next);
+    await LauncherIconService.syncTheme(AppTheme.launcherAccentKey(next));
   }
 
   Future<String?> _pickCustomThemeColor(Color initial) async {
@@ -618,7 +618,7 @@ class _SettingsPageState extends State<SettingsPage>
                 textCapitalization: TextCapitalization.characters,
                 decoration: InputDecoration(
                   labelText: '颜色值',
-                  hintText: '#5B5FEF',
+                  hintText: '#145C5A',
                   errorText: error,
                   prefixIcon: const Icon(Icons.palette_outlined),
                 ),
@@ -690,7 +690,7 @@ class _SettingsPageState extends State<SettingsPage>
             const RadioListTile<String>(
               value: 'brand',
               title: Text('品牌默认'),
-              subtitle: Text('深墨靛与鸢尾紫'),
+              subtitle: Text('深海青与暖白'),
             ),
             const RadioListTile<String>(
               value: 'theme',
@@ -706,9 +706,7 @@ class _SettingsPageState extends State<SettingsPage>
                   width: 30,
                   height: 30,
                   decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: <Color>[accent.action, accent.primary],
-                    ),
+                    color: accent.primary,
                     shape: BoxShape.circle,
                   ),
                 ),
@@ -728,7 +726,7 @@ class _SettingsPageState extends State<SettingsPage>
     if (mode == null || !mounted) return;
     final bool changed = await LauncherIconService.setMode(
       mode: mode,
-      themeKey: widget.controller.themeColor,
+      themeKey: AppTheme.launcherAccentKey(widget.controller.themeColor),
     );
     if (!mounted) return;
     if (changed) {

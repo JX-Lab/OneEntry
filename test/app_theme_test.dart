@@ -13,14 +13,19 @@ void main() {
     }
   });
 
-  test('未知主题色会回退到默认账簿靛', () {
+  test('未知主题色会回退到默认深海青', () {
     expect(AppTheme.accentFor('missing').key, AppTheme.defaultAccentKey);
   });
 
-  test('默认主题使用新的品牌靛色', () {
+  test('默认主题使用深海青品牌色', () {
     final AppAccent accent = AppTheme.accentFor(AppTheme.defaultAccentKey);
-    expect(accent.primary, AppTheme.brandIris);
-    expect(accent.secondary, AppTheme.brandIrisLight);
+    expect(accent.primary, AppTheme.brandTeal);
+    expect(accent.secondary, AppTheme.brandTealLight);
+  });
+
+  test('自定义主题会匹配最接近的桌面图标预设', () {
+    expect(AppTheme.launcherAccentKey('custom:135E5B'), 'teal');
+    expect(AppTheme.launcherAccentKey('custom:6A43E8'), 'indigo');
   });
 
   test('自定义主题色会生成可读的实心操作色', () {

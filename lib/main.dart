@@ -112,7 +112,7 @@ class _LoadingPage extends StatelessWidget {
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: <Color>[AppTheme.brandInk, AppTheme.brandIris],
+          colors: <Color>[AppTheme.brandDeepTeal, AppTheme.brandTeal],
         ),
       ),
       child: Center(
@@ -143,7 +143,7 @@ class _LoadingPage extends StatelessWidget {
             const Text(
               '不同的主体，共同的一本账',
               style: TextStyle(
-                color: Color(0xFFD9D5FF),
+                color: Color(0xFFD8EAE4),
                 fontSize: 14,
                 fontWeight: FontWeight.w500,
               ),

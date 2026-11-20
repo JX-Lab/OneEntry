@@ -7,11 +7,11 @@ abstract final class LauncherIconService {
 
   static Future<String> currentMode() async {
     try {
-      return await _channel.invokeMethod<String>('getMode') ?? 'brand';
+      return await _channel.invokeMethod<String>('getMode') ?? 'theme';
     } on MissingPluginException {
-      return 'brand';
+      return 'theme';
     } on PlatformException {
-      return 'brand';
+      return 'theme';
     }
   }
 

@@ -8,7 +8,7 @@
     <application
         android:label="一笔"
         android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher_indigo">
+        android:icon="@mipmap/ic_launcher_teal">
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -23,8 +23,20 @@
                 android:resource="@style/NormalTheme" />
         </activity>
         <activity-alias
-            android:name=".IconIndigo"
+            android:name=".IconTeal"
             android:enabled="true"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_teal"
+            android:label="一笔"
+            android:targetActivity=".MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name=".IconIndigo"
+            android:enabled="false"
             android:exported="true"
             android:icon="@mipmap/ic_launcher_indigo"
             android:label="一笔"

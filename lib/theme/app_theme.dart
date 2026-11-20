@@ -78,10 +78,11 @@ class LedgerSemanticColors extends ThemeExtension<LedgerSemanticColors> {
 }
 
 abstract final class AppTheme {
-  static const String defaultAccentKey = 'indigo';
-  static const Color brandInk = Color(0xFF29265C);
-  static const Color brandIris = Color(0xFF5B5FEF);
-  static const Color brandIrisLight = Color(0xFF8B7CFF);
+  static const String defaultAccentKey = 'teal';
+  static const Color brandDeepTeal = Color(0xFF0D403F);
+  static const Color brandTeal = Color(0xFF145C5A);
+  static const Color brandTealLight = Color(0xFF2C7773);
+  static const Color brandWarmWhite = Color(0xFFF7F5EF);
   static const Color green = Color(0xFF0EB078);
   static const Color greenLight = Color(0xFF35D3A0);
   static const Color expense = Color(0xFFD32F2F);
@@ -90,10 +91,17 @@ abstract final class AppTheme {
   // Gradients stay bright; action colors are the accessible white-text layer.
   static const List<AppAccent> accents = <AppAccent>[
     AppAccent(
+      key: 'teal',
+      label: '深海青',
+      primary: brandTeal,
+      secondary: brandTealLight,
+      action: Color(0xFF0D4B49),
+    ),
+    AppAccent(
       key: 'indigo',
-      label: '账簿靛',
-      primary: brandIris,
-      secondary: brandIrisLight,
+      label: '静谧靛',
+      primary: Color(0xFF4F46E5),
+      secondary: Color(0xFF818CF8),
       action: Color(0xFF4338CA),
     ),
     AppAccent(
@@ -149,6 +157,29 @@ abstract final class AppTheme {
     );
   }
 
+  static String launcherAccentKey(String key) {
+    if (!key.startsWith('custom:')) {
+      return accents.any((AppAccent accent) => accent.key == key)
+          ? key
+          : defaultAccentKey;
+    }
+    final int target = accentFor(key).primary.toARGB32();
+    int distance(AppAccent accent) {
+      final int value = accent.primary.toARGB32();
+      final int red = ((target >> 16) & 0xFF) - ((value >> 16) & 0xFF);
+      final int green = ((target >> 8) & 0xFF) - ((value >> 8) & 0xFF);
+      final int blue = (target & 0xFF) - (value & 0xFF);
+      return red * red + green * green + blue * blue;
+    }
+
+    return accents
+        .reduce(
+          (AppAccent best, AppAccent candidate) =>
+              distance(candidate) < distance(best) ? candidate : best,
+        )
+        .key;
+  }
+
   static String customAccentKey(Color color) =>
       'custom:${(color.toARGB32() & 0xFFFFFF).toRadixString(16).padLeft(6, '0').toUpperCase()}';
 
@@ -183,9 +214,9 @@ abstract final class AppTheme {
   static AppAccentTheme accentOf(BuildContext context) =>
       Theme.of(context).extension<AppAccentTheme>() ??
       const AppAccentTheme(
-        primary: brandIris,
-        secondary: brandIrisLight,
-        action: Color(0xFF4338CA),
+        primary: brandTeal,
+        secondary: brandTealLight,
+        action: Color(0xFF0D4B49),
       );
 
   static LedgerSemanticColors ledgerOf(BuildContext context) =>

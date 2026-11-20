@@ -148,11 +148,11 @@ class MainActivity : FlutterActivity() {
             when (call.method) {
                 "getMode" -> result.success(
                     getSharedPreferences(LAUNCHER_ICON_PREFS, MODE_PRIVATE)
-                        .getString("mode", "brand"),
+                        .getString("mode", "theme"),
                 )
                 "setMode" -> {
-                    val mode = call.argument<String>("mode") ?: "brand"
-                    val themeKey = call.argument<String>("themeKey") ?: "indigo"
+                    val mode = call.argument<String>("mode") ?: "theme"
+                    val themeKey = call.argument<String>("themeKey") ?: "teal"
                     runCatching {
                         applyLauncherIcon(resolveLauncherIcon(mode, themeKey))
                         getSharedPreferences(LAUNCHER_ICON_PREFS, MODE_PRIVATE)
@@ -167,9 +167,9 @@ class MainActivity : FlutterActivity() {
                     }
                 }
                 "syncTheme" -> {
-                    val themeKey = call.argument<String>("themeKey") ?: "indigo"
+                    val themeKey = call.argument<String>("themeKey") ?: "teal"
                     val mode = getSharedPreferences(LAUNCHER_ICON_PREFS, MODE_PRIVATE)
-                        .getString("mode", "brand") ?: "brand"
+                        .getString("mode", "theme") ?: "theme"
                     if (mode == "theme") {
                         runCatching {
                             applyLauncherIcon(resolveLauncherIcon(mode, themeKey))
@@ -188,9 +188,9 @@ class MainActivity : FlutterActivity() {
         val requested = when {
             mode == "theme" -> themeKey
             mode.startsWith("preset:") -> mode.removePrefix("preset:")
-            else -> "indigo"
+            else -> "teal"
         }
-        return requested.takeIf { it in LAUNCHER_ICON_KEYS } ?: "indigo"
+        return requested.takeIf { it in LAUNCHER_ICON_KEYS } ?: "teal"
     }
 
     private fun applyLauncherIcon(key: String) {
@@ -547,6 +547,7 @@ class MainActivity : FlutterActivity() {
         private const val LAUNCHER_ICON_PREFS = "launcher_icon"
         private const val LAUNCHER_ICON_LOG_TAG = "OneEntryIcon"
         private val LAUNCHER_ICON_KEYS = listOf(
+            "teal",
             "indigo",
             "green",
             "blue",
