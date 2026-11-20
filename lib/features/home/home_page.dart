@@ -425,10 +425,9 @@ class _HomePageState extends State<HomePage> {
                                       gradient: LinearGradient(
                                         begin: Alignment.topCenter,
                                         end: Alignment.bottomCenter,
-                                        colors: <Color>[
-                                          AppTheme.accentOf(context).primary,
-                                          AppTheme.accentOf(context).secondary,
-                                        ],
+                                        colors: AppTheme.accessibleGradientOf(
+                                          context,
+                                        ),
                                       ),
                                       borderRadius: BorderRadius.circular(28),
                                       boxShadow: <BoxShadow>[
@@ -1393,10 +1392,7 @@ class _SummaryCard extends StatelessWidget {
         gradient: LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
-          colors: <Color>[
-            AppTheme.accentOf(context).primary,
-            AppTheme.accentOf(context).secondary,
-          ],
+          colors: AppTheme.accessibleGradientOf(context),
         ),
         borderRadius: BorderRadius.circular(16),
         boxShadow: <BoxShadow>[
@@ -1561,10 +1557,7 @@ class _VoiceButton extends StatelessWidget {
               end: Alignment.bottomCenter,
               colors: state == _VoiceState.listening
                   ? const <Color>[AppTheme.expense, Color(0xFFE53935)]
-                  : <Color>[
-                      AppTheme.accentOf(context).primary,
-                      AppTheme.accentOf(context).secondary,
-                    ],
+                  : AppTheme.accessibleGradientOf(context),
             ),
             boxShadow: <BoxShadow>[
               BoxShadow(
@@ -1683,15 +1676,22 @@ class _EntryTile extends StatelessWidget {
     final String memberLabel = members
         .map((LedgerMember member) => member.name)
         .join('、');
-    final LedgerMember? recorder = controller.members
-        .where((LedgerMember member) => member.id == entry.recordedByMemberId)
-        .firstOrNull;
-    final bool showRecorder =
-        recorder != null &&
-        (entry.memberIds.length != 1 || entry.memberIds.first != recorder.id);
-    final Set<int> fundingOwnerIds = entry.fundings
-        .map((EntryFunding funding) => funding.memberId)
-        .whereType<int>()
+    final List<int> recorderIds = entry.recorderIds.isNotEmpty
+        ? entry.recorderIds
+        : <int>[?entry.recordedByMemberId];
+    final String recorderLabel = controller.members
+        .where((LedgerMember member) => recorderIds.contains(member.id))
+        .map((LedgerMember member) => member.name)
+        .join('、');
+    final bool showRecorder = recorderLabel.isNotEmpty;
+    final Set<int> fundingOwnerIds = entry.walletSources
+        .where(
+          (WalletSource source) =>
+              source.sourceMemberId != null &&
+              source.payerMemberId != null &&
+              source.sourceMemberId != source.payerMemberId,
+        )
+        .map((WalletSource source) => source.sourceMemberId!)
         .toSet();
     final String payerLabel = controller.members
         .where(
@@ -1807,7 +1807,7 @@ class _EntryTile extends StatelessWidget {
                     <String>[
                       if (controller.multiEnabled && memberLabel.isNotEmpty)
                         memberLabel,
-                      if (showRecorder) '${recorder.name}记录',
+                      if (showRecorder) '$recorderLabel记录',
                       if (payerLabel.isNotEmpty) '$payerLabel代付',
                       if (entry.outsideBudget) '预算外',
                       if (entry.note.isNotEmpty) entry.note,

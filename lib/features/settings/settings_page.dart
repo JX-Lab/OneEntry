@@ -78,16 +78,6 @@ class _SettingsPageState extends State<SettingsPage>
                           .setPreference('voice_enabled', value ? '1' : '0'),
                     ),
                     ListTile(
-                      title: const Text('成员金额口径'),
-                      subtitle: const Text('选择多人账目的统计与分摊方式'),
-                      trailing: Text(switch (widget.controller.splitMode) {
-                        'full' => '整笔计入  ›',
-                        'fund_ratio' => '按资金比例  ›',
-                        _ => 'AA 均摊  ›',
-                      }),
-                      onTap: _pickSplitMode,
-                    ),
-                    ListTile(
                       title: const Text('标签管理'),
                       subtitle: const Text('批量合并、移除和调整显示顺序'),
                       trailing: const Icon(Icons.chevron_right),
@@ -466,17 +456,6 @@ class _SettingsPageState extends State<SettingsPage>
     );
   }
 
-  Future<void> _pickSplitMode() async {
-    final String? value =
-        await _simpleChoice('成员金额口径', const <MapEntry<String, String>>[
-          MapEntry('equal', 'AA 均摊'),
-          MapEntry('full', '整笔计入每位成员'),
-          MapEntry('fund_ratio', '按成员当前资金比例'),
-        ]);
-    if (value != null)
-      await widget.controller.setPreference('split_mode', value);
-  }
-
   Future<void> _pickTheme() async {
     final String? value = await _simpleChoice(
       '主题',
@@ -690,7 +669,7 @@ class _SettingsPageState extends State<SettingsPage>
             const RadioListTile<String>(
               value: 'brand',
               title: Text('品牌默认'),
-              subtitle: Text('深海青与暖白'),
+              subtitle: Text('翡翠绿与暖白'),
             ),
             const RadioListTile<String>(
               value: 'theme',

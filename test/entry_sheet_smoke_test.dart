@@ -39,6 +39,7 @@ void main() {
       LedgerMember(id: 2, name: '小明', colorValue: 0xFFF5A623),
     );
     controller.currentMemberId = 1;
+    controller.memberWallets[1] = 5;
     addTearDown(controller.dispose);
 
     await tester.pumpWidget(
@@ -50,7 +51,7 @@ void main() {
     tester.testTextInput.hide();
     await tester.pump();
 
-    await tester.tap(find.text('承担成员（可多选）'));
+    await tester.tap(find.text('付款成员（可多选）'));
     await tester.pumpAndSettle();
     expect(find.text('选择成员'), findsOneWidget);
     Navigator.of(tester.element(find.text('选择成员'))).pop();
@@ -116,6 +117,7 @@ void main() {
       LedgerMember(id: 2, name: '小明', colorValue: 0xFFF5A623),
     );
     controller.currentMemberId = 1;
+    controller.memberWallets[1] = 5;
     addTearDown(controller.dispose);
 
     await tester.pumpWidget(
@@ -153,6 +155,7 @@ void main() {
       LedgerMember(id: 2, name: '小明', colorValue: 0xFFF5A623),
     );
     controller.currentMemberId = 1;
+    controller.memberWallets[1] = 5;
     addTearDown(controller.dispose);
     LedgerEntry? saved;
 
@@ -168,7 +171,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextField).first, '2');
 
-    await tester.tap(find.text('承担成员（可多选）'));
+    await tester.tap(find.text('付款成员（可多选）'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('我').last);
     await tester.pump();
@@ -196,7 +199,7 @@ void main() {
     expect(saved, isNotNull);
     expect(saved!.outsideBudget, isTrue);
     expect(saved!.recordedByMemberId, isNull);
-    expect(saved!.fundings, hasLength(2));
+    expect(saved!.fundings, hasLength(1));
     expect(
       saved!.fundings.fold<double>(0, (sum, item) => sum + item.amount),
       2,
@@ -215,7 +218,7 @@ void main() {
     );
     await tester.pump();
 
-    expect(find.text('承担成员（可多选）'), findsNothing);
+    expect(find.text('付款成员（可多选）'), findsNothing);
     expect(find.text('记录者（可不选）'), findsNothing);
     expect(find.text('可见范围'), findsNothing);
   });
@@ -237,7 +240,8 @@ void main() {
               funds: const <AccountFund>[AccountFund(accountId: 2, balance: 9)],
             ),
           ])
-          ..members.add(LedgerMember(id: 1, name: '我', colorValue: 0xFF2E7CF6));
+          ..members.add(LedgerMember(id: 1, name: '我', colorValue: 0xFF2E7CF6))
+          ..commonFund = 10;
     addTearDown(controller.dispose);
     LedgerEntry? saved;
 
@@ -254,6 +258,9 @@ void main() {
     await tester.enterText(find.byType(TextField).first, '2');
     await tester.tap(find.text('保存'));
     await tester.pumpAndSettle();
+    expect(find.text('我的荷包还差 ¥2.00'), findsOneWidget);
+    await tester.tap(find.text('公共资金'));
+    await tester.pumpAndSettle();
 
     expect(saved, isNotNull);
     expect(saved!.fundings, hasLength(2));
@@ -261,6 +268,109 @@ void main() {
     expect(saved!.fundings[0].amount, 1);
     expect(saved!.fundings[1].accountId, 2);
     expect(saved!.fundings[1].amount, 1);
+  });
+
+  testWidgets('成员荷包不足时选择其他成员会记录代付来源', (WidgetTester tester) async {
+    final LedgerController controller =
+        LedgerController(LedgerRepository(AppDatabase()))
+          ..accounts.add(LedgerAccount(id: 1, name: '现金', balance: 10))
+          ..members.addAll(<LedgerMember>[
+            LedgerMember(id: 1, name: '我', colorValue: 0xFF2E7CF6),
+            LedgerMember(id: 2, name: '小明', colorValue: 0xFFF5A623),
+          ])
+          ..memberWallets[1] = 0
+          ..memberWallets[2] = 10;
+    addTearDown(controller.dispose);
+    LedgerEntry? saved;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: _EntryHarness(
+          controller: controller,
+          onSaved: (LedgerEntry value) => saved = value,
+        ),
+      ),
+    );
+    await tester.tap(find.text('打开记账'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).first, '2');
+    await tester.tap(find.text('付款成员（可多选）'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('我').last);
+    await tester.pump();
+    await tester.tap(find.text('完成 (1)'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('保存'));
+    await tester.pumpAndSettle();
+    expect(find.text('我的荷包还差 ¥2.00'), findsOneWidget);
+    await tester.tap(find.text('小明的荷包'));
+    await tester.pumpAndSettle();
+
+    expect(saved, isNotNull);
+    expect(saved!.walletSources, hasLength(1));
+    expect(saved!.walletSources.single.sourceMemberId, 2);
+    expect(saved!.walletSources.single.payerMemberId, 1);
+    expect(saved!.walletSources.single.amount, 2);
+  });
+
+  testWidgets('多名付款成员可以在单笔账内选择自定义金额', (WidgetTester tester) async {
+    final LedgerController controller =
+        LedgerController(LedgerRepository(AppDatabase()))
+          ..accounts.add(LedgerAccount(id: 1, name: '现金', balance: 20))
+          ..members.addAll(<LedgerMember>[
+            LedgerMember(id: 1, name: 'A', colorValue: 0xFF2E7CF6),
+            LedgerMember(id: 2, name: 'B', colorValue: 0xFFF5A623),
+          ])
+          ..memberWallets[1] = 10
+          ..memberWallets[2] = 10;
+    addTearDown(controller.dispose);
+    LedgerEntry? saved;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: _EntryHarness(
+          controller: controller,
+          onSaved: (LedgerEntry value) => saved = value,
+        ),
+      ),
+    );
+    await tester.tap(find.text('打开记账'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).first, '10');
+    await tester.tap(find.text('付款成员（可多选）'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('A').last);
+    await tester.tap(find.text('B').last);
+    await tester.pump();
+    await tester.tap(find.text('完成 (2)'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('付款分摊'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('自定义金额'));
+    await tester.pump();
+    final Finder splitInputs = find.descendant(
+      of: find.byType(FractionallySizedBox),
+      matching: find.byType(TextField),
+    );
+    expect(splitInputs, findsNWidgets(2));
+    await tester.enterText(splitInputs.at(0), '3');
+    await tester.enterText(splitInputs.at(1), '7');
+    await tester.pump();
+    await tester.tap(find.text('完成'));
+    await tester.pumpAndSettle();
+    expect(find.text('自定义金额'), findsOneWidget);
+
+    await tester.tap(find.text('保存'));
+    await tester.pumpAndSettle();
+
+    expect(saved, isNotNull);
+    expect(saved!.memberShares, hasLength(2));
+    expect(saved!.memberShares[0].amount, 3);
+    expect(saved!.memberShares[1].amount, 7);
+    expect(saved!.walletSources, hasLength(2));
+    expect(saved!.walletSources[0].amount, 3);
+    expect(saved!.walletSources[1].amount, 7);
   });
 }
 

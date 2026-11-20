@@ -39,12 +39,21 @@ Future<void> showEntryDetailSheet({
       ? '${account?.name ?? '未知账户'} → ${target?.name ?? '未知账户'}'
       : _fundingText(controller, entry, account?.name ?? '未知账户');
   final bool editable = entry.type != EntryType.adjustment;
-  final String recorder =
-      controller.members
-          .where((LedgerMember member) => member.id == entry.recordedByMemberId)
-          .map((LedgerMember member) => member.name)
-          .firstOrNull ??
-      '系统记录';
+  final List<int> recorderIds = entry.recorderIds.isNotEmpty
+      ? entry.recorderIds
+      : <int>[?entry.recordedByMemberId];
+  final String recorder = recorderIds.isEmpty
+      ? '未记录'
+      : recorderIds
+            .map(
+              (int id) =>
+                  controller.members
+                      .where((LedgerMember member) => member.id == id)
+                      .map((LedgerMember member) => member.name)
+                      .firstOrNull ??
+                  '已删除成员',
+            )
+            .join('、');
   await showModalBottomSheet<void>(
     context: context,
     useSafeArea: true,
@@ -71,6 +80,11 @@ Future<void> showEntryDetailSheet({
                 : null,
           ),
           _DetailRow(label: '支付', value: accountText),
+          if (entry.walletSources.isNotEmpty)
+            _DetailRow(
+              label: '荷包',
+              value: _walletSourceText(controller, entry.walletSources),
+            ),
           if (entry.type == EntryType.expense)
             _DetailRow(
               label: '预算',
@@ -204,6 +218,29 @@ String _fundingText(
       })
       .join(' + ');
 }
+
+String _walletSourceText(
+  LedgerController controller,
+  List<WalletSource> sources,
+) => sources
+    .map((WalletSource source) {
+      final String owner = source.sourceMemberId == null
+          ? '公共资金'
+          : controller.members
+                    .where(
+                      (LedgerMember member) =>
+                          member.id == source.sourceMemberId,
+                    )
+                    .map((LedgerMember member) => member.name)
+                    .firstOrNull ??
+                '已删除成员';
+      final bool borrowed =
+          source.sourceMemberId != null &&
+          source.payerMemberId != null &&
+          source.sourceMemberId != source.payerMemberId;
+      return '$owner ¥${source.amount.toStringAsFixed(2)}${borrowed ? '（代付）' : ''}';
+    })
+    .join(' + ');
 
 String _typeName(LedgerEntry entry) => switch (entry.type) {
   EntryType.transfer => '转账',

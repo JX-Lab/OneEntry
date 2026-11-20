@@ -18,6 +18,8 @@ class LedgerController extends ChangeNotifier {
   final List<LedgerCategory> categories = <LedgerCategory>[];
   final Map<String, double> categoryBudgets = <String, double>{};
   final Map<int, double> memberBudgets = <int, double>{};
+  final Map<int, double> memberWallets = <int, double>{};
+  double commonFund = 0;
 
   double monthlyBudget = 0;
   DateTime budgetMonth = DateTime(DateTime.now().year, DateTime.now().month);
@@ -28,7 +30,7 @@ class LedgerController extends ChangeNotifier {
   int? currentMemberId;
   String splitMode = 'equal';
   String themeMode = 'system';
-  String themeColor = 'teal';
+  String themeColor = 'green';
   bool voiceEnabled = true;
   double textScale = 1;
   bool highContrast = false;
@@ -69,6 +71,10 @@ class LedgerController extends ChangeNotifier {
     memberBudgets
       ..clear()
       ..addAll(snapshot.memberBudgets);
+    memberWallets
+      ..clear()
+      ..addAll(snapshot.memberWallets);
+    commonFund = snapshot.commonFund;
     monthlyBudget = snapshot.monthlyBudget;
     dailyReminderEnabled = snapshot.dailyReminderEnabled;
     dailyReminderHour = snapshot.dailyReminderHour;
@@ -246,6 +252,17 @@ class LedgerController extends ChangeNotifier {
     await initialize();
   }
 
+  Future<void> setWalletBalances({
+    required double commonFund,
+    required Map<int, double> memberBalances,
+  }) async {
+    await _repository.setWalletBalances(
+      commonFund: commonFund,
+      memberBalances: memberBalances,
+    );
+    await initialize();
+  }
+
   Future<List<EntryHistory>> entryHistory(LedgerEntry entry) =>
       _repository.entryHistory(entry.id);
 
@@ -340,14 +357,6 @@ class LedgerController extends ChangeNotifier {
       kind: kind,
       creditLimit: creditLimit,
     );
-    await initialize();
-  }
-
-  Future<void> setAccountFunds(
-    int accountId,
-    Map<int?, double> balances,
-  ) async {
-    await _repository.setAccountFunds(accountId, balances);
     await initialize();
   }
 

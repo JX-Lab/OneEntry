@@ -306,9 +306,7 @@ class _StatisticsPageState extends State<StatisticsPage> {
     )) {
       if (entry.memberIds.isEmpty) continue;
       for (final int id in entry.memberIds) {
-        final double share = widget.controller.splitMode == 'full'
-            ? entry.amount
-            : entry.memberShares.isNotEmpty
+        final double share = entry.memberShares.isNotEmpty
             ? entry.memberShares
                   .where((MemberShare item) => item.memberId == id)
                   .map((MemberShare item) => item.amount)

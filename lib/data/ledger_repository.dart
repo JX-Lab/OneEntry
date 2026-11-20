@@ -22,6 +22,8 @@ class LedgerSnapshot {
     required this.categories,
     required this.multiEnabled,
     required this.currentMemberId,
+    required this.memberWallets,
+    required this.commonFund,
     required this.splitMode,
     required this.themeMode,
     required this.themeColor,
@@ -49,6 +51,8 @@ class LedgerSnapshot {
   final List<LedgerCategory> categories;
   final bool multiEnabled;
   final int? currentMemberId;
+  final Map<int, double> memberWallets;
+  final double commonFund;
   final String splitMode;
   final String themeMode;
   final String themeColor;
@@ -80,6 +84,10 @@ class LedgerRepository {
     'member_budgets',
     'member_debt_settlements',
     'entry_history',
+    'member_wallets',
+    'wallet_state',
+    'transaction_wallet_sources',
+    'transaction_recorders',
     'budgets',
     'settings',
     'import_jobs',
@@ -159,6 +167,31 @@ class LedgerRepository {
             ),
           );
     }
+    final Map<int, List<WalletSource>> transactionWalletSources =
+        <int, List<WalletSource>>{};
+    for (final Map<String, Object?> row in await db.query(
+      'transaction_wallet_sources',
+      orderBy: 'transaction_id, sort_order, id',
+    )) {
+      transactionWalletSources
+          .putIfAbsent(row['transaction_id'] as int, () => <WalletSource>[])
+          .add(
+            WalletSource(
+              sourceMemberId: row['source_member_id'] as int?,
+              payerMemberId: row['payer_member_id'] as int?,
+              amount: (row['amount_minor'] as int) / 100,
+            ),
+          );
+    }
+    final Map<int, List<int>> transactionRecorders = <int, List<int>>{};
+    for (final Map<String, Object?> row in await db.query(
+      'transaction_recorders',
+      orderBy: 'transaction_id, member_id',
+    )) {
+      transactionRecorders
+          .putIfAbsent(row['transaction_id'] as int, () => <int>[])
+          .add(row['member_id'] as int);
+    }
     final Map<int, List<int>> transactionVisibleMembers = <int, List<int>>{};
     for (final Map<String, Object?> row in await db.query(
       'transaction_visible_members',
@@ -176,6 +209,9 @@ class LedgerRepository {
             transactionMemberShares[row['id'] as int] ?? const <MemberShare>[],
             transactionFundings[row['id'] as int] ?? const <EntryFunding>[],
             transactionVisibleMembers[row['id'] as int] ?? const <int>[],
+            transactionWalletSources[row['id'] as int] ??
+                const <WalletSource>[],
+            transactionRecorders[row['id'] as int] ?? const <int>[],
           ),
         )
         .toList();
@@ -220,6 +256,19 @@ class LedgerRepository {
       for (final Map<String, Object?> row in await db.query('settings'))
         row['key'] as String: row['value'] as String,
     };
+    final Map<int, double> memberWallets = <int, double>{
+      for (final Map<String, Object?> row in await db.query('member_wallets'))
+        row['member_id'] as int: (row['balance_minor'] as int) / 100,
+    };
+    final List<Map<String, Object?>> walletRows = await db.query(
+      'wallet_state',
+      columns: <String>['common_balance_minor'],
+      where: 'id = 1',
+      limit: 1,
+    );
+    final double commonFund = walletRows.isEmpty
+        ? 0
+        : (walletRows.first['common_balance_minor'] as int) / 100;
     final List<Map<String, Object?>> categoryBudgetRows = await db.rawQuery(
       '''
       SELECT c.name, b.amount_minor
@@ -273,9 +322,11 @@ class LedgerRepository {
       categories: categoryRows.map(_categoryFromRow).toList(),
       multiEnabled: settings['multi_enabled'] != '0',
       currentMemberId: int.tryParse(settings['current_member_id'] ?? ''),
+      memberWallets: memberWallets,
+      commonFund: commonFund,
       splitMode: settings['split_mode'] ?? 'equal',
       themeMode: settings['theme_mode'] ?? 'system',
-      themeColor: settings['theme_color'] ?? 'teal',
+      themeColor: settings['theme_color'] ?? 'green',
       voiceEnabled: settings['voice_enabled'] != '0',
       textScale: double.tryParse(settings['text_scale'] ?? '') ?? 1,
       highContrast: settings['high_contrast'] == '1',
@@ -381,6 +432,52 @@ class LedgerRepository {
     });
   }
 
+  Future<void> setWalletBalances({
+    required double commonFund,
+    required Map<int, double> memberBalances,
+  }) async {
+    final Database db = await _appDatabase.database;
+    await db.transaction((Transaction txn) async {
+      final int currentCommon =
+          Sqflite.firstIntValue(
+            await txn.rawQuery(
+              'SELECT common_balance_minor FROM wallet_state WHERE id = 1',
+            ),
+          ) ??
+          0;
+      final int currentMembers =
+          Sqflite.firstIntValue(
+            await txn.rawQuery(
+              'SELECT COALESCE(SUM(balance_minor), 0) FROM member_wallets',
+            ),
+          ) ??
+          0;
+      final int nextCommon = _minor(commonFund);
+      final int nextMembers = memberBalances.values.fold<int>(
+        0,
+        (int sum, double amount) => sum + _minor(amount),
+      );
+      if (nextCommon < 0 || memberBalances.values.any((value) => value < 0)) {
+        throw StateError('荷包金额不能为负数');
+      }
+      if (currentCommon + currentMembers != nextCommon + nextMembers) {
+        throw StateError('荷包与公共资金合计必须保持不变');
+      }
+      final int now = DateTime.now().millisecondsSinceEpoch;
+      await txn.update('wallet_state', <String, Object?>{
+        'common_balance_minor': nextCommon,
+        'updated_at': now,
+      }, where: 'id = 1');
+      for (final MapEntry<int, double> item in memberBalances.entries) {
+        await txn.insert('member_wallets', <String, Object?>{
+          'member_id': item.key,
+          'balance_minor': _minor(item.value),
+          'updated_at': now,
+        }, conflictAlgorithm: ConflictAlgorithm.replace);
+      }
+    });
+  }
+
   Future<List<EntryHistory>> entryHistory(int transactionId) async {
     final Database db = await _appDatabase.database;
     final List<Map<String, Object?>> transactionRows = await db.query(
@@ -417,6 +514,10 @@ class LedgerRepository {
     return db.transaction((Transaction txn) async {
       final List<EntryFunding> fundings = await _resolveFundings(txn, draft);
       final List<MemberShare> memberShares = _resolvedMemberShares(draft);
+      final List<WalletSource> walletSources = _resolvedWalletSources(
+        draft,
+        memberShares,
+      );
       final int? categoryId = draft.type == EntryType.transfer
           ? null
           : await _categoryId(txn, draft.category, now, type: draft.type);
@@ -468,14 +569,10 @@ class LedgerRepository {
       );
       await _insertFundings(txn, transactionId, fundings);
       await _applyBalance(txn, draft, 1, fundings: fundings);
-      await _insertDebts(
-        txn,
-        transactionId,
-        draft.type,
-        memberShares,
-        fundings,
-        _minor(draft.amount),
-      );
+      await _insertWalletSources(txn, transactionId, walletSources);
+      await _insertRecorders(txn, transactionId, draft.recorderIds);
+      await _applyWalletBalances(txn, draft.type, walletSources, 1);
+      await _insertDebts(txn, transactionId, draft.type, walletSources);
       await _insertVisibleMembers(txn, transactionId, draft.visibleMemberIds);
       await _insertHistory(
         txn,
@@ -502,6 +599,8 @@ class LedgerRepository {
         recordedByMemberId: draft.recordedByMemberId,
         visibility: draft.visibility,
         visibleMemberIds: List<int>.from(draft.visibleMemberIds),
+        walletSources: walletSources,
+        recorderIds: List<int>.from(draft.recorderIds),
         recurring: draft.recurring,
         recurringFrequency: draft.recurringFrequency,
       );
@@ -513,8 +612,18 @@ class LedgerRepository {
     final int now = DateTime.now().millisecondsSinceEpoch;
     await db.transaction((Transaction txn) async {
       await _applyBalance(txn, previous, -1);
+      await _applyWalletBalances(
+        txn,
+        previous.type,
+        previous.walletSources,
+        -1,
+      );
       final List<EntryFunding> fundings = await _resolveFundings(txn, next);
       final List<MemberShare> memberShares = _resolvedMemberShares(next);
+      final List<WalletSource> walletSources = _resolvedWalletSources(
+        next,
+        memberShares,
+      );
       final int? categoryId = next.type == EntryType.transfer
           ? null
           : await _categoryId(txn, next.category, now, type: next.type);
@@ -560,6 +669,16 @@ class LedgerRepository {
         where: 'transaction_id = ?',
         whereArgs: <Object?>[previous.id],
       );
+      await txn.delete(
+        'transaction_wallet_sources',
+        where: 'transaction_id = ?',
+        whereArgs: <Object?>[previous.id],
+      );
+      await txn.delete(
+        'transaction_recorders',
+        where: 'transaction_id = ?',
+        whereArgs: <Object?>[previous.id],
+      );
       await _insertMembers(
         txn,
         previous.id,
@@ -569,14 +688,10 @@ class LedgerRepository {
       );
       await _insertFundings(txn, previous.id, fundings);
       await _applyBalance(txn, next, 1, fundings: fundings);
-      await _insertDebts(
-        txn,
-        previous.id,
-        next.type,
-        memberShares,
-        fundings,
-        _minor(next.amount),
-      );
+      await _insertWalletSources(txn, previous.id, walletSources);
+      await _insertRecorders(txn, previous.id, next.recorderIds);
+      await _applyWalletBalances(txn, next.type, walletSources, 1);
+      await _insertDebts(txn, previous.id, next.type, walletSources);
       await _insertVisibleMembers(txn, previous.id, next.visibleMemberIds);
       final List<Map<String, Object?>> uuidRows = await txn.query(
         'transactions',
@@ -601,6 +716,7 @@ class LedgerRepository {
     final Database db = await _appDatabase.database;
     await db.transaction((Transaction txn) async {
       await _applyBalance(txn, entry, -1);
+      await _applyWalletBalances(txn, entry.type, entry.walletSources, -1);
       final List<Map<String, Object?>> rows = await txn.query(
         'transactions',
         columns: <String>['uuid'],
@@ -785,6 +901,18 @@ class LedgerRepository {
     final Database db = await _appDatabase.database;
     await db.transaction((Transaction txn) async {
       final int now = DateTime.now().millisecondsSinceEpoch;
+      final int walletBalance =
+          Sqflite.firstIntValue(
+            await txn.rawQuery(
+              'SELECT balance_minor FROM member_wallets WHERE member_id = ?',
+              <Object?>[id],
+            ),
+          ) ??
+          0;
+      await txn.rawUpdate(
+        'UPDATE wallet_state SET common_balance_minor = common_balance_minor + ?, updated_at = ? WHERE id = 1',
+        <Object?>[walletBalance, now],
+      );
       final List<Map<String, Object?>> funds = await txn.query(
         'account_funds',
         columns: <String>['account_id', 'balance_minor'],
@@ -816,6 +944,18 @@ class LedgerRepository {
         'transaction_fundings',
         <String, Object?>{'member_id': null},
         where: 'member_id = ?',
+        whereArgs: <Object?>[id],
+      );
+      await txn.update(
+        'transaction_wallet_sources',
+        <String, Object?>{'source_member_id': null},
+        where: 'source_member_id = ?',
+        whereArgs: <Object?>[id],
+      );
+      await txn.update(
+        'transaction_wallet_sources',
+        <String, Object?>{'payer_member_id': null},
+        where: 'payer_member_id = ?',
         whereArgs: <Object?>[id],
       );
       await txn.delete(
@@ -938,6 +1078,10 @@ class LedgerRepository {
         'created_at': now,
         'updated_at': now,
       });
+      await txn.rawUpdate(
+        'UPDATE wallet_state SET common_balance_minor = common_balance_minor + ?, updated_at = ? WHERE id = 1',
+        <Object?>[_minor(openingBalance), now],
+      );
     });
   }
 
@@ -978,36 +1122,18 @@ class LedgerRepository {
       );
       final int delta = nextMinor - oldMinor;
       if (delta != 0) {
-        final List<Map<String, Object?>> sharedRows = await txn.query(
-          'account_funds',
-          columns: <String>['id', 'balance_minor'],
-          where: 'account_id = ? AND member_id IS NULL',
-          whereArgs: <Object?>[id],
+        final List<Map<String, Object?>> walletRows = await txn.query(
+          'wallet_state',
+          columns: <String>['common_balance_minor'],
+          where: 'id = 1',
           limit: 1,
         );
-        final int sharedBalance = sharedRows.isEmpty
-            ? 0
-            : sharedRows.first['balance_minor'] as int;
-        final int nextShared = sharedBalance + delta;
-        if (kind == AccountKind.asset && nextShared < 0) {
-          throw StateError('共同资金不足，请先调整资金归属');
-        }
-        if (sharedRows.isEmpty) {
-          await txn.insert('account_funds', <String, Object?>{
-            'account_id': id,
-            'member_id': null,
-            'balance_minor': nextShared,
-            'created_at': now,
-            'updated_at': now,
-          });
-        } else {
-          await txn.update(
-            'account_funds',
-            <String, Object?>{'balance_minor': nextShared, 'updated_at': now},
-            where: 'id = ?',
-            whereArgs: <Object?>[sharedRows.first['id']],
-          );
-        }
+        final int common = walletRows.first['common_balance_minor'] as int;
+        if (common + delta < 0) throw StateError('公共资金不足，无法减少账户余额');
+        await txn.update('wallet_state', <String, Object?>{
+          'common_balance_minor': common + delta,
+          'updated_at': now,
+        }, where: 'id = 1');
         await txn.insert('transactions', <String, Object?>{
           'uuid': _uuid('adjustment', now),
           'type': EntryType.adjustment.name,
@@ -1041,52 +1167,6 @@ class LedgerRepository {
     if (kind == AccountKind.loan && balance > 0) {
       throw StateError('贷款账户请用负数表示尚未偿还的金额');
     }
-  }
-
-  Future<void> setAccountFunds(
-    int accountId,
-    Map<int?, double> balances,
-  ) async {
-    final Database db = await _appDatabase.database;
-    await db.transaction((Transaction txn) async {
-      final List<Map<String, Object?>> accountRows = await txn.query(
-        'accounts',
-        columns: <String>['balance_minor', 'kind'],
-        where: 'id = ?',
-        whereArgs: <Object?>[accountId],
-        limit: 1,
-      );
-      if (accountRows.isEmpty) throw StateError('账户不存在');
-      final int expected = accountRows.first['balance_minor'] as int;
-      final int actual = balances.values.fold<int>(
-        0,
-        (int sum, double amount) => sum + _minor(amount),
-      );
-      if (actual != expected) throw StateError('资金归属合计必须等于账户余额');
-      final AccountKind kind = AccountKind.values.byName(
-        accountRows.first['kind'] as String? ?? 'asset',
-      );
-      if (kind == AccountKind.asset &&
-          balances.values.any((value) => value < 0)) {
-        throw StateError('资产账户的成员资金不能为负数');
-      }
-      final int now = DateTime.now().millisecondsSinceEpoch;
-      await txn.delete(
-        'account_funds',
-        where: 'account_id = ?',
-        whereArgs: <Object?>[accountId],
-      );
-      for (final MapEntry<int?, double> item in balances.entries) {
-        if (_minor(item.value) == 0 && item.key != null) continue;
-        await txn.insert('account_funds', <String, Object?>{
-          'account_id': accountId,
-          'member_id': item.key,
-          'balance_minor': _minor(item.value),
-          'created_at': now,
-          'updated_at': now,
-        });
-      }
-    });
   }
 
   Future<void> addCategory({
@@ -1300,7 +1380,6 @@ class LedgerRepository {
             )
           : null;
       for (final LedgerEntry entry in entries) {
-        List<EntryFunding> effectiveFundings = entry.fundings;
         final Map<String, Object?> values = <String, Object?>{
           'updated_at': now,
         };
@@ -1336,7 +1415,6 @@ class LedgerRepository {
             txn,
             moved,
           );
-          effectiveFundings = movedFundings;
           await txn.delete(
             'transaction_fundings',
             where: 'transaction_id = ?',
@@ -1349,14 +1427,7 @@ class LedgerRepository {
           );
           await _insertFundings(txn, entry.id, movedFundings);
           await _applyBalance(txn, moved, 1, fundings: movedFundings);
-          await _insertDebts(
-            txn,
-            entry.id,
-            moved.type,
-            _resolvedMemberShares(moved),
-            movedFundings,
-            _minor(moved.amount),
-          );
+          await _insertDebts(txn, entry.id, moved.type, entry.walletSources);
         }
         if (changeNote) values['note'] = note;
         if (values.length > 1) {
@@ -1379,29 +1450,7 @@ class LedgerRepository {
             where: 'transaction_id = ?',
             whereArgs: <Object?>[entry.id],
           );
-          final LedgerEntry reassigned = LedgerEntry(
-            id: entry.id,
-            type: entry.type,
-            amount: entry.amount,
-            category: entry.category,
-            occurredAt: entry.occurredAt,
-            note: entry.note,
-            accountId: changeAccount && accountId != null
-                ? accountId
-                : entry.accountId,
-            toAccountId: entry.toAccountId,
-            memberIds: memberIds,
-            fundings: effectiveFundings,
-            outsideBudget: entry.outsideBudget,
-          );
-          await _insertDebts(
-            txn,
-            entry.id,
-            entry.type,
-            _resolvedMemberShares(reassigned),
-            effectiveFundings,
-            _minor(entry.amount),
-          );
+          await _insertDebts(txn, entry.id, entry.type, entry.walletSources);
         }
         if (values.length > 1 || changeMembers) {
           final List<Map<String, Object?>> uuidRows = await txn.query(
@@ -1472,13 +1521,20 @@ class LedgerRepository {
           ),
         ) ??
         0;
-    await db.insert('members', <String, Object?>{
-      'uuid': _uuid('member', now),
-      'name': name,
-      'color_value': colorValue,
-      'sort_order': order,
-      'created_at': now,
-      'updated_at': now,
+    await db.transaction((Transaction txn) async {
+      final int memberId = await txn.insert('members', <String, Object?>{
+        'uuid': _uuid('member', now),
+        'name': name,
+        'color_value': colorValue,
+        'sort_order': order,
+        'created_at': now,
+        'updated_at': now,
+      });
+      await txn.insert('member_wallets', <String, Object?>{
+        'member_id': memberId,
+        'balance_minor': 0,
+        'updated_at': now,
+      });
     });
   }
 
@@ -1550,6 +1606,8 @@ class LedgerRepository {
     final int now = DateTime.now().millisecondsSinceEpoch;
     await db.transaction((Transaction txn) async {
       for (final String table in <String>[
+        'transaction_recorders',
+        'transaction_wallet_sources',
         'entry_history',
         'transaction_visible_members',
         'member_debt_settlements',
@@ -1563,6 +1621,8 @@ class LedgerRepository {
         'import_jobs',
         'categories',
         'account_funds',
+        'member_wallets',
+        'wallet_state',
         'members',
         'accounts',
         'settings',
@@ -1587,12 +1647,22 @@ class LedgerRepository {
         'created_at': now,
         'updated_at': now,
       });
+      await txn.insert('wallet_state', <String, Object?>{
+        'id': 1,
+        'common_balance_minor': 0,
+        'updated_at': now,
+      });
       final int memberId = await txn.insert('members', <String, Object?>{
         'uuid': _uuid('member', now),
         'name': '我',
         'color_value': 0xFF2E7CF6,
         'sort_order': 0,
         'created_at': now,
+        'updated_at': now,
+      });
+      await txn.insert('member_wallets', <String, Object?>{
+        'member_id': memberId,
+        'balance_minor': 0,
         'updated_at': now,
       });
       await txn.insert('settings', <String, Object?>{
@@ -1698,12 +1768,23 @@ class LedgerRepository {
     final Database db = await _appDatabase.database;
     await db.transaction((Transaction txn) async {
       for (final String table in <String>[
+        'transaction_recorders',
+        'transaction_wallet_sources',
+        'entry_history',
+        'transaction_visible_members',
+        'member_debt_settlements',
+        'member_budgets',
+        'member_debts',
+        'transaction_fundings',
         'transaction_members',
         'transactions',
         'budgets',
         'recurring_rules',
         'import_jobs',
         'categories',
+        'account_funds',
+        'member_wallets',
+        'wallet_state',
         'members',
         'accounts',
         'settings',
@@ -1720,6 +1801,7 @@ class LedgerRepository {
       }
       if (sourceVersion < 6) await _backfillV6Tables(txn);
       if (sourceVersion < 7) await _backfillV7Tables(txn);
+      if (sourceVersion < 8) await _backfillV8Tables(txn);
     });
   }
 
@@ -1770,6 +1852,45 @@ class LedgerRepository {
     }
   }
 
+  Future<void> _backfillV8Tables(DatabaseExecutor db) async {
+    final int now = DateTime.now().millisecondsSinceEpoch;
+    await db.execute(
+      '''
+      INSERT INTO member_wallets(member_id, balance_minor, updated_at)
+      SELECT m.id, COALESCE(SUM(f.balance_minor), 0), ?
+      FROM members m
+      LEFT JOIN account_funds f ON f.member_id = m.id
+      GROUP BY m.id
+    ''',
+      <Object?>[now],
+    );
+    final int common =
+        Sqflite.firstIntValue(
+          await db.rawQuery(
+            'SELECT COALESCE(SUM(balance_minor), 0) FROM account_funds WHERE member_id IS NULL',
+          ),
+        ) ??
+        0;
+    await db.insert('wallet_state', <String, Object?>{
+      'id': 1,
+      'common_balance_minor': common,
+      'updated_at': now,
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
+    await db.execute('''
+      INSERT INTO transaction_wallet_sources(
+        transaction_id, source_member_id, payer_member_id, amount_minor, sort_order
+      )
+      SELECT transaction_id, member_id, member_id, SUM(amount_minor), MIN(sort_order)
+      FROM transaction_fundings
+      GROUP BY transaction_id, member_id
+    ''');
+    await db.execute('''
+      INSERT INTO transaction_recorders(transaction_id, member_id)
+      SELECT id, recorded_by_member_id FROM transactions
+      WHERE recorded_by_member_id IS NOT NULL
+    ''');
+  }
+
   Future<({int imported, int skipped, int members, int accounts})> importTonglv(
     TonglvImportBundle bundle, {
     String sourceApp = 'tonglv',
@@ -1813,6 +1934,11 @@ class LedgerRepository {
           });
           newMembers++;
         }
+        await txn.insert('member_wallets', <String, Object?>{
+          'member_id': localId,
+          'balance_minor': 0,
+          'updated_at': now,
+        }, conflictAlgorithm: ConflictAlgorithm.ignore);
         memberIds[member.sourceId] = localId;
       }
 
@@ -1949,10 +2075,21 @@ class LedgerRepository {
           'amount_minor': amountMinor,
           'sort_order': 0,
         });
+        await txn.insert('transaction_wallet_sources', <String, Object?>{
+          'transaction_id': transactionId,
+          'source_member_id': null,
+          'payer_member_id': null,
+          'amount_minor': amountMinor,
+          'sort_order': 0,
+        });
         final int delta = type == 'expense' ? -amountMinor : amountMinor;
         await txn.rawUpdate(
           'UPDATE accounts SET balance_minor = balance_minor + ?, updated_at = ? WHERE id = ?',
           <Object?>[delta, now, accountId],
+        );
+        await txn.rawUpdate(
+          'UPDATE wallet_state SET common_balance_minor = common_balance_minor + ?, updated_at = ? WHERE id = 1',
+          <Object?>[delta, now],
         );
         await txn.rawUpdate(
           '''
@@ -2048,6 +2185,8 @@ class LedgerRepository {
     List<MemberShare> memberShares,
     List<EntryFunding> fundings,
     List<int> visibleMemberIds,
+    List<WalletSource> walletSources,
+    List<int> recorderIds,
   ) {
     final EntryType type = EntryType.values.byName(row['type'] as String);
     return LedgerEntry(
@@ -2072,6 +2211,8 @@ class LedgerRepository {
         row['visibility'] as String? ?? 'all',
       ),
       visibleMemberIds: visibleMemberIds,
+      walletSources: walletSources,
+      recorderIds: recorderIds,
       recurring: row['recurring_rule_id'] != null,
       recurringFrequency: (row['recurring_frequency'] as String?) ?? 'month',
       adjustmentDelta: ((row['adjustment_delta_minor'] as int?) ?? 0) / 100,
@@ -2197,75 +2338,16 @@ class LedgerRepository {
     final AccountKind kind = AccountKind.values.byName(
       account['kind'] as String? ?? 'asset',
     );
-    final List<Map<String, Object?>> rows = await db.rawQuery(
-      '''
-      SELECT member_id, balance_minor
-      FROM account_funds
-      WHERE account_id = ?
-      ORDER BY CASE WHEN member_id IS NULL THEN 0 ELSE 1 END, id
-      ''',
-      <Object?>[entry.accountId],
-    );
-    final Set<int> selectedMembers = entry.memberIds.toSet();
-    rows.sort((Map<String, Object?> a, Map<String, Object?> b) {
-      final int? aId = a['member_id'] as int?;
-      final int? bId = b['member_id'] as int?;
-      int rank(int? id) => id == null
-          ? 0
-          : selectedMembers.contains(id)
-          ? 1
-          : 2;
-      return rank(aId).compareTo(rank(bId));
-    });
-    int remaining = amountMinor;
-    final List<EntryFunding> result = <EntryFunding>[];
-    for (final Map<String, Object?> row in rows) {
-      final int? memberId = row['member_id'] as int?;
-      if (memberId != null && !selectedMembers.contains(memberId)) continue;
-      final int available = (row['balance_minor'] as int).clamp(0, remaining);
-      if (available <= 0) continue;
-      result.add(
-        EntryFunding(
-          accountId: entry.accountId,
-          memberId: memberId,
-          amount: available / 100,
-        ),
-      );
-      remaining -= available;
-      if (remaining == 0) break;
-    }
-    if (remaining > 0 && kind == AccountKind.credit) {
-      final int alreadyAllocated = amountMinor - remaining;
-      final int availableCredit =
-          ((account['balance_minor'] as int) +
-                  (account['credit_limit_minor'] as int) -
-                  alreadyAllocated)
-              .clamp(0, remaining);
-      if (availableCredit > 0) {
-        final int sharedIndex = result.indexWhere(
-          (EntryFunding funding) => funding.memberId == null,
-        );
-        if (sharedIndex >= 0) {
-          final EntryFunding shared = result[sharedIndex];
-          result[sharedIndex] = EntryFunding(
-            accountId: shared.accountId,
-            amount: shared.amount + availableCredit / 100,
-          );
-        } else {
-          result.add(
-            EntryFunding(
-              accountId: entry.accountId,
-              amount: availableCredit / 100,
-            ),
-          );
-        }
-        remaining -= availableCredit;
-      }
-    }
-    if (remaining > 0) {
+    final int available = kind == AccountKind.credit
+        ? (account['balance_minor'] as int) +
+              (account['credit_limit_minor'] as int)
+        : account['balance_minor'] as int;
+    if (available < amountMinor) {
       throw StateError('账户中的可用资金不足，请使用组合付款或明确借用其他成员资金');
     }
-    return result;
+    return <EntryFunding>[
+      EntryFunding(accountId: entry.accountId, amount: entry.amount),
+    ];
   }
 
   Future<void> _validateFundingAccount(
@@ -2301,7 +2383,7 @@ class LedgerRepository {
       await db.insert('transaction_fundings', <String, Object?>{
         'transaction_id': transactionId,
         'account_id': funding.accountId,
-        'member_id': funding.memberId,
+        'member_id': null,
         'amount_minor': _minor(funding.amount),
         'sort_order': index,
       });
@@ -2318,6 +2400,115 @@ class LedgerRepository {
         'transaction_id': transactionId,
         'member_id': memberId,
       });
+    }
+  }
+
+  List<WalletSource> _resolvedWalletSources(
+    LedgerEntry entry,
+    List<MemberShare> memberShares,
+  ) {
+    if (entry.type == EntryType.transfer ||
+        entry.type == EntryType.adjustment) {
+      return const <WalletSource>[];
+    }
+    if (entry.walletSources.isNotEmpty) {
+      final int total = entry.walletSources.fold<int>(
+        0,
+        (int sum, WalletSource source) => sum + _minor(source.amount),
+      );
+      if (total != _minor(entry.amount)) {
+        throw StateError('荷包资金来源合计必须等于账目金额');
+      }
+      return entry.walletSources;
+    }
+    if (memberShares.isEmpty) {
+      return <WalletSource>[WalletSource(amount: entry.amount)];
+    }
+    return memberShares
+        .map(
+          (MemberShare share) => WalletSource(
+            sourceMemberId: share.memberId,
+            payerMemberId: share.memberId,
+            amount: share.amount,
+          ),
+        )
+        .toList();
+  }
+
+  Future<void> _insertWalletSources(
+    DatabaseExecutor db,
+    int transactionId,
+    List<WalletSource> sources,
+  ) async {
+    for (int index = 0; index < sources.length; index++) {
+      final WalletSource source = sources[index];
+      await db.insert('transaction_wallet_sources', <String, Object?>{
+        'transaction_id': transactionId,
+        'source_member_id': source.sourceMemberId,
+        'payer_member_id': source.payerMemberId,
+        'amount_minor': _minor(source.amount),
+        'sort_order': index,
+      });
+    }
+  }
+
+  Future<void> _insertRecorders(
+    DatabaseExecutor db,
+    int transactionId,
+    List<int> recorderIds,
+  ) async {
+    for (final int memberId in recorderIds.toSet()) {
+      await db.insert('transaction_recorders', <String, Object?>{
+        'transaction_id': transactionId,
+        'member_id': memberId,
+      });
+    }
+  }
+
+  Future<void> _applyWalletBalances(
+    DatabaseExecutor db,
+    EntryType type,
+    List<WalletSource> sources,
+    int direction,
+  ) async {
+    if (type == EntryType.transfer || type == EntryType.adjustment) return;
+    final int sign = type == EntryType.expense ? -direction : direction;
+    final int now = DateTime.now().millisecondsSinceEpoch;
+    for (final WalletSource source in sources) {
+      final int delta = _minor(source.amount) * sign;
+      if (source.sourceMemberId == null) {
+        final List<Map<String, Object?>> rows = await db.query(
+          'wallet_state',
+          columns: <String>['common_balance_minor'],
+          where: 'id = 1',
+          limit: 1,
+        );
+        final int current = rows.isEmpty
+            ? 0
+            : rows.first['common_balance_minor'] as int;
+        if (current + delta < 0) throw StateError('公共资金不足');
+        await db.update('wallet_state', <String, Object?>{
+          'common_balance_minor': current + delta,
+          'updated_at': now,
+        }, where: 'id = 1');
+      } else {
+        final List<Map<String, Object?>> rows = await db.query(
+          'member_wallets',
+          columns: <String>['balance_minor'],
+          where: 'member_id = ?',
+          whereArgs: <Object?>[source.sourceMemberId],
+          limit: 1,
+        );
+        final int current = rows.isEmpty
+            ? 0
+            : rows.first['balance_minor'] as int;
+        if (current + delta < 0) throw StateError('成员荷包余额不足');
+        await db.insert('member_wallets', <String, Object?>{
+          'member_id': source.sourceMemberId,
+          'balance_minor': current + delta,
+          'updated_at': now,
+        }, conflictAlgorithm: ConflictAlgorithm.replace);
+      }
     }
   }
 
@@ -2352,15 +2543,14 @@ class LedgerRepository {
             .toSet()
             .difference(previous.memberIds.toSet())
             .isNotEmpty) {
-      changes.add('承担成员');
+      changes.add('付款成员');
     }
     if (previous.fundings.length != next.fundings.length ||
         previous.accountId != next.accountId) {
       changes.add('支付来源');
     }
-    if (previous.visibility != next.visibility ||
-        previous.visibleMemberIds.length != next.visibleMemberIds.length) {
-      changes.add('可见范围');
+    if (previous.walletSources.length != next.walletSources.length) {
+      changes.add('荷包来源');
     }
     if (previous.note != next.note) changes.add('备注');
     return changes.isEmpty ? '保存账目' : '修改${changes.join('、')}';
@@ -2370,15 +2560,11 @@ class LedgerRepository {
     DatabaseExecutor db,
     int transactionId,
     EntryType type,
-    List<MemberShare> memberShares,
-    List<EntryFunding> fundings,
-    int amountMinor,
+    List<WalletSource> walletSources,
   ) async {
-    if (type != EntryType.expense || amountMinor <= 0) return;
+    if (type != EntryType.expense) return;
     for (final MemberDebt debt in calculateMemberDebts(
-      amount: amountMinor / 100,
-      memberShares: memberShares,
-      fundings: fundings,
+      walletSources: walletSources,
     )) {
       await db.insert('member_debts', <String, Object?>{
         'transaction_id': transactionId,
@@ -2405,29 +2591,14 @@ class LedgerRepository {
       if (entry.toAccountId == null) throw StateError('请选择转入账户');
       for (final EntryFunding funding in resolved) {
         final int amount = _minor(funding.amount) * direction;
-        await _changeAccountFund(
-          db,
-          funding.accountId,
-          funding.memberId,
-          -amount,
-        );
-        await _changeAccountFund(
-          db,
-          entry.toAccountId!,
-          funding.memberId,
-          amount,
-        );
+        await _changeAccountFund(db, funding.accountId, -amount);
+        await _changeAccountFund(db, entry.toAccountId!, amount);
       }
     } else {
       for (final EntryFunding funding in resolved) {
         final int amount = _minor(funding.amount) * direction;
         final int delta = entry.type == EntryType.expense ? -amount : amount;
-        await _changeAccountFund(
-          db,
-          funding.accountId,
-          funding.memberId,
-          delta,
-        );
+        await _changeAccountFund(db, funding.accountId, delta);
       }
     }
   }
@@ -2435,7 +2606,6 @@ class LedgerRepository {
   Future<void> _changeAccountFund(
     DatabaseExecutor db,
     int accountId,
-    int? memberId,
     int deltaMinor,
   ) async {
     final List<Map<String, Object?>> accountRows = await db.query(
@@ -2459,46 +2629,7 @@ class LedgerRepository {
       throw StateError('已超过信用账户额度');
     }
 
-    final String where = memberId == null
-        ? 'account_id = ? AND member_id IS NULL'
-        : 'account_id = ? AND member_id = ?';
-    final List<Object?> whereArgs = memberId == null
-        ? <Object?>[accountId]
-        : <Object?>[accountId, memberId];
-    final List<Map<String, Object?>> fundRows = await db.query(
-      'account_funds',
-      columns: <String>['id', 'balance_minor'],
-      where: where,
-      whereArgs: whereArgs,
-      limit: 1,
-    );
-    final int oldFundBalance = fundRows.isEmpty
-        ? 0
-        : fundRows.first['balance_minor'] as int;
-    final int nextFundBalance = oldFundBalance + deltaMinor;
-    if (kind == AccountKind.asset && nextFundBalance < 0) {
-      throw StateError('所选成员在该账户中的资金不足');
-    }
-    if (kind == AccountKind.credit && memberId != null && nextFundBalance < 0) {
-      throw StateError('成员个人资金不能透支');
-    }
     final int now = DateTime.now().millisecondsSinceEpoch;
-    if (fundRows.isEmpty) {
-      await db.insert('account_funds', <String, Object?>{
-        'account_id': accountId,
-        'member_id': memberId,
-        'balance_minor': nextFundBalance,
-        'created_at': now,
-        'updated_at': now,
-      });
-    } else {
-      await db.update(
-        'account_funds',
-        <String, Object?>{'balance_minor': nextFundBalance, 'updated_at': now},
-        where: 'id = ?',
-        whereArgs: <Object?>[fundRows.first['id']],
-      );
-    }
     await db.update(
       'accounts',
       <String, Object?>{'balance_minor': nextBalance, 'updated_at': now},

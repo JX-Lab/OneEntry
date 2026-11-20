@@ -37,6 +37,20 @@ class MemberShare {
   final double amount;
 }
 
+class WalletSource {
+  const WalletSource({
+    required this.amount,
+    this.sourceMemberId,
+    this.payerMemberId,
+  });
+
+  final int? sourceMemberId;
+  final int? payerMemberId;
+  final double amount;
+
+  bool get common => sourceMemberId == null;
+}
+
 class MemberDebt {
   const MemberDebt({
     required this.creditorMemberId,
@@ -140,6 +154,8 @@ class LedgerEntry {
     this.recordedByMemberId,
     this.visibility = EntryVisibility.all,
     this.visibleMemberIds = const <int>[],
+    this.walletSources = const <WalletSource>[],
+    this.recorderIds = const <int>[],
     this.recurring = false,
     this.recurringFrequency = 'month',
     this.adjustmentDelta = 0,
@@ -160,6 +176,8 @@ class LedgerEntry {
   final int? recordedByMemberId;
   final EntryVisibility visibility;
   final List<int> visibleMemberIds;
+  final List<WalletSource> walletSources;
+  final List<int> recorderIds;
   final bool recurring;
   final String recurringFrequency;
   final double adjustmentDelta;

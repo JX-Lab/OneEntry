@@ -133,6 +133,36 @@ class _MembersPageState extends State<MembersPage> {
                 ],
               ),
             ),
+            const Padding(
+              padding: EdgeInsets.fromLTRB(4, 14, 4, 8),
+              child: Text(
+                '成员荷包',
+                style: TextStyle(fontSize: 12, color: Color(0xFF8A9099)),
+              ),
+            ),
+            Container(
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.surface,
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: ListTile(
+                leading: const CircleAvatar(child: Icon(Icons.groups_outlined)),
+                title: const Text('公共资金'),
+                subtitle: const Text('任何成员都可以选择使用，不产生借款'),
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: <Widget>[
+                    Text(
+                      '¥${widget.controller.commonFund.toStringAsFixed(2)}',
+                      style: const TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                    const SizedBox(width: 6),
+                    const Icon(Icons.chevron_right, size: 20),
+                  ],
+                ),
+                onTap: () => _editWallets(context),
+              ),
+            ),
             if (debts.isNotEmpty) ...<Widget>[
               const Padding(
                 padding: EdgeInsets.fromLTRB(4, 14, 4, 8),
@@ -217,10 +247,7 @@ class _MembersPageState extends State<MembersPage> {
     final int count = widget.controller.visibleEntries
         .where((entry) => entry.memberIds.contains(member.id))
         .length;
-    final double funds = widget.controller.accounts
-        .expand((LedgerAccount account) => account.funds)
-        .where((AccountFund fund) => fund.memberId == member.id)
-        .fold(0, (double sum, AccountFund fund) => sum + fund.balance);
+    final double funds = widget.controller.memberWallets[member.id] ?? 0;
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: SwipeActionTile(
@@ -405,6 +432,38 @@ class _MembersPageState extends State<MembersPage> {
       amount: value,
       note: memo,
     );
+  }
+
+  Future<void> _editWallets(BuildContext context) async {
+    final _WalletAllocationResult? result =
+        await showModalBottomSheet<_WalletAllocationResult>(
+          context: context,
+          isScrollControlled: true,
+          useSafeArea: true,
+          builder: (BuildContext context) => _GlobalWalletAllocationSheet(
+            commonFund: widget.controller.commonFund,
+            members: widget.controller.members
+                .where(
+                  (LedgerMember member) =>
+                      !member.archived ||
+                      (widget.controller.memberWallets[member.id] ?? 0) != 0,
+                )
+                .toList(),
+            balances: widget.controller.memberWallets,
+          ),
+        );
+    if (result == null) return;
+    try {
+      await widget.controller.setWalletBalances(
+        commonFund: result.commonFund,
+        memberBalances: result.memberBalances,
+      );
+    } on StateError catch (error) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('${error.message}')));
+    }
   }
 
   Future<void> _edit(BuildContext context, [LedgerMember? member]) async {
@@ -596,6 +655,165 @@ class _MembersPageState extends State<MembersPage> {
 
   static String _hex(int value) =>
       '#${(value & 0xFFFFFF).toRadixString(16).padLeft(6, '0').toUpperCase()}';
+}
+
+class _WalletAllocationResult {
+  const _WalletAllocationResult({
+    required this.commonFund,
+    required this.memberBalances,
+  });
+  final double commonFund;
+  final Map<int, double> memberBalances;
+}
+
+class _GlobalWalletAllocationSheet extends StatefulWidget {
+  const _GlobalWalletAllocationSheet({
+    required this.commonFund,
+    required this.members,
+    required this.balances,
+  });
+  final double commonFund;
+  final List<LedgerMember> members;
+  final Map<int, double> balances;
+
+  @override
+  State<_GlobalWalletAllocationSheet> createState() =>
+      _GlobalWalletAllocationSheetState();
+}
+
+class _GlobalWalletAllocationSheetState
+    extends State<_GlobalWalletAllocationSheet> {
+  late final TextEditingController _common;
+  final Map<int, TextEditingController> _memberInputs =
+      <int, TextEditingController>{};
+
+  double get _expected =>
+      widget.commonFund +
+      widget.balances.values.fold<double>(
+        0,
+        (double sum, double value) => sum + value,
+      );
+
+  @override
+  void initState() {
+    super.initState();
+    _common = TextEditingController(text: widget.commonFund.toStringAsFixed(2));
+    for (final LedgerMember member in widget.members) {
+      _memberInputs[member.id] = TextEditingController(
+        text: (widget.balances[member.id] ?? 0).toStringAsFixed(2),
+      );
+    }
+  }
+
+  @override
+  void dispose() {
+    _common.dispose();
+    for (final TextEditingController input in _memberInputs.values) {
+      input.dispose();
+    }
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final double total =
+        (double.tryParse(_common.text) ?? 0) +
+        _memberInputs.values.fold<double>(
+          0,
+          (double sum, TextEditingController input) =>
+              sum + (double.tryParse(input.text) ?? 0),
+        );
+    final bool complete = (total - _expected).abs() < .005;
+    return FractionallySizedBox(
+      heightFactor: .86,
+      child: Column(
+        children: <Widget>[
+          SizedBox(
+            height: 56,
+            child: Row(
+              children: <Widget>[
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('取消'),
+                ),
+                const Expanded(
+                  child: Text(
+                    '分配成员荷包',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                ),
+                TextButton(
+                  onPressed: complete
+                      ? () => Navigator.pop(
+                          context,
+                          _WalletAllocationResult(
+                            commonFund: double.tryParse(_common.text) ?? 0,
+                            memberBalances: <int, double>{
+                              for (final MapEntry<int, TextEditingController>
+                                  item
+                                  in _memberInputs.entries)
+                                item.key: double.tryParse(item.value.text) ?? 0,
+                            },
+                          ),
+                        )
+                      : null,
+                  child: const Text('保存'),
+                ),
+              ],
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+            child: Text(
+              complete
+                  ? '总资金 ¥${_expected.toStringAsFixed(2)} 已全部分配'
+                  : '合计必须保持 ¥${_expected.toStringAsFixed(2)}，还差 ¥${(_expected - total).abs().toStringAsFixed(2)}',
+              style: TextStyle(
+                color: complete ? null : AppTheme.ledgerOf(context).expense,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+          Expanded(
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 20),
+              children: <Widget>[
+                TextField(
+                  controller: _common,
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
+                  decoration: const InputDecoration(
+                    labelText: '公共资金',
+                    prefixText: '¥ ',
+                  ),
+                  onChanged: (_) => setState(() {}),
+                ),
+                const SizedBox(height: 12),
+                ...widget.members.map(
+                  (LedgerMember member) => Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: TextField(
+                      controller: _memberInputs[member.id],
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
+                      decoration: InputDecoration(
+                        labelText: '${member.name}的荷包',
+                        prefixText: '¥ ',
+                      ),
+                      onChanged: (_) => setState(() {}),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class _DebtSummary {
@@ -892,7 +1110,6 @@ class _MemberDetailPage extends StatelessWidget {
   }
 
   double _memberAmount(LedgerEntry entry) {
-    if (controller.splitMode == 'full') return entry.amount;
     if (entry.memberShares.isNotEmpty) {
       return entry.memberShares
           .where((MemberShare share) => share.memberId == memberId)

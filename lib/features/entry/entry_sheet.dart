@@ -30,7 +30,9 @@ class _EntrySheetState extends State<EntrySheet> {
   int _accountId = 1;
   int? _toAccountId = 2;
   final Set<int> _members = <int>{};
-  int? _recordedByMemberId;
+  final Set<int> _recorders = <int>{};
+  final Map<int, double> _customPayerAmounts = <int, double>{};
+  bool _customPayerSplit = false;
   final List<EntryFunding> _fundings = <EntryFunding>[];
   bool _recurring = false;
   bool _outsideBudget = false;
@@ -55,7 +57,6 @@ class _EntrySheetState extends State<EntrySheet> {
     final List<LedgerMember> activeMembers = widget.controller.members
         .where((LedgerMember member) => !member.archived)
         .toList();
-    _recordedByMemberId = null;
     if (activeMembers.length == 1) _members.add(activeMembers.first.id);
     if (widget.controller.categories.isNotEmpty) {
       final List<LedgerCategory> expense = widget.controller.categoriesFor(
@@ -75,7 +76,24 @@ class _EntrySheetState extends State<EntrySheet> {
       _fundings
         ..clear()
         ..addAll(source.fundings);
-      _recordedByMemberId = source.recordedByMemberId;
+      _recorders
+        ..clear()
+        ..addAll(
+          source.recorderIds.isNotEmpty
+              ? source.recorderIds
+              : <int>[?source.recordedByMemberId],
+        );
+      if (source.memberShares.isNotEmpty) {
+        _customPayerSplit = true;
+        _customPayerAmounts
+          ..clear()
+          ..addEntries(
+            source.memberShares.map(
+              (MemberShare share) =>
+                  MapEntry<int, double>(share.memberId, share.amount),
+            ),
+          );
+      }
       _recurring = source.recurring;
       _outsideBudget = source.outsideBudget;
       _frequency = source.recurringFrequency;
@@ -131,7 +149,7 @@ class _EntrySheetState extends State<EntrySheet> {
     return null;
   }
 
-  void _save() {
+  Future<void> _save() async {
     final double? amount = evaluateAmountExpression(_amountController.text);
     if (amount == null || amount <= 0) {
       ScaffoldMessenger.of(
@@ -162,6 +180,20 @@ class _EntrySheetState extends State<EntrySheet> {
       ).showSnackBar(SnackBar(content: Text(fundingError)));
       return;
     }
+    late final List<MemberShare> payerShares;
+    try {
+      payerShares = _memberSharesForSave(amount);
+    } on StateError catch (error) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('${error.message}')));
+      return;
+    }
+    final List<WalletSource>? walletSources = await _walletSourcesForSave(
+      amount,
+      payerShares,
+    );
+    if (walletSources == null || !mounted) return;
     Navigator.of(context).pop(
       LedgerEntry(
         id: widget.initial?.id ?? 0,
@@ -173,10 +205,12 @@ class _EntrySheetState extends State<EntrySheet> {
         accountId: _accountId,
         toAccountId: _type == EntryType.transfer ? _toAccountId : null,
         memberIds: _members.toList(),
-        memberShares: _memberSharesForSave(amount),
+        memberShares: payerShares,
         fundings: fundings,
+        walletSources: walletSources,
         outsideBudget: _type == EntryType.expense && _outsideBudget,
-        recordedByMemberId: _recordedByMemberId,
+        recordedByMemberId: _recorders.firstOrNull,
+        recorderIds: _recorders.toList(),
         visibility: EntryVisibility.all,
         recurring: _type != EntryType.transfer && _recurring,
         recurringFrequency: _frequency,
@@ -197,7 +231,7 @@ class _EntrySheetState extends State<EntrySheet> {
     final Color surface = Theme.of(context).colorScheme.surface;
     final List<LedgerCategory> categories = widget.controller.categoriesFor(
       _type,
-      memberId: _recordedByMemberId,
+      memberId: _recorders.length == 1 ? _recorders.first : null,
     );
 
     return Scaffold(
@@ -252,21 +286,28 @@ class _EntrySheetState extends State<EntrySheet> {
                 ),
                 if (widget.controller.multiEnabled)
                   _PickerField(
-                    title: '承担成员（可多选）',
+                    title: _type == EntryType.income
+                        ? '收入归属（可多选）'
+                        : '付款成员（可多选）',
                     value: _memberSummary(members),
                     onTap: () => _pickMembers(members),
+                  ),
+                if (widget.controller.multiEnabled && _members.length > 1)
+                  _PickerField(
+                    title: _type == EntryType.income ? '收入分配' : '付款分摊',
+                    value: _customPayerSplit ? '自定义金额' : 'AA 均摊',
+                    onTap: () => _editPayerSplit(members),
                   ),
                 if (widget.controller.multiEnabled)
                   _PickerField(
                     title: '记录者（可不选）',
-                    value: _memberName(members, _recordedByMemberId),
-                    onTap: () => _pickRecorder(members),
+                    value: _recorderSummary(members),
+                    onTap: () => _pickRecorders(members),
                   ),
                 _PickerField(
                   title: _type == EntryType.expense ? '支付来源' : '入账账户',
-                  value: _fundingSummary(accounts, members, account),
-                  onTap: () =>
-                      _editFundings(accounts: accounts, members: members),
+                  value: _fundingSummary(accounts, account),
+                  onTap: () => _editFundings(accounts: accounts),
                 ),
               ] else ...<Widget>[
                 _PickerField(
@@ -301,8 +342,8 @@ class _EntrySheetState extends State<EntrySheet> {
               if (widget.controller.multiEnabled && _type == EntryType.transfer)
                 _PickerField(
                   title: '记录者（可不选）',
-                  value: _memberName(members, _recordedByMemberId),
-                  onTap: () => _pickRecorder(members),
+                  value: _recorderSummary(members),
+                  onTap: () => _pickRecorders(members),
                 ),
               Container(
                 margin: const EdgeInsets.only(top: 10),
@@ -440,9 +481,44 @@ class _EntrySheetState extends State<EntrySheet> {
     _dismissKeyboard();
     if (result == null) return;
     setState(() {
+      if (!_members.containsAll(result) || !result.containsAll(_members)) {
+        _customPayerSplit = false;
+        _customPayerAmounts.clear();
+      }
       _members
         ..clear()
         ..addAll(result);
+    });
+  }
+
+  Future<void> _editPayerSplit(List<LedgerMember> members) async {
+    final double? amount = evaluateAmountExpression(_amountController.text);
+    if (amount == null || amount <= 0) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('请先输入账目金额')));
+      return;
+    }
+    final _PayerSplitResult? result =
+        await showModalBottomSheet<_PayerSplitResult>(
+          context: context,
+          isScrollControlled: true,
+          useSafeArea: true,
+          builder: (BuildContext context) => _PayerSplitSheet(
+            total: amount,
+            members: members
+                .where((LedgerMember member) => _members.contains(member.id))
+                .toList(),
+            custom: _customPayerSplit,
+            initial: _customPayerAmounts,
+          ),
+        );
+    if (!mounted || result == null) return;
+    setState(() {
+      _customPayerSplit = result.custom;
+      _customPayerAmounts
+        ..clear()
+        ..addAll(result.amounts);
     });
   }
 
@@ -453,55 +529,31 @@ class _EntrySheetState extends State<EntrySheet> {
           .firstOrNull ??
       '系统记录';
 
-  Future<void> _pickRecorder(List<LedgerMember> members) async {
+  String _recorderSummary(List<LedgerMember> members) {
+    if (_recorders.isEmpty) return '不记录';
+    return _recorders.map((int id) => _memberName(members, id)).join('、');
+  }
+
+  Future<void> _pickRecorders(List<LedgerMember> members) async {
     _dismissKeyboard();
-    final int? result = await showModalBottomSheet<int>(
+    final Set<int>? result = await showModalBottomSheet<Set<int>>(
       context: context,
+      isScrollControlled: true,
       useSafeArea: true,
-      builder: (BuildContext context) => ListView(
-        shrinkWrap: true,
-        padding: const EdgeInsets.only(bottom: 16),
-        children: <Widget>[
-          const Padding(
-            padding: EdgeInsets.fromLTRB(18, 12, 18, 6),
-            child: Text(
-              '选择记录身份',
-              style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
-            ),
-          ),
-          ListTile(
-            leading: const CircleAvatar(child: Icon(Icons.remove)),
-            title: const Text('不记录'),
-            trailing: _recordedByMemberId == null
-                ? const Icon(Icons.check)
-                : null,
-            onTap: () => Navigator.pop(context, -1),
-          ),
-          ...members.map(
-            (LedgerMember member) => ListTile(
-              leading: CircleAvatar(
-                backgroundColor: Color(member.colorValue),
-                child: Text(
-                  member.name.substring(0, 1),
-                  style: const TextStyle(color: Colors.white),
-                ),
-              ),
-              title: Text(member.name),
-              trailing: member.id == _recordedByMemberId
-                  ? const Icon(Icons.check)
-                  : null,
-              onTap: () => Navigator.pop(context, member.id),
-            ),
-          ),
-        ],
+      builder: (BuildContext context) => _MemberPickerSheet(
+        title: '选择记录者',
+        members: members,
+        selectedIds: _recorders,
       ),
     );
     if (result == null || !mounted) return;
     setState(() {
-      _recordedByMemberId = result < 0 ? null : result;
+      _recorders
+        ..clear()
+        ..addAll(result);
       final List<LedgerCategory> available = widget.controller.categoriesFor(
         _type,
-        memberId: _recordedByMemberId,
+        memberId: _recorders.length == 1 ? _recorders.first : null,
       );
       if (!available.any((LedgerCategory item) => item.name == _category) &&
           available.isNotEmpty) {
@@ -530,11 +582,7 @@ class _EntrySheetState extends State<EntrySheet> {
     if (_fundings.length == 1) {
       final EntryFunding only = _fundings.first;
       return <EntryFunding>[
-        EntryFunding(
-          accountId: only.accountId,
-          memberId: only.memberId,
-          amount: amount,
-        ),
+        EntryFunding(accountId: only.accountId, amount: amount),
       ];
     }
     final int expected = (amount * 100).round();
@@ -565,115 +613,227 @@ class _EntrySheetState extends State<EntrySheet> {
     int remaining = (amount * 100).round();
     final List<EntryFunding> result = <EntryFunding>[];
     for (final LedgerAccount account in active) {
-      final List<AccountFund> funds = account.funds.isEmpty
-          ? <AccountFund>[
-              AccountFund(accountId: account.id, balance: account.balance),
-            ]
-          : List<AccountFund>.from(account.funds);
-      funds.sort((AccountFund a, AccountFund b) {
-        int rank(AccountFund fund) => fund.memberId == null
-            ? 0
-            : _members.contains(fund.memberId)
-            ? 1
-            : 2;
-        return rank(a).compareTo(rank(b));
-      });
-      int accountAllocated = 0;
-      for (final AccountFund fund in funds) {
-        if (fund.memberId != null && !_members.contains(fund.memberId)) {
-          continue;
-        }
-        final int available = (fund.balance * 100).round().clamp(0, remaining);
-        if (available <= 0) continue;
-        result.add(
-          EntryFunding(
-            accountId: account.id,
-            memberId: fund.memberId,
-            amount: available / 100,
-          ),
-        );
-        accountAllocated += available;
-        remaining -= available;
-        if (remaining == 0) return result;
-      }
-      if (account.kind == AccountKind.credit && remaining > 0) {
-        final int creditAvailable =
-            ((account.availableToSpend * 100).round() - accountAllocated).clamp(
-              0,
-              remaining,
-            );
-        if (creditAvailable > 0) {
-          result.add(
-            EntryFunding(accountId: account.id, amount: creditAvailable / 100),
-          );
-          remaining -= creditAvailable;
-          if (remaining == 0) return result;
-        }
-      }
+      final int available = (account.availableToSpend * 100).round().clamp(
+        0,
+        remaining,
+      );
+      if (available <= 0) continue;
+      result.add(EntryFunding(accountId: account.id, amount: available / 100));
+      remaining -= available;
+      if (remaining == 0) return result;
     }
     return result;
   }
 
   List<MemberShare> _memberSharesForSave(double amount) {
-    if (widget.controller.splitMode != 'fund_ratio' || _members.isEmpty) {
-      return const <MemberShare>[];
-    }
-    final Map<int, double> wealth = <int, double>{
-      for (final int memberId in _members)
-        memberId: widget.controller.accounts
-            .where((LedgerAccount account) => !account.archived)
-            .expand((LedgerAccount account) => account.funds)
-            .where((AccountFund fund) => fund.memberId == memberId)
-            .fold(
-              0,
-              (double sum, AccountFund fund) =>
-                  sum + (fund.balance > 0 ? fund.balance : 0),
-            ),
-    };
-    final double totalWealth = wealth.values.fold(
-      0,
-      (double sum, double value) => sum + value,
-    );
-    if (totalWealth <= 0) return const <MemberShare>[];
+    if (_members.isEmpty) return const <MemberShare>[];
     final int totalMinor = (amount * 100).round();
+    if (_customPayerSplit) {
+      final List<MemberShare> custom = _members
+          .map(
+            (int memberId) => MemberShare(
+              memberId: memberId,
+              amount: _customPayerAmounts[memberId] ?? 0,
+            ),
+          )
+          .where((MemberShare share) => share.amount > 0)
+          .toList();
+      final int customTotal = custom.fold<int>(
+        0,
+        (int sum, MemberShare share) => sum + (share.amount * 100).round(),
+      );
+      if (customTotal != totalMinor) {
+        throw StateError('自定义付款金额合计必须等于账目金额');
+      }
+      return custom;
+    }
     int assigned = 0;
     final List<int> ids = _members.toList();
     return ids.map((int memberId) {
       final int share = memberId == ids.last
           ? totalMinor - assigned
-          : (totalMinor * (wealth[memberId] ?? 0) / totalWealth).floor();
+          : totalMinor ~/ ids.length;
       assigned += share;
       return MemberShare(memberId: memberId, amount: share / 100);
     }).toList();
   }
 
+  Future<List<WalletSource>?> _walletSourcesForSave(
+    double amount,
+    List<MemberShare> payerShares,
+  ) async {
+    if (_type == EntryType.transfer || _type == EntryType.adjustment) {
+      return const <WalletSource>[];
+    }
+    if (_type == EntryType.income) {
+      if (payerShares.isEmpty)
+        return <WalletSource>[WalletSource(amount: amount)];
+      return payerShares
+          .map(
+            (MemberShare share) => WalletSource(
+              sourceMemberId: share.memberId,
+              payerMemberId: share.memberId,
+              amount: share.amount,
+            ),
+          )
+          .toList();
+    }
+    if (payerShares.isEmpty) {
+      if (widget.controller.commonFund + .004 < amount) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('公共资金不足，请选择付款成员')));
+        return null;
+      }
+      return <WalletSource>[WalletSource(amount: amount)];
+    }
+
+    final Map<int?, double> used = <int?, double>{};
+    final List<WalletSource> result = <WalletSource>[];
+    final List<(int, double)> shortages = <(int, double)>[];
+    for (final MemberShare share in payerShares) {
+      final double available =
+          widget.controller.memberWallets[share.memberId] ?? 0;
+      final double own = share.amount < available ? share.amount : available;
+      if (own > .004) {
+        result.add(
+          WalletSource(
+            sourceMemberId: share.memberId,
+            payerMemberId: share.memberId,
+            amount: own,
+          ),
+        );
+        used[share.memberId] = own;
+      }
+      final double shortage = share.amount - own;
+      if (shortage > .004) shortages.add((share.memberId, shortage));
+    }
+    for (final (int payerId, double initialShortage) in shortages) {
+      double remaining = initialShortage;
+      while (remaining > .004) {
+        final _WalletSourceChoice? choice = await _pickWalletSource(
+          payerId: payerId,
+          remaining: remaining,
+          used: used,
+        );
+        if (choice == null || !mounted) return null;
+        final double available = choice.sourceMemberId == null
+            ? widget.controller.commonFund - (used[null] ?? 0)
+            : (widget.controller.memberWallets[choice.sourceMemberId] ?? 0) -
+                  (used[choice.sourceMemberId] ?? 0);
+        final double take = remaining < available ? remaining : available;
+        if (take <= .004) return null;
+        result.add(
+          WalletSource(
+            sourceMemberId: choice.sourceMemberId,
+            payerMemberId: payerId,
+            amount: take,
+          ),
+        );
+        used.update(
+          choice.sourceMemberId,
+          (double value) => value + take,
+          ifAbsent: () => take,
+        );
+        remaining -= take;
+      }
+    }
+    return result;
+  }
+
+  Future<_WalletSourceChoice?> _pickWalletSource({
+    required int payerId,
+    required double remaining,
+    required Map<int?, double> used,
+  }) async {
+    final List<LedgerMember> members = widget.controller.members
+        .where((LedgerMember member) => !member.archived)
+        .toList();
+    final String payerName = _memberName(members, payerId);
+    final List<_WalletSourceChoice> choices = <_WalletSourceChoice>[];
+    final double commonAvailable =
+        widget.controller.commonFund - (used[null] ?? 0);
+    if (commonAvailable > .004) {
+      choices.add(
+        _WalletSourceChoice(label: '公共资金', available: commonAvailable),
+      );
+    }
+    for (final LedgerMember member in members) {
+      if (member.id == payerId) continue;
+      final double available =
+          (widget.controller.memberWallets[member.id] ?? 0) -
+          (used[member.id] ?? 0);
+      if (available <= .004) continue;
+      choices.add(
+        _WalletSourceChoice(
+          sourceMemberId: member.id,
+          label: '${member.name}的荷包',
+          available: available,
+        ),
+      );
+    }
+    if (choices.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            '$payerName 还差 ¥${remaining.toStringAsFixed(2)}，没有可用资金来源',
+          ),
+        ),
+      );
+      return null;
+    }
+    return showModalBottomSheet<_WalletSourceChoice>(
+      context: context,
+      useSafeArea: true,
+      builder: (BuildContext context) => ListView(
+        shrinkWrap: true,
+        padding: const EdgeInsets.only(bottom: 16),
+        children: <Widget>[
+          Padding(
+            padding: const EdgeInsets.fromLTRB(18, 12, 18, 6),
+            child: Text(
+              '${payerName}的荷包还差 ¥${remaining.toStringAsFixed(2)}',
+              style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
+            ),
+          ),
+          const Padding(
+            padding: EdgeInsets.fromLTRB(18, 0, 18, 8),
+            child: Text('选择实际从哪里出钱；使用其他成员荷包会产生借款'),
+          ),
+          ...choices.map(
+            (_WalletSourceChoice choice) => ListTile(
+              leading: Icon(
+                choice.sourceMemberId == null
+                    ? Icons.groups_outlined
+                    : Icons.account_balance_wallet_outlined,
+              ),
+              title: Text(choice.label),
+              subtitle: Text('可用 ¥${choice.available.toStringAsFixed(2)}'),
+              onTap: () => Navigator.pop(context, choice),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   String? _validateLocalFundings(List<EntryFunding> fundings) {
     if (_type == EntryType.income) return null;
-    final Map<(int, int?), double> requested = <(int, int?), double>{};
+    final Map<int, double> requested = <int, double>{};
     for (final EntryFunding funding in fundings) {
-      final (int, int?) key = (funding.accountId, funding.memberId);
       requested.update(
-        key,
+        funding.accountId,
         (double value) => value + funding.amount,
         ifAbsent: () => funding.amount,
       );
     }
-    for (final MapEntry<(int, int?), double> item in requested.entries) {
+    for (final MapEntry<int, double> item in requested.entries) {
       final LedgerAccount? account = widget.controller.accounts
-          .where((LedgerAccount value) => value.id == item.key.$1)
+          .where((LedgerAccount value) => value.id == item.key)
           .firstOrNull;
       if (account == null || account.archived) return '所选账户不可用';
       if (account.kind == AccountKind.loan) return '贷款账户不能直接用于支付';
-      final double available =
-          account.kind == AccountKind.credit && item.key.$2 == null
-          ? account.availableToSpend
-          : account.funds
-                    .where((AccountFund fund) => fund.memberId == item.key.$2)
-                    .map((AccountFund fund) => fund.balance)
-                    .firstOrNull ??
-                (item.key.$2 == null && account.funds.isEmpty
-                    ? account.balance
-                    : 0);
+      final double available = account.availableToSpend;
       if (item.value - available > .004) {
         return '所选资金不足，请调整支付来源或使用组合付款';
       }
@@ -683,7 +843,6 @@ class _EntrySheetState extends State<EntrySheet> {
 
   String _fundingSummary(
     List<LedgerAccount> accounts,
-    List<LedgerMember> members,
     LedgerAccount? fallback,
   ) {
     if (_fundings.isEmpty) return fallback?.name ?? '请选择';
@@ -694,24 +853,14 @@ class _EntrySheetState extends State<EntrySheet> {
               .map((LedgerAccount item) => item.name)
               .firstOrNull ??
           '未知账户';
-      final String owner = funding.memberId == null
-          ? '共同资金'
-          : members
-                    .where((LedgerMember item) => item.id == funding.memberId)
-                    .map((LedgerMember item) => item.name)
-                    .firstOrNull ??
-                '未知成员';
-      return '$account·$owner ¥${funding.amount.toStringAsFixed(2)}';
+      return '$account ¥${funding.amount.toStringAsFixed(2)}';
     }
 
     if (_fundings.length == 1) return label(_fundings.first);
     return _fundings.map(label).join(' + ');
   }
 
-  Future<void> _editFundings({
-    required List<LedgerAccount> accounts,
-    required List<LedgerMember> members,
-  }) async {
+  Future<void> _editFundings({required List<LedgerAccount> accounts}) async {
     _dismissKeyboard();
     final double? amount = evaluateAmountExpression(_amountController.text);
     if (amount == null || amount <= 0) {
@@ -729,8 +878,6 @@ class _EntrySheetState extends State<EntrySheet> {
             total: amount,
             type: _type,
             accounts: accounts,
-            members: members,
-            selectedMemberIds: _members,
             initial: _fundings.isEmpty ? _suggestFundings(amount) : _fundings,
           ),
         );
@@ -767,7 +914,7 @@ class _EntrySheetState extends State<EntrySheet> {
       } else {
         final List<LedgerCategory> available = widget.controller.categoriesFor(
           _type,
-          memberId: _recordedByMemberId,
+          memberId: _recorders.length == 1 ? _recorders.first : null,
         );
         if (!available.any((item) => item.name == _category) &&
             available.isNotEmpty) {
@@ -838,9 +985,9 @@ class _EntrySheetState extends State<EntrySheet> {
                     ),
                   ),
                 ),
-                if (_recordedByMemberId != null)
+                if (_recorders.length == 1)
                   SwitchListTile(
-                    title: const Text('当前身份专属标签'),
+                    title: const Text('记录者专属标签'),
                     subtitle: Text(
                       categoryMemberId == null
                           ? '所有成员都可以使用'
@@ -848,8 +995,7 @@ class _EntrySheetState extends State<EntrySheet> {
                     ),
                     value: categoryMemberId != null,
                     onChanged: (bool value) => update(
-                      () =>
-                          categoryMemberId = value ? _recordedByMemberId : null,
+                      () => categoryMemberId = value ? _recorders.first : null,
                     ),
                   ),
                 SizedBox(
@@ -1350,21 +1496,167 @@ class _PickerField extends StatelessWidget {
   );
 }
 
-class _FundingSource {
-  const _FundingSource({
-    required this.account,
+class _WalletSourceChoice {
+  const _WalletSourceChoice({
+    required this.label,
     required this.available,
-    this.memberId,
-    this.memberName,
+    this.sourceMemberId,
+  });
+  final int? sourceMemberId;
+  final String label;
+  final double available;
+}
+
+class _PayerSplitResult {
+  const _PayerSplitResult({required this.custom, required this.amounts});
+  final bool custom;
+  final Map<int, double> amounts;
+}
+
+class _PayerSplitSheet extends StatefulWidget {
+  const _PayerSplitSheet({
+    required this.total,
+    required this.members,
+    required this.custom,
+    required this.initial,
   });
 
+  final double total;
+  final List<LedgerMember> members;
+  final bool custom;
+  final Map<int, double> initial;
+
+  @override
+  State<_PayerSplitSheet> createState() => _PayerSplitSheetState();
+}
+
+class _PayerSplitSheetState extends State<_PayerSplitSheet> {
+  late bool _custom = widget.custom;
+  final Map<int, TextEditingController> _inputs =
+      <int, TextEditingController>{};
+
+  @override
+  void initState() {
+    super.initState();
+    final double equal = widget.total / widget.members.length;
+    for (final LedgerMember member in widget.members) {
+      _inputs[member.id] = TextEditingController(
+        text: (widget.initial[member.id] ?? equal).toStringAsFixed(2),
+      );
+    }
+  }
+
+  @override
+  void dispose() {
+    for (final TextEditingController input in _inputs.values) {
+      input.dispose();
+    }
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final double total = _inputs.values.fold<double>(
+      0,
+      (double sum, TextEditingController input) =>
+          sum + (double.tryParse(input.text) ?? 0),
+    );
+    final bool complete = !_custom || (total - widget.total).abs() < .005;
+    return FractionallySizedBox(
+      heightFactor: .72,
+      child: Column(
+        children: <Widget>[
+          SizedBox(
+            height: 56,
+            child: Row(
+              children: <Widget>[
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('取消'),
+                ),
+                const Expanded(
+                  child: Text(
+                    '付款分摊',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                ),
+                TextButton(
+                  onPressed: complete
+                      ? () => Navigator.pop(
+                          context,
+                          _PayerSplitResult(
+                            custom: _custom,
+                            amounts: <int, double>{
+                              for (final MapEntry<int, TextEditingController>
+                                  item
+                                  in _inputs.entries)
+                                item.key: double.tryParse(item.value.text) ?? 0,
+                            },
+                          ),
+                        )
+                      : null,
+                  child: const Text('完成'),
+                ),
+              ],
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: SegmentedButton<bool>(
+              segments: const <ButtonSegment<bool>>[
+                ButtonSegment<bool>(value: false, label: Text('AA 均摊')),
+                ButtonSegment<bool>(value: true, label: Text('自定义金额')),
+              ],
+              selected: <bool>{_custom},
+              onSelectionChanged: (Set<bool> value) =>
+                  setState(() => _custom = value.first),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Expanded(
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 20),
+              children: widget.members.map((LedgerMember member) {
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: TextField(
+                    controller: _inputs[member.id],
+                    enabled: _custom,
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    decoration: InputDecoration(
+                      labelText: member.name,
+                      prefixText: '¥ ',
+                    ),
+                    onChanged: (_) => setState(() {}),
+                  ),
+                );
+              }).toList(),
+            ),
+          ),
+          if (_custom && !complete)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 16),
+              child: Text(
+                '还需调整 ¥${(widget.total - total).abs().toStringAsFixed(2)}',
+                style: TextStyle(color: AppTheme.ledgerOf(context).expense),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _FundingSource {
+  const _FundingSource({required this.account, required this.available});
+
   final LedgerAccount account;
-  final int? memberId;
-  final String? memberName;
   final double available;
 
-  String get label =>
-      '${account.name} · ${memberId == null ? '共同资金' : memberName ?? '成员资金'}';
+  String get label => account.name;
 }
 
 class _FundingDraft {
@@ -1383,16 +1675,12 @@ class _FundingEditorSheet extends StatefulWidget {
     required this.total,
     required this.type,
     required this.accounts,
-    required this.members,
-    required this.selectedMemberIds,
     required this.initial,
   });
 
   final double total;
   final EntryType type;
   final List<LedgerAccount> accounts;
-  final List<LedgerMember> members;
-  final Set<int> selectedMemberIds;
   final List<EntryFunding> initial;
 
   @override
@@ -1410,8 +1698,7 @@ class _FundingEditorSheetState extends State<_FundingEditorSheet> {
       final _FundingSource? source = sources
           .where(
             (_FundingSource candidate) =>
-                candidate.account.id == item.accountId &&
-                candidate.memberId == item.memberId,
+                candidate.account.id == item.accountId,
           )
           .firstOrNull;
       if (source != null) _rows.add(_FundingDraft(source, item.amount));
@@ -1436,46 +1723,9 @@ class _FundingEditorSheetState extends State<_FundingEditorSheet> {
           account.kind == AccountKind.loan) {
         continue;
       }
-      final Map<int?, double> balances = <int?, double>{
-        for (final AccountFund fund in account.funds)
-          fund.memberId: fund.balance,
-      };
-      balances.putIfAbsent(
-        null,
-        () => account.funds.isEmpty ? account.balance : 0,
-      );
-      if (widget.type == EntryType.income) {
-        for (final LedgerMember member in widget.members) {
-          balances.putIfAbsent(member.id, () => 0);
-        }
-      }
-      for (final MapEntry<int?, double> fund in balances.entries) {
-        if (widget.type == EntryType.expense &&
-            fund.key != null &&
-            widget.selectedMemberIds.isEmpty) {
-          continue;
-        }
-        final LedgerMember? member = fund.key == null
-            ? null
-            : widget.members
-                  .where((LedgerMember item) => item.id == fund.key)
-                  .firstOrNull;
-        final double available =
-            account.kind == AccountKind.credit &&
-                fund.key == null &&
-                widget.type == EntryType.expense
-            ? account.availableToSpend
-            : fund.value;
-        if (widget.type == EntryType.expense && available <= 0) continue;
-        result.add(
-          _FundingSource(
-            account: account,
-            memberId: fund.key,
-            memberName: member?.name,
-            available: available,
-          ),
-        );
-      }
+      final double available = account.availableToSpend;
+      if (widget.type == EntryType.expense && available <= 0) continue;
+      result.add(_FundingSource(account: account, available: available));
     }
     return result;
   }
@@ -1498,7 +1748,7 @@ class _FundingEditorSheetState extends State<_FundingEditorSheet> {
           const Padding(
             padding: EdgeInsets.fromLTRB(18, 16, 18, 8),
             child: Text(
-              '选择资金来源',
+              '选择账户',
               style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
             ),
           ),
@@ -1510,7 +1760,7 @@ class _FundingEditorSheetState extends State<_FundingEditorSheet> {
               title: Text(item.label),
               subtitle: widget.type == EntryType.expense
                   ? Text('可用 ¥${item.available.toStringAsFixed(2)}')
-                  : const Text('收入将计入这部分资金'),
+                  : const Text('收入将进入这个账户'),
               onTap: () => Navigator.pop(context, item),
             ),
           ),
@@ -1537,10 +1787,6 @@ class _FundingEditorSheetState extends State<_FundingEditorSheet> {
     _rows.clear();
     double remaining = widget.total;
     for (final _FundingSource source in _sources()) {
-      if (source.memberId != null &&
-          !widget.selectedMemberIds.contains(source.memberId)) {
-        continue;
-      }
       final double amount = remaining.clamp(0, source.available).toDouble();
       if (amount <= 0) continue;
       _rows.add(_FundingDraft(source, amount));
@@ -1551,23 +1797,19 @@ class _FundingEditorSheetState extends State<_FundingEditorSheet> {
   }
 
   List<EntryFunding> _result() {
-    final Map<(int, int?), double> grouped = <(int, int?), double>{};
+    final Map<int, double> grouped = <int, double>{};
     for (final _FundingDraft row in _rows) {
       if (row.amount <= 0) continue;
-      final (int, int?) key = (row.source.account.id, row.source.memberId);
       grouped.update(
-        key,
+        row.source.account.id,
         (double value) => value + row.amount,
         ifAbsent: () => row.amount,
       );
     }
     return grouped.entries
         .map(
-          (MapEntry<(int, int?), double> item) => EntryFunding(
-            accountId: item.key.$1,
-            memberId: item.key.$2,
-            amount: item.value,
-          ),
+          (MapEntry<int, double> item) =>
+              EntryFunding(accountId: item.key, amount: item.value),
         )
         .toList();
   }

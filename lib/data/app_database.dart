@@ -2,7 +2,7 @@ import 'package:path/path.dart' as p;
 import 'package:sqflite/sqflite.dart';
 
 class AppDatabase {
-  static const int schemaVersion = 7;
+  static const int schemaVersion = 8;
   static const String fileName = 'oneentry.db';
 
   Database? _database;
@@ -25,6 +25,7 @@ class AppDatabase {
         if (version >= 5) await _migrate4To5(db);
         if (version >= 6) await _migrate5To6(db);
         if (version >= 7) await _migrate6To7(db);
+        if (version >= 8) await _migrate7To8(db);
         await _seed(db);
       },
       onUpgrade: (Database db, int oldVersion, int newVersion) async {
@@ -53,6 +54,10 @@ class AppDatabase {
           if (version < 7 && newVersion >= 7) {
             await _migrate6To7(txn);
             version = 7;
+          }
+          if (version < 8 && newVersion >= 8) {
+            await _migrate7To8(txn);
+            version = 8;
           }
           if (version != newVersion) {
             throw StateError(
@@ -577,6 +582,78 @@ class AppDatabase {
     }
   }
 
+  Future<void> _migrate7To8(DatabaseExecutor db) async {
+    await db.execute('''
+      CREATE TABLE member_wallets (
+        member_id INTEGER PRIMARY KEY REFERENCES members(id) ON DELETE CASCADE,
+        balance_minor INTEGER NOT NULL DEFAULT 0,
+        allocation_ratio REAL,
+        updated_at INTEGER NOT NULL
+      )
+    ''');
+    await db.execute('''
+      CREATE TABLE wallet_state (
+        id INTEGER PRIMARY KEY CHECK(id = 1),
+        common_balance_minor INTEGER NOT NULL DEFAULT 0,
+        updated_at INTEGER NOT NULL
+      )
+    ''');
+    await db.execute('''
+      CREATE TABLE transaction_wallet_sources (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        transaction_id INTEGER NOT NULL REFERENCES transactions(id) ON DELETE CASCADE,
+        source_member_id INTEGER REFERENCES members(id),
+        payer_member_id INTEGER REFERENCES members(id),
+        amount_minor INTEGER NOT NULL CHECK(amount_minor > 0),
+        sort_order INTEGER NOT NULL DEFAULT 0
+      )
+    ''');
+    await db.execute('''
+      CREATE TABLE transaction_recorders (
+        transaction_id INTEGER NOT NULL REFERENCES transactions(id) ON DELETE CASCADE,
+        member_id INTEGER NOT NULL REFERENCES members(id) ON DELETE CASCADE,
+        PRIMARY KEY(transaction_id, member_id)
+      )
+    ''');
+    final int now = DateTime.now().millisecondsSinceEpoch;
+    await db.execute(
+      '''
+      INSERT INTO member_wallets(member_id, balance_minor, updated_at)
+      SELECT m.id, COALESCE(SUM(f.balance_minor), 0), ?
+      FROM members m
+      LEFT JOIN account_funds f ON f.member_id = m.id
+      GROUP BY m.id
+    ''',
+      <Object?>[now],
+    );
+    final int commonBalance =
+        Sqflite.firstIntValue(
+          await db.rawQuery(
+            'SELECT COALESCE(SUM(balance_minor), 0) FROM account_funds WHERE member_id IS NULL',
+          ),
+        ) ??
+        0;
+    await db.insert('wallet_state', <String, Object?>{
+      'id': 1,
+      'common_balance_minor': commonBalance,
+      'updated_at': now,
+    });
+    await db.execute('''
+      INSERT INTO transaction_wallet_sources(
+        transaction_id, source_member_id, payer_member_id, amount_minor, sort_order
+      )
+      SELECT transaction_id, member_id, member_id, SUM(amount_minor), MIN(sort_order)
+      FROM transaction_fundings
+      GROUP BY transaction_id, member_id
+    ''');
+    await db.execute('''
+      INSERT INTO transaction_recorders(transaction_id, member_id)
+      SELECT id, recorded_by_member_id
+      FROM transactions
+      WHERE recorded_by_member_id IS NOT NULL
+    ''');
+  }
+
   Future<void> _mergeCategory(
     DatabaseExecutor db, {
     required String from,
@@ -785,6 +862,27 @@ class AppDatabase {
         'updated_at': now,
       }, conflictAlgorithm: ConflictAlgorithm.ignore);
     }
+    for (final Map<String, Object?> member in await db.query(
+      'members',
+      columns: <String>['id'],
+    )) {
+      await db.insert('member_wallets', <String, Object?>{
+        'member_id': member['id'],
+        'balance_minor': 0,
+        'updated_at': now,
+      }, conflictAlgorithm: ConflictAlgorithm.ignore);
+    }
+    final int seededAccountTotal =
+        Sqflite.firstIntValue(
+          await db.rawQuery(
+            'SELECT COALESCE(SUM(balance_minor), 0) FROM accounts',
+          ),
+        ) ??
+        0;
+    await db.update('wallet_state', <String, Object?>{
+      'common_balance_minor': seededAccountTotal,
+      'updated_at': now,
+    }, where: 'id = 1');
     for (final Map<String, Object?> account in await db.query(
       'accounts',
       columns: <String>['id', 'balance_minor'],
@@ -850,6 +948,13 @@ class AppDatabase {
         'transaction_id': transactionId,
         'account_id': seed.$4,
         'member_id': null,
+        'amount_minor': seed.$2,
+        'sort_order': 0,
+      });
+      await db.insert('transaction_wallet_sources', <String, Object?>{
+        'transaction_id': transactionId,
+        'source_member_id': null,
+        'payer_member_id': null,
         'amount_minor': seed.$2,
         'sort_order': 0,
       });
