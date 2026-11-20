@@ -1,21 +1,22 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
   <defs>
-    <mask id="currency-cut">
+    <mask id="purse-cut">
       <rect width="1024" height="1024" fill="white"/>
-      <g fill="none" stroke="black" stroke-width="32" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M462 432l50 70 50-70"/>
-        <path d="M512 500v116"/>
-        <path d="M470 528h84"/>
-        <path d="M470 576h84"/>
+      <g fill="none" stroke="black" stroke-width="30" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M442 420h140"/>
+        <path d="M466 474l46 64 46-64"/>
+        <path d="M512 536v88"/>
+        <path d="M470 554h84"/>
+        <path d="M470 592h84"/>
       </g>
     </mask>
   </defs>
-  <g fill="#FFFFFF" stroke="#FFFFFF" mask="url(#currency-cut)">
+  <g fill="#FFFFFF" stroke="#FFFFFF" mask="url(#purse-cut)">
     <circle cx="512" cy="512" r="304" fill="none" stroke-width="25"/>
     <circle cx="512" cy="512" r="220" fill="none" stroke-width="14"/>
     <circle cx="268" cy="330" r="40" stroke="none"/>
     <circle cx="756" cy="362" r="48" stroke="none"/>
     <circle cx="430" cy="706" r="34" stroke="none"/>
-    <circle cx="512" cy="512" r="150" stroke="none"/>
+    <path d="M462 364c24 18 76 18 100 0l-10 44c68 32 102 80 102 140 0 72-56 118-142 118s-142-46-142-118c0-60 34-108 102-140z" stroke="none"/>
   </g>
 </svg>

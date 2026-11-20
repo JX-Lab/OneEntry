@@ -78,10 +78,10 @@ class LedgerSemanticColors extends ThemeExtension<LedgerSemanticColors> {
 }
 
 abstract final class AppTheme {
-  static const String defaultAccentKey = 'teal';
-  static const Color brandDeepTeal = Color(0xFF0D403F);
-  static const Color brandTeal = Color(0xFF145C5A);
-  static const Color brandTealLight = Color(0xFF2C7773);
+  static const String defaultAccentKey = 'green';
+  static const Color brandDeepTeal = Color(0xFF073A39);
+  static const Color brandTeal = Color(0xFF0D514E);
+  static const Color brandTealLight = Color(0xFF1A6B67);
   static const Color brandWarmWhite = Color(0xFFF7F5EF);
   static const Color green = Color(0xFF0EB078);
   static const Color greenLight = Color(0xFF35D3A0);
@@ -153,7 +153,9 @@ abstract final class AppTheme {
     if (custom != null) return custom;
     return accents.firstWhere(
       (AppAccent accent) => accent.key == key,
-      orElse: () => accents.first,
+      orElse: () => accents.firstWhere(
+        (AppAccent accent) => accent.key == defaultAccentKey,
+      ),
     );
   }
 
@@ -218,6 +220,28 @@ abstract final class AppTheme {
         secondary: brandTealLight,
         action: Color(0xFF0D4B49),
       );
+
+  static List<Color> accessibleGradientFor(AppAccent accent) => <Color>[
+    _withWhiteContrast(accent.action),
+    _withWhiteContrast(accent.secondary),
+  ];
+
+  static List<Color> accessibleGradientOf(BuildContext context) {
+    final AppAccentTheme accent = accentOf(context);
+    return <Color>[
+      _withWhiteContrast(accent.action),
+      _withWhiteContrast(accent.secondary),
+    ];
+  }
+
+  static Color _withWhiteContrast(Color source) {
+    Color result = source;
+    for (int step = 1; step <= 12; step++) {
+      if (contrastRatio(result, Colors.white) >= 4.5) return result;
+      result = Color.lerp(source, Colors.black, step * .05) ?? result;
+    }
+    return result;
+  }
 
   static LedgerSemanticColors ledgerOf(BuildContext context) =>
       Theme.of(context).extension<LedgerSemanticColors>() ??

@@ -152,7 +152,7 @@ class MainActivity : FlutterActivity() {
                 )
                 "setMode" -> {
                     val mode = call.argument<String>("mode") ?: "theme"
-                    val themeKey = call.argument<String>("themeKey") ?: "teal"
+                    val themeKey = call.argument<String>("themeKey") ?: "green"
                     runCatching {
                         applyLauncherIcon(resolveLauncherIcon(mode, themeKey))
                         getSharedPreferences(LAUNCHER_ICON_PREFS, MODE_PRIVATE)
@@ -167,7 +167,7 @@ class MainActivity : FlutterActivity() {
                     }
                 }
                 "syncTheme" -> {
-                    val themeKey = call.argument<String>("themeKey") ?: "teal"
+                    val themeKey = call.argument<String>("themeKey") ?: "green"
                     val mode = getSharedPreferences(LAUNCHER_ICON_PREFS, MODE_PRIVATE)
                         .getString("mode", "theme") ?: "theme"
                     if (mode == "theme") {
@@ -188,9 +188,9 @@ class MainActivity : FlutterActivity() {
         val requested = when {
             mode == "theme" -> themeKey
             mode.startsWith("preset:") -> mode.removePrefix("preset:")
-            else -> "teal"
+            else -> "green"
         }
-        return requested.takeIf { it in LAUNCHER_ICON_KEYS } ?: "teal"
+        return requested.takeIf { it in LAUNCHER_ICON_KEYS } ?: "green"
     }
 
     private fun applyLauncherIcon(key: String) {

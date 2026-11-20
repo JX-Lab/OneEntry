@@ -13,14 +13,28 @@ void main() {
     }
   });
 
-  test('未知主题色会回退到默认深海青', () {
+  test('所有主题的卡片渐变端点与白字对比度达标', () {
+    for (final AppAccent accent in AppTheme.accents) {
+      final List<Color> colors = AppTheme.accessibleGradientFor(accent);
+      expect(colors, hasLength(2));
+      for (final Color color in colors) {
+        expect(
+          AppTheme.contrastRatio(color, Colors.white),
+          greaterThanOrEqualTo(4.5),
+          reason: '${accent.label} $color',
+        );
+      }
+    }
+  });
+
+  test('未知主题色会回退到默认翡翠绿', () {
     expect(AppTheme.accentFor('missing').key, AppTheme.defaultAccentKey);
   });
 
-  test('默认主题使用深海青品牌色', () {
+  test('默认主题使用最初的翡翠绿品牌色', () {
     final AppAccent accent = AppTheme.accentFor(AppTheme.defaultAccentKey);
-    expect(accent.primary, AppTheme.brandTeal);
-    expect(accent.secondary, AppTheme.brandTealLight);
+    expect(accent.primary, AppTheme.green);
+    expect(accent.secondary, AppTheme.greenLight);
   });
 
   test('自定义主题会匹配最接近的桌面图标预设', () {
