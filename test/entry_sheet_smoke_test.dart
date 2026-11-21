@@ -409,13 +409,67 @@ void main() {
     expect(saved, isNotNull);
     expect(saved!.memberShares.map((item) => item.amount), <double>[5, 5]);
   });
+
+  testWidgets('从收支切到转账不会保存隐藏的付款和记录成员', (WidgetTester tester) async {
+    final LedgerController controller =
+        LedgerController(LedgerRepository(AppDatabase()))
+          ..accounts.addAll(<LedgerAccount>[
+            LedgerAccount(id: 1, name: '支付宝', balance: 20),
+            LedgerAccount(id: 2, name: '银行卡', balance: 20),
+          ])
+          ..members.addAll(<LedgerMember>[
+            LedgerMember(id: 1, name: 'A', colorValue: 0xFF2E7CF6),
+            LedgerMember(id: 2, name: 'B', colorValue: 0xFFF5A623),
+          ]);
+    addTearDown(controller.dispose);
+    final LedgerEntry previous = LedgerEntry(
+      id: 7,
+      type: EntryType.expense,
+      amount: 10,
+      category: '餐饮',
+      occurredAt: DateTime.now(),
+      note: '',
+      accountId: 1,
+      memberIds: const <int>[1],
+      recorderIds: const <int>[2],
+      recordedByMemberId: 2,
+    );
+    LedgerEntry? saved;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: _EntryHarness(
+          controller: controller,
+          initial: previous,
+          onSaved: (LedgerEntry value) => saved = value,
+        ),
+      ),
+    );
+    await tester.tap(find.text('打开记账'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('转账'));
+    await tester.pumpAndSettle();
+    expect(find.text('付款（可多选）'), findsNothing);
+    expect(find.text('记录（可不选）'), findsNothing);
+    await tester.tap(find.text('保存'));
+    await tester.pumpAndSettle();
+    expect(saved, isNotNull);
+    expect(saved!.memberIds, isEmpty);
+    expect(saved!.memberShares, isEmpty);
+    expect(saved!.recorderIds, isEmpty);
+    expect(saved!.recordedByMemberId, isNull);
+  });
 }
 
 class _EntryHarness extends StatelessWidget {
-  const _EntryHarness({required this.controller, required this.onSaved});
+  const _EntryHarness({
+    required this.controller,
+    required this.onSaved,
+    this.initial,
+  });
 
   final LedgerController controller;
   final ValueChanged<LedgerEntry> onSaved;
+  final LedgerEntry? initial;
 
   @override
   Widget build(BuildContext context) => Scaffold(
@@ -425,7 +479,8 @@ class _EntryHarness extends StatelessWidget {
           final LedgerEntry? result = await Navigator.of(context)
               .push<LedgerEntry>(
                 MaterialPageRoute<LedgerEntry>(
-                  builder: (_) => EntrySheet(controller: controller),
+                  builder: (_) =>
+                      EntrySheet(controller: controller, initial: initial),
                 ),
               );
           if (result != null) onSaved(result);

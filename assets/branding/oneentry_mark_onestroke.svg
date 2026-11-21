@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-labelledby="title desc">
+  <title id="title">一笔单线记账标志候选</title>
+  <desc id="desc">一条连续线从外圈盘入中心，再写出人民币符号。</desc>
+  <rect width="1024" height="1024" rx="232" fill="#0EB078"/>
+  <path transform="translate(82 82) scale(.84)" d="
+    M 655 306
+    C 535 238 364 293 300 424
+    C 229 569 327 735 482 752
+    C 652 772 782 638 757 487
+    C 739 389 679 323 606 306
+    C 541 290 480 329 451 396
+    C 435 433 435 455 440 478
+    L 512 565
+    L 588 469
+    L 512 565
+    L 512 665
+    L 512 591
+    L 440 591
+    L 584 591
+    L 512 591
+    L 512 630
+    L 440 630
+    L 584 630
+  " fill="none" stroke="#F7F5EF" stroke-width="32" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

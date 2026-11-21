@@ -182,7 +182,9 @@ class _EntrySheetState extends State<EntrySheet> {
     }
     late final List<MemberShare> payerShares;
     try {
-      payerShares = _memberSharesForSave(amount);
+      payerShares = _type == EntryType.transfer
+          ? const <MemberShare>[]
+          : _memberSharesForSave(amount);
     } on StateError catch (error) {
       ScaffoldMessenger.of(
         context,
@@ -204,13 +206,19 @@ class _EntrySheetState extends State<EntrySheet> {
         note: _noteController.text.trim(),
         accountId: _accountId,
         toAccountId: _type == EntryType.transfer ? _toAccountId : null,
-        memberIds: _members.toList(),
+        memberIds: _type == EntryType.transfer
+            ? const <int>[]
+            : _members.toList(),
         memberShares: payerShares,
         fundings: fundings,
         walletSources: walletSources,
         outsideBudget: _type == EntryType.expense && _outsideBudget,
-        recordedByMemberId: _recorders.firstOrNull,
-        recorderIds: _recorders.toList(),
+        recordedByMemberId: _type == EntryType.transfer
+            ? null
+            : _recorders.firstOrNull,
+        recorderIds: _type == EntryType.transfer
+            ? const <int>[]
+            : _recorders.toList(),
         visibility: EntryVisibility.all,
         recurring: _type != EntryType.transfer && _recurring,
         recurringFrequency: _frequency,
@@ -334,18 +342,6 @@ class _EntrySheetState extends State<EntrySheet> {
                   ),
                 ),
               ],
-              if (widget.controller.multiEnabled && _type == EntryType.transfer)
-                _PickerField(
-                  title: '操作者（可多选）',
-                  value: _memberSummary(members),
-                  onTap: () => _pickMembers(members),
-                ),
-              if (widget.controller.multiEnabled && _type == EntryType.transfer)
-                _PickerField(
-                  title: '记录（可不选）',
-                  value: _recorderSummary(members),
-                  onTap: () => _pickRecorders(members),
-                ),
               Container(
                 margin: const EdgeInsets.only(top: 10),
                 decoration: BoxDecoration(
@@ -496,11 +492,7 @@ class _EntrySheetState extends State<EntrySheet> {
       isScrollControlled: true,
       useSafeArea: true,
       builder: (BuildContext context) => _MemberPickerSheet(
-        title: _type == EntryType.transfer
-            ? '选择操作者'
-            : _type == EntryType.income
-            ? '选择归属'
-            : '选择付款',
+        title: _type == EntryType.income ? '选择归属' : '选择付款',
         members: members,
         selectedIds: _members,
       ),
@@ -942,6 +934,15 @@ class _EntrySheetState extends State<EntrySheet> {
       _type = value;
       if (_type == EntryType.transfer) {
         _recurring = false;
+        if (_toAccountId == null || _toAccountId == _accountId) {
+          _toAccountId = widget.controller.accounts
+              .where(
+                (LedgerAccount account) =>
+                    !account.archived && account.id != _accountId,
+              )
+              .firstOrNull
+              ?.id;
+        }
       } else {
         final List<LedgerCategory> available = widget.controller.categoriesFor(
           _type,
@@ -1507,13 +1508,6 @@ class _AmountBox extends StatelessWidget {
                   style: const TextStyle(fontWeight: FontWeight.w700),
                 ),
               ),
-              Text(
-                '金额',
-                style: TextStyle(
-                  fontSize: 12,
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                ),
-              ),
             ],
           ),
           const SizedBox(height: 5),
@@ -2025,7 +2019,11 @@ class _FundingEditorSheetState extends State<_FundingEditorSheet> {
     final bool complete =
         _remaining.abs() < .005 && _rows.isNotEmpty && withinAvailable;
     return FractionallySizedBox(
-      heightFactor: .9,
+      heightFactor: _rows.length <= 1
+          ? .58
+          : _rows.length == 2
+          ? .74
+          : .9,
       child: Column(
         children: <Widget>[
           SizedBox(
@@ -2093,62 +2091,124 @@ class _FundingEditorSheetState extends State<_FundingEditorSheet> {
               itemBuilder: (BuildContext context, int index) {
                 final _FundingDraft row = _rows[index];
                 return Material(
-                  color: Theme.of(context).colorScheme.surface,
+                  color: Theme.of(
+                    context,
+                  ).colorScheme.surfaceContainerHighest.withValues(alpha: .45),
                   borderRadius: BorderRadius.circular(14),
                   child: Padding(
-                    padding: const EdgeInsets.fromLTRB(12, 8, 8, 8),
-                    child: Row(
+                    padding: const EdgeInsets.fromLTRB(14, 12, 14, 10),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: <Widget>[
-                        Expanded(
-                          child: InkWell(
-                            borderRadius: BorderRadius.circular(10),
-                            onTap: () => _addOrReplace(index: index),
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(vertical: 8),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: <Widget>[
-                                  Text(
+                        InkWell(
+                          borderRadius: BorderRadius.circular(10),
+                          onTap: () => _addOrReplace(index: index),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 5),
+                            child: Row(
+                              children: <Widget>[
+                                CircleAvatar(
+                                  radius: 17,
+                                  backgroundColor: Theme.of(
+                                    context,
+                                  ).colorScheme.primary.withValues(alpha: .11),
+                                  child: Icon(
+                                    _entryAccountIcon(row.source.account.icon),
+                                    color: Theme.of(
+                                      context,
+                                    ).colorScheme.primary,
+                                    size: 18,
+                                  ),
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: Text(
                                     row.source.label,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
                                     style: const TextStyle(
-                                      fontWeight: FontWeight.w600,
+                                      fontWeight: FontWeight.w700,
                                     ),
                                   ),
-                                  if (widget.type == EntryType.expense)
-                                    Text(
-                                      '可用 ¥${row.source.available.toStringAsFixed(2)}',
-                                      style: const TextStyle(
-                                        color: Color(0xFF8A9099),
-                                        fontSize: 12,
-                                      ),
-                                    ),
-                                ],
+                                ),
+                                Text(
+                                  '更换',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: Theme.of(
+                                      context,
+                                    ).colorScheme.primary,
+                                  ),
+                                ),
+                                Icon(
+                                  Icons.chevron_right,
+                                  size: 18,
+                                  color: Theme.of(context).colorScheme.primary,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        if (widget.type == EntryType.expense)
+                          Padding(
+                            padding: const EdgeInsets.only(left: 44, top: 2),
+                            child: Text(
+                              '可用 ¥${row.source.available.toStringAsFixed(2)}',
+                              style: TextStyle(
+                                color: Theme.of(
+                                  context,
+                                ).colorScheme.onSurfaceVariant,
+                                fontSize: 12,
                               ),
                             ),
                           ),
+                        const SizedBox(height: 10),
+                        Row(
+                          children: <Widget>[
+                            Text(
+                              widget.type == EntryType.expense
+                                  ? '本次扣款'
+                                  : '本次入账',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Theme.of(
+                                  context,
+                                ).colorScheme.onSurfaceVariant,
+                              ),
+                            ),
+                            const Spacer(),
+                            SizedBox(
+                              width: 148,
+                              child: TextField(
+                                controller: row.controller,
+                                keyboardType:
+                                    const TextInputType.numberWithOptions(
+                                      decimal: true,
+                                    ),
+                                textAlign: TextAlign.end,
+                                decoration: const InputDecoration(
+                                  prefixText: '¥ ',
+                                  isDense: true,
+                                ),
+                                onChanged: (_) => setState(() {}),
+                              ),
+                            ),
+                          ],
                         ),
-                        SizedBox(
-                          width: 104,
-                          child: TextField(
-                            controller: row.controller,
-                            keyboardType: const TextInputType.numberWithOptions(
-                              decimal: true,
+                        if (_rows.length > 1)
+                          Align(
+                            alignment: Alignment.centerRight,
+                            child: TextButton.icon(
+                              onPressed: () => setState(() {
+                                _rows.removeAt(index).dispose();
+                              }),
+                              icon: const Icon(
+                                Icons.remove_circle_outline,
+                                size: 17,
+                              ),
+                              label: const Text('移除此账户'),
                             ),
-                            textAlign: TextAlign.end,
-                            decoration: const InputDecoration(
-                              prefixText: '¥ ',
-                              isDense: true,
-                            ),
-                            onChanged: (_) => setState(() {}),
                           ),
-                        ),
-                        IconButton(
-                          tooltip: '移除',
-                          onPressed: () => setState(() {
-                            _rows.removeAt(index).dispose();
-                          }),
-                          icon: const Icon(Icons.close, size: 20),
-                        ),
                       ],
                     ),
                   ),
