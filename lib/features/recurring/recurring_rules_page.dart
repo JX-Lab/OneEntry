@@ -24,7 +24,49 @@ class RecurringRulesPage extends StatelessWidget {
         ],
       ),
       body: controller.recurringRules.isEmpty
-          ? const Center(child: Text('还没有周期账目'))
+          ? Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: <Widget>[
+                    CircleAvatar(
+                      radius: 30,
+                      backgroundColor: Theme.of(
+                        context,
+                      ).colorScheme.primary.withValues(alpha: .10),
+                      child: Icon(
+                        Icons.event_repeat_outlined,
+                        size: 30,
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    const Text(
+                      '还没有周期账目',
+                      style: TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      '房租、订阅等固定收支可以在到期时提醒你确认记账。',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                    const SizedBox(height: 18),
+                    FilledButton.icon(
+                      onPressed: () => _edit(context),
+                      icon: const Icon(Icons.add),
+                      label: const Text('新增周期账目'),
+                    ),
+                  ],
+                ),
+              ),
+            )
           : ListView(
               padding: const EdgeInsets.fromLTRB(12, 8, 12, 32),
               children: <Widget>[

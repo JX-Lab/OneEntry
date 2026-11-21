@@ -69,13 +69,16 @@ class _CategoriesPageState extends State<CategoriesPage> {
                 }),
               ),
             ),
-            const Padding(
-              padding: EdgeInsets.fromLTRB(18, 0, 18, 8),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(18, 0, 18, 8),
               child: Align(
                 alignment: Alignment.centerLeft,
                 child: Text(
                   '拖动右侧把手调整显示顺序；点按标签可修改名称和图标。',
-                  style: TextStyle(fontSize: 12, color: Color(0xFF8A9099)),
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
                 ),
               ),
             ),
@@ -144,6 +147,10 @@ class _CategoriesPageState extends State<CategoriesPage> {
                 onPressed: () => _editCategory(null),
                 icon: const Icon(Icons.add),
                 label: const Text('新建标签'),
+                backgroundColor: Theme.of(context).colorScheme.primary,
+                foregroundColor: Theme.of(context).colorScheme.onPrimary,
+                elevation: 0,
+                shape: const StadiumBorder(),
               ),
         bottomNavigationBar: _selecting
             ? SafeArea(
