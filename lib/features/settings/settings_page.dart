@@ -71,6 +71,16 @@ class _SettingsPageState extends State<SettingsPage>
                   title: '记账方式',
                   children: <Widget>[
                     ListTile(
+                      title: const Text('多人金额分配'),
+                      subtitle: const Text('用于多人付款或多人归属的账目'),
+                      trailing: Text(
+                        widget.controller.splitMode == 'custom'
+                            ? '自由填写  ›'
+                            : 'AA 均摊  ›',
+                      ),
+                      onTap: _pickSplitMode,
+                    ),
+                    ListTile(
                       title: const Text('标签管理'),
                       subtitle: const Text('批量合并、移除和调整显示顺序'),
                       trailing: const Icon(Icons.chevron_right),
@@ -447,6 +457,19 @@ class _SettingsPageState extends State<SettingsPage>
         ),
       ),
     );
+  }
+
+  Future<void> _pickSplitMode() async {
+    final String? value = await _simpleChoice(
+      '多人金额分配',
+      const <MapEntry<String, String>>[
+        MapEntry('equal', 'AA 均摊'),
+        MapEntry('custom', '自由填写金额'),
+      ],
+    );
+    if (value != null) {
+      await widget.controller.setPreference('split_mode', value);
+    }
   }
 
   Future<void> _pickTheme() async {

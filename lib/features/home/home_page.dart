@@ -398,9 +398,10 @@ class _HomePageState extends State<HomePage> {
                                       gradient: LinearGradient(
                                         begin: Alignment.topCenter,
                                         end: Alignment.bottomCenter,
-                                        colors: AppTheme.accessibleGradientOf(
-                                          context,
-                                        ),
+                                        colors: <Color>[
+                                          AppTheme.accentOf(context).primary,
+                                          AppTheme.accentOf(context).secondary,
+                                        ],
                                       ),
                                       borderRadius: BorderRadius.circular(28),
                                       boxShadow: <BoxShadow>[
@@ -677,11 +678,14 @@ class _HomePageState extends State<HomePage> {
     final TextEditingController startController = TextEditingController();
     final TextEditingController endController = TextEditingController();
     final Set<String> categories = <String>{};
-    final Set<int> members = <int>{};
+    final Set<int> payerIds = <int>{};
+    final Set<int> recorderIds = <int>{};
     final Set<int> accounts = <int>{};
-    bool includeNoMember = false;
+    bool includeNoPayer = false;
+    bool includeNoRecorder = false;
     bool includeNoNote = false;
-    String memberQuery = '';
+    String payerQuery = '';
+    String recorderQuery = '';
     final List<String> categoryOptions =
         periodEntries.map((entry) => entry.category).toSet().toList()..sort();
     final bool? apply = await showModalBottomSheet<bool>(
@@ -763,14 +767,14 @@ class _HomePageState extends State<HomePage> {
                                 )
                                 .toList(),
                           ),
-                          const _FilterTitle('按成员（可多选）'),
+                          const _FilterTitle('按付款／归属（可多选）'),
                           TextField(
                             decoration: const InputDecoration(
                               hintText: '搜索成员',
                               prefixIcon: Icon(Icons.search, size: 20),
                             ),
                             onChanged: (String value) => update(
-                              () => memberQuery = value.trim().toLowerCase(),
+                              () => payerQuery = value.trim().toLowerCase(),
                             ),
                           ),
                           const SizedBox(height: 8),
@@ -780,9 +784,9 @@ class _HomePageState extends State<HomePage> {
                             children: <Widget>[
                               FilterChip(
                                 label: const Text('无指定'),
-                                selected: includeNoMember,
+                                selected: includeNoPayer,
                                 onSelected: (_) => update(
-                                  () => includeNoMember = !includeNoMember,
+                                  () => includeNoPayer = !includeNoPayer,
                                 ),
                               ),
                               ...widget.controller.members
@@ -790,7 +794,7 @@ class _HomePageState extends State<HomePage> {
                                     (member) =>
                                         !member.archived &&
                                         member.name.toLowerCase().contains(
-                                          memberQuery,
+                                          payerQuery,
                                         ),
                                   )
                                   .map(
@@ -801,10 +805,58 @@ class _HomePageState extends State<HomePage> {
                                         ),
                                       ),
                                       label: Text(member.name),
-                                      selected: members.contains(member.id),
+                                      selected: payerIds.contains(member.id),
                                       onSelected: (_) => update(() {
-                                        if (!members.add(member.id)) {
-                                          members.remove(member.id);
+                                        if (!payerIds.add(member.id)) {
+                                          payerIds.remove(member.id);
+                                        }
+                                      }),
+                                    ),
+                                  ),
+                            ],
+                          ),
+                          const _FilterTitle('按记录（可多选）'),
+                          TextField(
+                            decoration: const InputDecoration(
+                              hintText: '搜索记录成员',
+                              prefixIcon: Icon(Icons.search, size: 20),
+                            ),
+                            onChanged: (String value) => update(
+                              () => recorderQuery = value.trim().toLowerCase(),
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 6,
+                            children: <Widget>[
+                              FilterChip(
+                                label: const Text('无记录'),
+                                selected: includeNoRecorder,
+                                onSelected: (_) => update(
+                                  () => includeNoRecorder = !includeNoRecorder,
+                                ),
+                              ),
+                              ...widget.controller.members
+                                  .where(
+                                    (member) =>
+                                        !member.archived &&
+                                        member.name.toLowerCase().contains(
+                                          recorderQuery,
+                                        ),
+                                  )
+                                  .map(
+                                    (member) => FilterChip(
+                                      avatar: CircleAvatar(
+                                        backgroundColor: Color(
+                                          member.colorValue,
+                                        ),
+                                      ),
+                                      label: Text(member.name),
+                                      selected: recorderIds.contains(member.id),
+                                      onSelected: (_) => update(() {
+                                        if (!recorderIds.add(member.id)) {
+                                          recorderIds.remove(member.id);
                                         }
                                       }),
                                     ),
@@ -861,11 +913,22 @@ class _HomePageState extends State<HomePage> {
               )) {
             return false;
           }
-          if (members.isNotEmpty || includeNoMember) {
-            final bool memberMatched = entry.memberIds.any(members.contains);
-            final bool noMemberMatched =
-                includeNoMember && entry.memberIds.isEmpty;
-            if (!memberMatched && !noMemberMatched) return false;
+          if (payerIds.isNotEmpty || includeNoPayer) {
+            final bool payerMatched = entry.memberIds.any(payerIds.contains);
+            final bool noPayerMatched =
+                includeNoPayer && entry.memberIds.isEmpty;
+            if (!payerMatched && !noPayerMatched) return false;
+          }
+          if (recorderIds.isNotEmpty || includeNoRecorder) {
+            final List<int> entryRecorders = entry.recorderIds.isNotEmpty
+                ? entry.recorderIds
+                : <int>[?entry.recordedByMemberId];
+            final bool recorderMatched = entryRecorders.any(
+              recorderIds.contains,
+            );
+            final bool noRecorderMatched =
+                includeNoRecorder && entryRecorders.isEmpty;
+            if (!recorderMatched && !noRecorderMatched) return false;
           }
           if (includeNoNote && entry.note.trim().isNotEmpty) return false;
           return true;
@@ -894,7 +957,8 @@ class _HomePageState extends State<HomePage> {
     if (entries.isEmpty) return;
     bool changeCategory = false;
     bool changeAccount = false;
-    bool changeMembers = false;
+    bool changePayers = false;
+    bool changeRecorders = false;
     bool changeNote = false;
     final List<LedgerAccount> accounts = widget.controller.accounts
         .where((account) => !account.archived)
@@ -908,8 +972,10 @@ class _HomePageState extends State<HomePage> {
         .toList();
     String? category = categories.isEmpty ? null : categories.first;
     int? accountId = accounts.isEmpty ? null : accounts.first.id;
-    final Set<int> memberIds = <int>{};
-    String memberQuery = '';
+    final Set<int> payerIds = <int>{};
+    final Set<int> recorderIds = <int>{};
+    String payerQuery = '';
+    String recorderQuery = '';
     final TextEditingController noteController = TextEditingController();
     final bool? save = await showModalBottomSheet<bool>(
       context: context,
@@ -978,13 +1044,13 @@ class _HomePageState extends State<HomePage> {
                     ),
                   ),
                 CheckboxListTile(
-                  title: const Text('统一成员'),
-                  subtitle: const Text('所有选中账目都替换为下方成员'),
-                  value: changeMembers,
+                  title: const Text('统一付款／归属'),
+                  subtitle: const Text('修改账目的付款成员或收入归属'),
+                  value: changePayers,
                   onChanged: (value) =>
-                      update(() => changeMembers = value ?? false),
+                      update(() => changePayers = value ?? false),
                 ),
-                if (changeMembers)
+                if (changePayers)
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 16),
                     child: Column(
@@ -995,7 +1061,7 @@ class _HomePageState extends State<HomePage> {
                             prefixIcon: Icon(Icons.search, size: 20),
                           ),
                           onChanged: (String value) => update(
-                            () => memberQuery = value.trim().toLowerCase(),
+                            () => payerQuery = value.trim().toLowerCase(),
                           ),
                         ),
                         const SizedBox(height: 8),
@@ -1004,19 +1070,19 @@ class _HomePageState extends State<HomePage> {
                           children: <Widget>[
                             FilterChip(
                               label: const Text('无指定'),
-                              selected: memberIds.isEmpty,
-                              onSelected: (_) => update(memberIds.clear),
+                              selected: payerIds.isEmpty,
+                              onSelected: (_) => update(payerIds.clear),
                             ),
                             FilterChip(
                               label: const Text('全体成员'),
                               selected:
                                   activeMembers.isNotEmpty &&
-                                  memberIds.length == activeMembers.length &&
+                                  payerIds.length == activeMembers.length &&
                                   activeMembers.every(
-                                    (member) => memberIds.contains(member.id),
+                                    (member) => payerIds.contains(member.id),
                                   ),
                               onSelected: (_) => update(() {
-                                memberIds
+                                payerIds
                                   ..clear()
                                   ..addAll(
                                     activeMembers.map((member) => member.id),
@@ -1027,15 +1093,67 @@ class _HomePageState extends State<HomePage> {
                                 .where(
                                   (member) => member.name
                                       .toLowerCase()
-                                      .contains(memberQuery),
+                                      .contains(payerQuery),
                                 )
                                 .map(
                                   (member) => FilterChip(
                                     label: Text(member.name),
-                                    selected: memberIds.contains(member.id),
+                                    selected: payerIds.contains(member.id),
                                     onSelected: (_) => update(() {
-                                      if (!memberIds.add(member.id)) {
-                                        memberIds.remove(member.id);
+                                      if (!payerIds.add(member.id)) {
+                                        payerIds.remove(member.id);
+                                      }
+                                    }),
+                                  ),
+                                ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                CheckboxListTile(
+                  title: const Text('统一记录'),
+                  subtitle: const Text('修改谁记录了这些账目，可留空'),
+                  value: changeRecorders,
+                  onChanged: (value) =>
+                      update(() => changeRecorders = value ?? false),
+                ),
+                if (changeRecorders)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: Column(
+                      children: <Widget>[
+                        TextField(
+                          decoration: const InputDecoration(
+                            hintText: '搜索记录成员',
+                            prefixIcon: Icon(Icons.search, size: 20),
+                          ),
+                          onChanged: (String value) => update(
+                            () => recorderQuery = value.trim().toLowerCase(),
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Wrap(
+                          spacing: 8,
+                          children: <Widget>[
+                            FilterChip(
+                              label: const Text('无记录'),
+                              selected: recorderIds.isEmpty,
+                              onSelected: (_) => update(recorderIds.clear),
+                            ),
+                            ...activeMembers
+                                .where(
+                                  (member) => member.name
+                                      .toLowerCase()
+                                      .contains(recorderQuery),
+                                )
+                                .map(
+                                  (member) => FilterChip(
+                                    label: Text(member.name),
+                                    selected: recorderIds.contains(member.id),
+                                    onSelected: (_) => update(() {
+                                      if (!recorderIds.add(member.id)) {
+                                        recorderIds.remove(member.id);
                                       }
                                     }),
                                   ),
@@ -1080,7 +1198,11 @@ class _HomePageState extends State<HomePage> {
       ),
     );
     if (save != true) return;
-    if (!changeCategory && !changeAccount && !changeMembers && !changeNote) {
+    if (!changeCategory &&
+        !changeAccount &&
+        !changePayers &&
+        !changeRecorders &&
+        !changeNote) {
       if (mounted) {
         ScaffoldMessenger.of(
           context,
@@ -1088,17 +1210,28 @@ class _HomePageState extends State<HomePage> {
       }
       return;
     }
-    await widget.controller.batchUpdateEntries(
-      entries,
-      changeCategory: changeCategory,
-      category: category,
-      changeAccount: changeAccount,
-      accountId: accountId,
-      changeMembers: changeMembers,
-      memberIds: memberIds.toList(),
-      changeNote: changeNote,
-      note: noteController.text.trim(),
-    );
+    try {
+      await widget.controller.batchUpdateEntries(
+        entries,
+        changeCategory: changeCategory,
+        category: category,
+        changeAccount: changeAccount,
+        accountId: accountId,
+        changePayers: changePayers,
+        payerIds: payerIds.toList(),
+        changeRecorders: changeRecorders,
+        recorderIds: recorderIds.toList(),
+        changeNote: changeNote,
+        note: noteController.text.trim(),
+      );
+    } on StateError catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('${error.message}')));
+      }
+      return;
+    }
     if (mounted) {
       _exitSelection();
       ScaffoldMessenger.of(
@@ -1290,7 +1423,10 @@ class _SummaryCard extends StatelessWidget {
         gradient: LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
-          colors: AppTheme.accessibleGradientOf(context),
+          colors: <Color>[
+            AppTheme.accentOf(context).primary,
+            AppTheme.accentOf(context).secondary,
+          ],
         ),
         borderRadius: BorderRadius.circular(16),
         boxShadow: <BoxShadow>[

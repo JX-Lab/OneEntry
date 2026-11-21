@@ -114,9 +114,20 @@ class _StatisticsPageState extends State<StatisticsPage> {
                     const SizedBox(height: 12),
                     Row(
                       children: <Widget>[
-                        Text('收入 ¥${income.toStringAsFixed(2)}'),
+                        Expanded(
+                          child: _LineLegend(
+                            label: '收入 ¥${income.toStringAsFixed(2)}',
+                            color: AppTheme.ledgerOf(context).income,
+                          ),
+                        ),
                         const SizedBox(width: 14),
-                        Text('支出 ¥${expense.toStringAsFixed(2)}'),
+                        Expanded(
+                          child: _LineLegend(
+                            label: '支出 ¥${expense.toStringAsFixed(2)}',
+                            color: AppTheme.ledgerOf(context).expense,
+                            dashed: true,
+                          ),
+                        ),
                       ],
                     ),
                     const SizedBox(height: 8),
@@ -773,6 +784,72 @@ class _BreakdownCard extends StatelessWidget {
   }
 }
 
+class _LineLegend extends StatelessWidget {
+  const _LineLegend({
+    required this.label,
+    required this.color,
+    this.dashed = false,
+  });
+  final String label;
+  final Color color;
+  final bool dashed;
+
+  @override
+  Widget build(BuildContext context) => Row(
+    children: <Widget>[
+      SizedBox(
+        width: 24,
+        height: 8,
+        child: CustomPaint(
+          painter: _LegendLinePainter(color: color, dashed: dashed),
+        ),
+      ),
+      const SizedBox(width: 6),
+      Expanded(
+        child: Text(
+          label,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(fontSize: 12),
+        ),
+      ),
+    ],
+  );
+}
+
+class _LegendLinePainter extends CustomPainter {
+  const _LegendLinePainter({required this.color, required this.dashed});
+  final Color color;
+  final bool dashed;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final Paint paint = Paint()
+      ..color = color
+      ..strokeWidth = 2.5
+      ..strokeCap = StrokeCap.round;
+    if (!dashed) {
+      canvas.drawLine(
+        Offset(0, size.height / 2),
+        Offset(size.width, size.height / 2),
+        paint,
+      );
+      return;
+    }
+    for (double x = 0; x < size.width; x += 7) {
+      canvas.drawLine(
+        Offset(x, size.height / 2),
+        Offset(math.min(x + 4, size.width), size.height / 2),
+        paint,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _LegendLinePainter oldDelegate) =>
+      oldDelegate.color != color || oldDelegate.dashed != dashed;
+}
+
 class _InteractiveLineChart extends StatelessWidget {
   const _InteractiveLineChart({
     required this.entries,
@@ -799,15 +876,27 @@ class _InteractiveLineChart extends StatelessWidget {
       if (entry.type == EntryType.income) income[index] += entry.amount;
       if (entry.type == EntryType.expense) expense[index] += entry.amount;
     }
-    return SizedBox(
-      height: 160,
+    final DateTime middle = range.start.add(
+      Duration(
+        milliseconds: range.end.difference(range.start).inMilliseconds ~/ 2,
+      ),
+    );
+    String label(DateTime value) => '${value.month}/${value.day}';
+    return Container(
+      height: 190,
+      decoration: BoxDecoration(
+        color: Theme.of(
+          context,
+        ).colorScheme.surfaceContainerHighest.withValues(alpha: .42),
+        borderRadius: BorderRadius.circular(14),
+      ),
       child: LayoutBuilder(
         builder: (BuildContext context, BoxConstraints constraints) =>
             GestureDetector(
               onTapDown: (TapDownDetails details) {
-                final double step =
-                    constraints.maxWidth / math.max(1, buckets - 1);
-                final int index = (details.localPosition.dx / step)
+                final double plotWidth = math.max(1, constraints.maxWidth - 52);
+                final double step = plotWidth / math.max(1, buckets - 1);
+                final int index = ((details.localPosition.dx - 42) / step)
                     .round()
                     .clamp(0, buckets - 1);
                 final DateTime date = range.start.add(
@@ -818,7 +907,7 @@ class _InteractiveLineChart extends StatelessWidget {
                 );
               },
               child: CustomPaint(
-                size: Size(constraints.maxWidth, 160),
+                size: Size(constraints.maxWidth, 190),
                 painter: _LinePainter(
                   income: income,
                   expense: expense,
@@ -826,6 +915,13 @@ class _InteractiveLineChart extends StatelessWidget {
                   showExpense: showExpense,
                   incomeColor: AppTheme.ledgerOf(context).income,
                   expenseColor: AppTheme.ledgerOf(context).expense,
+                  gridColor: Theme.of(context).colorScheme.outlineVariant,
+                  labelColor: Theme.of(context).colorScheme.onSurfaceVariant,
+                  xLabels: <String>[
+                    label(range.start),
+                    label(middle),
+                    label(range.end),
+                  ],
                 ),
               ),
             ),
@@ -842,6 +938,9 @@ class _LinePainter extends CustomPainter {
     required this.showExpense,
     required this.incomeColor,
     required this.expenseColor,
+    required this.gridColor,
+    required this.labelColor,
+    required this.xLabels,
   });
   final List<double> income;
   final List<double> expense;
@@ -849,6 +948,9 @@ class _LinePainter extends CustomPainter {
   final bool showExpense;
   final Color incomeColor;
   final Color expenseColor;
+  final Color gridColor;
+  final Color labelColor;
+  final List<String> xLabels;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -859,20 +961,72 @@ class _LinePainter extends CustomPainter {
         if (showExpense) ...expense,
       ].fold(0, math.max),
     );
-    void draw(List<double> values, Color color, {required bool dashed}) {
+    const double left = 42;
+    const double right = 10;
+    const double top = 12;
+    const double bottom = 28;
+    final Rect plot = Rect.fromLTRB(
+      left,
+      top,
+      size.width - right,
+      size.height - bottom,
+    );
+    final Paint grid = Paint()
+      ..color = gridColor.withValues(alpha: .65)
+      ..strokeWidth = 1;
+    for (int index = 0; index < 3; index++) {
+      final double y = plot.top + plot.height * index / 2;
+      canvas.drawLine(Offset(plot.left, y), Offset(plot.right, y), grid);
+      final double value = maxValue * (1 - index / 2);
+      _drawLabel(
+        canvas,
+        value >= 1000
+            ? '${(value / 1000).toStringAsFixed(value >= 10000 ? 0 : 1)}k'
+            : value.toStringAsFixed(0),
+        Offset(4, y - 7),
+        labelColor,
+      );
+    }
+    for (int index = 0; index < xLabels.length; index++) {
+      final TextPainter painter = TextPainter(
+        text: TextSpan(
+          text: xLabels[index],
+          style: TextStyle(fontSize: 10, color: labelColor),
+        ),
+        textDirection: TextDirection.ltr,
+      )..layout();
+      final double x = plot.left + plot.width * index / (xLabels.length - 1);
+      painter.paint(
+        canvas,
+        Offset(
+          (x - painter.width / 2).clamp(0, size.width - painter.width),
+          plot.bottom + 8,
+        ),
+      );
+    }
+
+    void draw(
+      List<double> values,
+      Color color, {
+      required bool dashed,
+      required bool fill,
+    }) {
       final Path path = Path();
       final Paint line = Paint()
         ..color = color
         ..style = PaintingStyle.stroke
-        ..strokeWidth = 2.2;
-      final Paint point = Paint()..color = color;
+        ..strokeWidth = 2.5
+        ..strokeCap = StrokeCap.round
+        ..strokeJoin = StrokeJoin.round;
+      final Paint point = Paint()
+        ..color = color
+        ..style = PaintingStyle.fill;
       final List<Offset> points = <Offset>[];
       for (int index = 0; index < values.length; index++) {
         final double x = values.length == 1
-            ? size.width / 2
-            : size.width * index / (values.length - 1);
-        final double y =
-            12 + (size.height - 28) * (1 - values[index] / maxValue);
+            ? plot.center.dx
+            : plot.left + plot.width * index / (values.length - 1);
+        final double y = plot.bottom - plot.height * values[index] / maxValue;
         final Offset position = Offset(x, y);
         points.add(position);
         if (index == 0) {
@@ -880,14 +1034,22 @@ class _LinePainter extends CustomPainter {
         } else {
           path.lineTo(x, y);
         }
-        if (dashed) {
-          canvas.drawRect(
-            Rect.fromCenter(center: position, width: 6, height: 6),
-            point,
-          );
-        } else {
-          canvas.drawCircle(position, 3, point);
-        }
+      }
+      if (fill && points.isNotEmpty) {
+        final Path area = Path.from(path)
+          ..lineTo(points.last.dx, plot.bottom)
+          ..lineTo(points.first.dx, plot.bottom)
+          ..close();
+        final Paint areaPaint = Paint()
+          ..shader = LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: <Color>[
+              color.withValues(alpha: .16),
+              color.withValues(alpha: .015),
+            ],
+          ).createShader(plot);
+        canvas.drawPath(area, areaPaint);
       }
       if (dashed) {
         for (int index = 1; index < points.length; index++) {
@@ -896,10 +1058,37 @@ class _LinePainter extends CustomPainter {
       } else {
         canvas.drawPath(path, line);
       }
+      for (int index = 0; index < points.length; index++) {
+        if (values[index] <= 0) continue;
+        if (dashed) {
+          canvas.drawRect(
+            Rect.fromCenter(center: points[index], width: 6, height: 6),
+            point,
+          );
+        } else {
+          canvas.drawCircle(points[index], 3.5, point);
+          canvas.drawCircle(points[index], 1.5, Paint()..color = Colors.white);
+        }
+      }
     }
 
-    if (showIncome) draw(income, incomeColor, dashed: false);
-    if (showExpense) draw(expense, expenseColor, dashed: true);
+    if (showIncome) {
+      draw(income, incomeColor, dashed: false, fill: !showExpense);
+    }
+    if (showExpense) {
+      draw(expense, expenseColor, dashed: true, fill: !showIncome);
+    }
+  }
+
+  void _drawLabel(Canvas canvas, String text, Offset offset, Color color) {
+    final TextPainter painter = TextPainter(
+      text: TextSpan(
+        text: text,
+        style: TextStyle(fontSize: 10, color: color),
+      ),
+      textDirection: TextDirection.ltr,
+    )..layout(maxWidth: 36);
+    painter.paint(canvas, offset);
   }
 
   void _drawDashedLine(Canvas canvas, Offset start, Offset end, Paint paint) {

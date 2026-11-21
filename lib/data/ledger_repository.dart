@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:sqflite/sqflite.dart';
 
 import '../models/ledger_models.dart';
@@ -1353,8 +1355,10 @@ class LedgerRepository {
     String? category,
     required bool changeAccount,
     int? accountId,
-    required bool changeMembers,
-    List<int> memberIds = const <int>[],
+    required bool changePayers,
+    List<int> payerIds = const <int>[],
+    required bool changeRecorders,
+    List<int> recorderIds = const <int>[],
     required bool changeNote,
     String note = '',
   }) async {
@@ -1438,21 +1442,81 @@ class LedgerRepository {
             whereArgs: <Object?>[entry.id],
           );
         }
-        if (changeMembers && entry.type != EntryType.adjustment) {
+        if (changePayers && entry.type != EntryType.adjustment) {
+          final List<MemberShare> payerShares = _equalMemberShares(
+            payerIds,
+            _minor(entry.amount),
+          );
           await txn.delete(
             'transaction_members',
             where: 'transaction_id = ?',
             whereArgs: <Object?>[entry.id],
           );
-          await _insertMembers(txn, entry.id, memberIds, _minor(entry.amount));
+          await _insertMembers(
+            txn,
+            entry.id,
+            payerIds,
+            _minor(entry.amount),
+            shares: payerShares,
+          );
+          final List<WalletSource> existingSources =
+              entry.walletSources.isNotEmpty
+              ? entry.walletSources
+              : _resolvedWalletSources(entry, _resolvedMemberShares(entry));
+          late final List<WalletSource> nextSources;
+          if (entry.type == EntryType.income) {
+            await _applyWalletBalances(txn, entry.type, existingSources, -1);
+            nextSources = payerShares.isEmpty
+                ? <WalletSource>[WalletSource(amount: entry.amount)]
+                : payerShares
+                      .map(
+                        (MemberShare share) => WalletSource(
+                          sourceMemberId: share.memberId,
+                          payerMemberId: share.memberId,
+                          amount: share.amount,
+                        ),
+                      )
+                      .toList();
+            await _applyWalletBalances(txn, entry.type, nextSources, 1);
+          } else if (entry.type == EntryType.expense) {
+            nextSources = _retargetWalletSources(existingSources, payerShares);
+          } else {
+            nextSources = existingSources;
+          }
+          if (entry.type == EntryType.income ||
+              entry.type == EntryType.expense) {
+            await txn.delete(
+              'transaction_wallet_sources',
+              where: 'transaction_id = ?',
+              whereArgs: <Object?>[entry.id],
+            );
+            await _insertWalletSources(txn, entry.id, nextSources);
+          }
           await txn.delete(
             'member_debts',
             where: 'transaction_id = ?',
             whereArgs: <Object?>[entry.id],
           );
-          await _insertDebts(txn, entry.id, entry.type, entry.walletSources);
+          await _insertDebts(txn, entry.id, entry.type, nextSources);
         }
-        if (values.length > 1 || changeMembers) {
+        if (changeRecorders) {
+          await txn.delete(
+            'transaction_recorders',
+            where: 'transaction_id = ?',
+            whereArgs: <Object?>[entry.id],
+          );
+          await _insertRecorders(txn, entry.id, recorderIds);
+          await txn.update(
+            'transactions',
+            <String, Object?>{
+              'recorded_by_member_id': recorderIds.firstOrNull,
+              'updated_at': now,
+            },
+            where: 'id = ?',
+            whereArgs: <Object?>[entry.id],
+          );
+        }
+        if (values.length > 1 || changePayers || changeRecorders) {
           final List<Map<String, Object?>> uuidRows = await txn.query(
             'transactions',
             columns: <String>['uuid'],
@@ -2292,7 +2356,7 @@ class LedgerRepository {
       );
       if (total == amountMinor) return entry.memberShares;
       if (total != 0) {
-        throw StateError('成员承担金额合计必须等于账目金额');
+        throw StateError('付款或归属金额合计必须等于账目金额');
       }
     }
     return _equalMemberShares(entry.memberIds, amountMinor);
@@ -2435,6 +2499,48 @@ class LedgerRepository {
         .toList();
   }
 
+  List<WalletSource> _retargetWalletSources(
+    List<WalletSource> sources,
+    List<MemberShare> payerShares,
+  ) {
+    if (payerShares.isEmpty) {
+      return sources
+          .map(
+            (WalletSource source) => WalletSource(
+              sourceMemberId: source.sourceMemberId,
+              amount: source.amount,
+            ),
+          )
+          .toList();
+    }
+    final List<(int, int)> remaining = payerShares
+        .map((MemberShare share) => (share.memberId, _minor(share.amount)))
+        .toList();
+    final List<WalletSource> result = <WalletSource>[];
+    int payerIndex = 0;
+    for (final WalletSource source in sources) {
+      int sourceRemaining = _minor(source.amount);
+      while (sourceRemaining > 0 && payerIndex < remaining.length) {
+        final (int memberId, int payerRemaining) = remaining[payerIndex];
+        if (payerRemaining <= 0) {
+          payerIndex++;
+          continue;
+        }
+        final int allocated = math.min(sourceRemaining, payerRemaining);
+        result.add(
+          WalletSource(
+            sourceMemberId: source.sourceMemberId,
+            payerMemberId: memberId,
+            amount: allocated / 100,
+          ),
+        );
+        sourceRemaining -= allocated;
+        remaining[payerIndex] = (memberId, payerRemaining - allocated);
+      }
+    }
+    return result;
+  }
+
   Future<void> _insertWalletSources(
     DatabaseExecutor db,
     int transactionId,
@@ -2543,11 +2649,11 @@ class LedgerRepository {
             .toSet()
             .difference(previous.memberIds.toSet())
             .isNotEmpty) {
-      changes.add('付款成员');
+      changes.add('付款／归属');
     }
     if (previous.fundings.length != next.fundings.length ||
         previous.accountId != next.accountId) {
-      changes.add('支付来源');
+      changes.add('账户');
     }
     if (previous.walletSources.length != next.walletSources.length) {
       changes.add('荷包来源');

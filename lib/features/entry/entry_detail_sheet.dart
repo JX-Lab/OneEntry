@@ -79,27 +79,27 @@ Future<void> showEntryDetailSheet({
                 ? AppTheme.ledgerOf(context).income
                 : null,
           ),
-          _DetailRow(label: '支付', value: accountText),
+          _DetailRow(label: '账户', value: accountText),
+          if (entry.type != EntryType.transfer &&
+              entry.type != EntryType.adjustment)
+            _DetailRow(
+              label: entry.type == EntryType.income ? '归属' : '付款',
+              value: members.isEmpty ? '无' : members.join('、'),
+            ),
           if (entry.walletSources.isNotEmpty)
             _DetailRow(
               label: '荷包',
               value: _walletSourceText(controller, entry.walletSources),
             ),
-          if (entry.type == EntryType.expense)
-            _DetailRow(
-              label: '预算',
-              value: entry.outsideBudget ? '预算外花销' : '计入预算',
-              valueColor: entry.outsideBudget
-                  ? AppTheme.ledgerOf(context).expense
-                  : null,
-            ),
-          _DetailRow(
-            label: entry.type == EntryType.income ? '收入归属' : '付款成员',
-            value: members.isEmpty ? '无' : members.join('、'),
-          ),
-          _DetailRow(label: '记录者', value: recorder),
+          if (recorderIds.isNotEmpty) _DetailRow(label: '记录', value: recorder),
           _DetailRow(label: '时间', value: _dateTime(entry.occurredAt)),
           _DetailRow(label: '备注', value: entry.note.isEmpty ? '无' : entry.note),
+          if (entry.type == EntryType.expense && entry.outsideBudget)
+            _DetailRow(
+              label: '预算',
+              value: '预算外花销',
+              valueColor: AppTheme.ledgerOf(context).expense,
+            ),
           if (history.isNotEmpty)
             ExpansionTile(
               tilePadding: EdgeInsets.zero,
@@ -205,16 +205,7 @@ String _fundingText(
       .map((EntryFunding funding) {
         final String account =
             _account(controller, funding.accountId)?.name ?? '未知账户';
-        final String owner = funding.memberId == null
-            ? '共同资金'
-            : controller.members
-                      .where(
-                        (LedgerMember member) => member.id == funding.memberId,
-                      )
-                      .map((LedgerMember member) => member.name)
-                      .firstOrNull ??
-                  '未知成员';
-        return '$account·$owner ¥${funding.amount.toStringAsFixed(2)}';
+        return '$account ¥${funding.amount.toStringAsFixed(2)}';
       })
       .join(' + ');
 }

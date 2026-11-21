@@ -51,10 +51,10 @@ void main() {
     tester.testTextInput.hide();
     await tester.pump();
 
-    await tester.tap(find.text('付款成员（可多选）'));
+    await tester.tap(find.text('付款（可多选）'));
     await tester.pumpAndSettle();
-    expect(find.text('选择付款成员'), findsOneWidget);
-    Navigator.of(tester.element(find.text('选择付款成员'))).pop();
+    expect(find.text('选择付款'), findsOneWidget);
+    Navigator.of(tester.element(find.text('选择付款'))).pop();
     await tester.pumpAndSettle();
 
     expect(
@@ -126,11 +126,10 @@ void main() {
     await tester.pump();
     await tester.enterText(find.byType(TextField).first, '2');
     expect(find.text('预算外花销'), findsOneWidget);
-    await tester.tap(find.text('支付来源'));
+    await tester.tap(find.text('账户'));
     await tester.pumpAndSettle();
 
-    expect(find.text('组合付款'), findsOneWidget);
-    expect(find.text('按账户顺序自动补足'), findsOneWidget);
+    expect(find.text('付款账户'), findsOneWidget);
     expect(find.text('已分配 ¥2.00'), findsOneWidget);
     expect(find.text('添加账户'), findsNothing);
   });
@@ -173,18 +172,16 @@ void main() {
     await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextField).first, '2');
 
-    await tester.tap(find.text('付款成员（可多选）'));
+    await tester.tap(find.text('付款（可多选）'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('我').last);
     await tester.pump();
     await tester.tap(find.text('完成 (1)'));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('支付来源'));
+    await tester.tap(find.text('账户'));
     await tester.pumpAndSettle();
     expect(find.text('有一项超过可用资金'), findsNothing);
-    await tester.tap(find.text('按账户顺序自动补足'));
-    await tester.pump();
     await tester.tap(find.text('完成'));
     await tester.pumpAndSettle();
 
@@ -220,8 +217,8 @@ void main() {
     );
     await tester.pump();
 
-    expect(find.text('付款成员（可多选）'), findsNothing);
-    expect(find.text('记录者（可不选）'), findsNothing);
+    expect(find.text('付款（可多选）'), findsNothing);
+    expect(find.text('记录（可不选）'), findsNothing);
     expect(find.text('可见范围'), findsNothing);
   });
 
@@ -296,7 +293,7 @@ void main() {
     await tester.tap(find.text('打开记账'));
     await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextField).first, '2');
-    await tester.tap(find.text('付款成员（可多选）'));
+    await tester.tap(find.text('付款（可多选）'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('我').last);
     await tester.pump();
@@ -323,6 +320,7 @@ void main() {
             LedgerMember(id: 1, name: 'A', colorValue: 0xFF2E7CF6),
             LedgerMember(id: 2, name: 'B', colorValue: 0xFFF5A623),
           ])
+          ..splitMode = 'custom'
           ..memberWallets[1] = 10
           ..memberWallets[2] = 10;
     addTearDown(controller.dispose);
@@ -339,7 +337,7 @@ void main() {
     await tester.tap(find.text('打开记账'));
     await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextField).first, '10');
-    await tester.tap(find.text('付款成员（可多选）'));
+    await tester.tap(find.text('付款（可多选）'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('A').last);
     await tester.tap(find.text('B').last);
@@ -347,9 +345,7 @@ void main() {
     await tester.tap(find.text('完成 (2)'));
     await tester.pumpAndSettle();
 
-    expect(find.text('付款分摊'), findsWidgets);
-    await tester.tap(find.text('自定义金额'));
-    await tester.pump();
+    expect(find.text('付款金额'), findsWidgets);
     final Finder splitInputs = find.descendant(
       of: find.byType(FractionallySizedBox),
       matching: find.byType(TextField),
@@ -360,7 +356,7 @@ void main() {
     await tester.pump();
     await tester.tap(find.text('完成'));
     await tester.pumpAndSettle();
-    expect(find.text('自定义金额'), findsOneWidget);
+    expect(find.text('自由填写'), findsOneWidget);
 
     await tester.tap(find.text('保存'));
     await tester.pumpAndSettle();
@@ -372,6 +368,46 @@ void main() {
     expect(saved!.walletSources, hasLength(2));
     expect(saved!.walletSources[0].amount, 3);
     expect(saved!.walletSources[1].amount, 7);
+  });
+
+  testWidgets('全局 AA 设置会直接均分多人账目', (WidgetTester tester) async {
+    final LedgerController controller =
+        LedgerController(LedgerRepository(AppDatabase()))
+          ..accounts.add(LedgerAccount(id: 1, name: '现金', balance: 20))
+          ..members.addAll(<LedgerMember>[
+            LedgerMember(id: 1, name: 'A', colorValue: 0xFF2E7CF6),
+            LedgerMember(id: 2, name: 'B', colorValue: 0xFFF5A623),
+          ])
+          ..splitMode = 'equal'
+          ..memberWallets[1] = 10
+          ..memberWallets[2] = 10;
+    addTearDown(controller.dispose);
+    LedgerEntry? saved;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: _EntryHarness(
+          controller: controller,
+          onSaved: (LedgerEntry value) => saved = value,
+        ),
+      ),
+    );
+    await tester.tap(find.text('打开记账'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).first, '10');
+    await tester.tap(find.text('付款（可多选）'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('A').last);
+    await tester.tap(find.text('B').last);
+    await tester.pump();
+    await tester.tap(find.text('完成 (2)'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('付款金额'), findsNothing);
+    await tester.tap(find.text('保存'));
+    await tester.pumpAndSettle();
+    expect(saved, isNotNull);
+    expect(saved!.memberShares.map((item) => item.amount), <double>[5, 5]);
   });
 }
 

@@ -277,19 +277,35 @@ class _AccountsPageState extends State<AccountsPage> {
                           items: const <DropdownMenuItem<AccountKind>>[
                             DropdownMenuItem(
                               value: AccountKind.asset,
-                              child: Text('资产账户 · 余额不能为负'),
+                              child: Text('资产账户'),
                             ),
                             DropdownMenuItem(
                               value: AccountKind.credit,
-                              child: Text('信用账户 · 可在额度内透支'),
+                              child: Text('信用/透支账户'),
                             ),
                             DropdownMenuItem(
                               value: AccountKind.loan,
-                              child: Text('贷款账户 · 只记录负债与还款'),
+                              child: Text('贷款/负债账户'),
                             ),
                           ],
                           onChanged: (AccountKind? value) =>
                               update(() => kind = value ?? kind),
+                        ),
+                        const SizedBox(height: 8),
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: Text(
+                            switch (kind) {
+                              AccountKind.asset => '存放实际资金，用于日常收支，余额最低为 0。',
+                              AccountKind.credit => '可直接付款并在额度内透支，例如信用卡、花呗。',
+                              AccountKind.loan => '只追踪尚未偿还的本金，不作为日常付款账户，例如房贷。',
+                            },
+                            style: const TextStyle(
+                              fontSize: 12,
+                              height: 1.4,
+                              color: Color(0xFF8A9099),
+                            ),
+                          ),
                         ),
                         if (kind == AccountKind.credit) ...<Widget>[
                           const SizedBox(height: 12),
@@ -317,7 +333,7 @@ class _AccountsPageState extends State<AccountsPage> {
                             helperText: switch (kind) {
                               AccountKind.asset => '资产账户最低为 0',
                               AccountKind.credit => '欠款用负数表示',
-                              AccountKind.loan => '剩余贷款用负数表示',
+                              AccountKind.loan => '待还本金用负数表示',
                             },
                           ),
                         ),
@@ -850,8 +866,8 @@ IconData _accountIcon(String value) => switch (value) {
 
 String _accountKindLabel(AccountKind kind) => switch (kind) {
   AccountKind.asset => '资产账户',
-  AccountKind.credit => '信用账户',
-  AccountKind.loan => '贷款账户',
+  AccountKind.credit => '信用/透支账户',
+  AccountKind.loan => '贷款/负债账户',
 };
 
 IconData _detailCategoryIcon(String category) => switch (category) {

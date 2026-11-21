@@ -499,6 +499,17 @@ class _WalletsAndDebtsPage extends StatelessWidget {
           padding: const EdgeInsets.fromLTRB(12, 8, 12, 32),
           children: <Widget>[
             const Padding(
+              padding: EdgeInsets.fromLTRB(4, 2, 4, 10),
+              child: Text(
+                '成员荷包表示个人可支配资金；公共资金不会产生借款，使用其他成员荷包会进入待结算往来。',
+                style: TextStyle(
+                  fontSize: 12,
+                  height: 1.45,
+                  color: Color(0xFF8A9099),
+                ),
+              ),
+            ),
+            const Padding(
               padding: EdgeInsets.fromLTRB(4, 4, 4, 8),
               child: Text(
                 '荷包',

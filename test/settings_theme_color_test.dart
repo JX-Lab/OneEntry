@@ -39,6 +39,7 @@ void main() {
       ),
     );
     expect(find.text('语音记账'), findsNothing);
+    expect(find.text('多人金额分配'), findsOneWidget);
     expect(find.text('每日记账提醒'), findsOneWidget);
     expect(find.text('周期账目管理'), findsOneWidget);
     expect(find.text('通知权限'), findsNothing);

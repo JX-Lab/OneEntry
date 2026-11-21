@@ -216,9 +216,9 @@ abstract final class AppTheme {
   static AppAccentTheme accentOf(BuildContext context) =>
       Theme.of(context).extension<AppAccentTheme>() ??
       const AppAccentTheme(
-        primary: brandTeal,
-        secondary: brandTealLight,
-        action: Color(0xFF0D4B49),
+        primary: green,
+        secondary: greenLight,
+        action: Color(0xFF087F5B),
       );
 
   static List<Color> accessibleGradientFor(AppAccent accent) => <Color>[

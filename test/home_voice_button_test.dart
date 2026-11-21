@@ -5,6 +5,7 @@ import 'package:yibi/data/ledger_controller.dart';
 import 'package:yibi/data/ledger_repository.dart';
 import 'package:yibi/features/home/home_page.dart';
 import 'package:yibi/models/ledger_models.dart';
+import 'package:yibi/theme/app_theme.dart';
 
 void main() {
   testWidgets('首页只显示手动记账按钮', (WidgetTester tester) async {
@@ -33,6 +34,13 @@ void main() {
     expect(tester.takeException(), isNull);
     expect(find.byIcon(Icons.mic_none_rounded), findsNothing);
     expect(find.text('记一笔'), findsOneWidget);
+    final Finder entryInk = find
+        .ancestor(of: find.text('记一笔'), matching: find.byType(Ink))
+        .first;
+    final LinearGradient gradient =
+        (tester.widget<Ink>(entryInk).decoration as BoxDecoration).gradient!
+            as LinearGradient;
+    expect(gradient.colors, const <Color>[AppTheme.green, AppTheme.greenLight]);
     expect(tester.widget<Scaffold>(find.byType(Scaffold)).extendBody, isTrue);
     expect(tester.widget<AppBar>(find.byType(AppBar)).centerTitle, isFalse);
   });

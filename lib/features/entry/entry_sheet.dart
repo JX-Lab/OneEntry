@@ -286,26 +286,27 @@ class _EntrySheetState extends State<EntrySheet> {
                 ),
                 if (widget.controller.multiEnabled)
                   _PickerField(
-                    title: _type == EntryType.income
-                        ? '收入归属（可多选）'
-                        : '付款成员（可多选）',
+                    title: _type == EntryType.income ? '归属（可多选）' : '付款（可多选）',
                     value: _memberSummary(members),
                     onTap: () => _pickMembers(members),
                   ),
-                if (widget.controller.multiEnabled && _members.length > 1)
+                if (widget.controller.multiEnabled &&
+                    _members.length > 1 &&
+                    (_customPayerSplit ||
+                        widget.controller.splitMode == 'custom'))
                   _PickerField(
-                    title: _type == EntryType.income ? '收入分配' : '付款分摊',
-                    value: _customPayerSplit ? '自定义金额' : 'AA 均摊',
+                    title: _type == EntryType.income ? '归属金额' : '付款金额',
+                    value: '自由填写',
                     onTap: () => _editPayerSplit(members),
                   ),
                 if (widget.controller.multiEnabled)
                   _PickerField(
-                    title: '记录者（可不选）',
+                    title: '记录（可不选）',
                     value: _recorderSummary(members),
                     onTap: () => _pickRecorders(members),
                   ),
                 _PickerField(
-                  title: _type == EntryType.expense ? '支付来源' : '入账账户',
+                  title: '账户',
                   value: _fundingSummary(accounts, account),
                   onTap: () => _editFundings(accounts: accounts),
                 ),
@@ -341,7 +342,7 @@ class _EntrySheetState extends State<EntrySheet> {
                 ),
               if (widget.controller.multiEnabled && _type == EntryType.transfer)
                 _PickerField(
-                  title: '记录者（可不选）',
+                  title: '记录（可不选）',
                   value: _recorderSummary(members),
                   onTap: () => _pickRecorders(members),
                 ),
@@ -475,8 +476,8 @@ class _EntrySheetState extends State<EntrySheet> {
         title: _type == EntryType.transfer
             ? '选择操作者'
             : _type == EntryType.income
-            ? '选择收入归属'
-            : '选择付款成员',
+            ? '选择归属'
+            : '选择付款',
         members: members,
         selectedIds: _members,
       ),
@@ -486,14 +487,16 @@ class _EntrySheetState extends State<EntrySheet> {
     if (result == null) return;
     setState(() {
       if (!_members.containsAll(result) || !result.containsAll(_members)) {
-        _customPayerSplit = false;
+        _customPayerSplit = widget.controller.splitMode == 'custom';
         _customPayerAmounts.clear();
       }
       _members
         ..clear()
         ..addAll(result);
     });
-    if (result.length > 1) await _editPayerSplit(members);
+    if (result.length > 1 && widget.controller.splitMode == 'custom') {
+      await _editPayerSplit(members);
+    }
   }
 
   Future<void> _editPayerSplit(List<LedgerMember> members) async {
@@ -510,12 +513,11 @@ class _EntrySheetState extends State<EntrySheet> {
           isScrollControlled: true,
           useSafeArea: true,
           builder: (BuildContext context) => _PayerSplitSheet(
-            title: _type == EntryType.income ? '收入分配' : '付款分摊',
+            title: _type == EntryType.income ? '归属金额' : '付款金额',
             total: amount,
             members: members
                 .where((LedgerMember member) => _members.contains(member.id))
                 .toList(),
-            custom: _customPayerSplit,
             initial: _customPayerAmounts,
           ),
         );
@@ -547,7 +549,7 @@ class _EntrySheetState extends State<EntrySheet> {
       isScrollControlled: true,
       useSafeArea: true,
       builder: (BuildContext context) => _MemberPickerSheet(
-        title: '选择记录者',
+        title: '选择记录',
         members: members,
         selectedIds: _recorders,
       ),
@@ -688,7 +690,7 @@ class _EntrySheetState extends State<EntrySheet> {
       if (widget.controller.commonFund + .004 < amount) {
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(const SnackBar(content: Text('公共资金不足，请选择付款成员')));
+        ).showSnackBar(const SnackBar(content: Text('公共资金不足，请选择付款')));
         return null;
       }
       return <WalletSource>[WalletSource(amount: amount)];
@@ -841,7 +843,7 @@ class _EntrySheetState extends State<EntrySheet> {
       if (account.kind == AccountKind.loan) return '贷款账户不能直接用于支付';
       final double available = account.availableToSpend;
       if (item.value - available > .004) {
-        return '所选资金不足，请调整支付来源或使用组合付款';
+        return '所选账户资金不足，请调整账户或使用组合付款';
       }
     }
     return null;
@@ -993,7 +995,7 @@ class _EntrySheetState extends State<EntrySheet> {
                 ),
                 if (_recorders.length == 1)
                   SwitchListTile(
-                    title: const Text('记录者专属标签'),
+                    title: const Text('记录专属标签'),
                     subtitle: Text(
                       categoryMemberId == null
                           ? '所有成员都可以使用'
@@ -1680,14 +1682,12 @@ class _PayerSplitSheet extends StatefulWidget {
     required this.title,
     required this.total,
     required this.members,
-    required this.custom,
     required this.initial,
   });
 
   final String title;
   final double total;
   final List<LedgerMember> members;
-  final bool custom;
   final Map<int, double> initial;
 
   @override
@@ -1695,7 +1695,6 @@ class _PayerSplitSheet extends StatefulWidget {
 }
 
 class _PayerSplitSheetState extends State<_PayerSplitSheet> {
-  late bool _custom = widget.custom;
   final Map<int, TextEditingController> _inputs =
       <int, TextEditingController>{};
 
@@ -1725,7 +1724,7 @@ class _PayerSplitSheetState extends State<_PayerSplitSheet> {
       (double sum, TextEditingController input) =>
           sum + (double.tryParse(input.text) ?? 0),
     );
-    final bool complete = !_custom || (total - widget.total).abs() < .005;
+    final bool complete = (total - widget.total).abs() < .005;
     return FractionallySizedBox(
       heightFactor: .72,
       child: Column(
@@ -1750,7 +1749,7 @@ class _PayerSplitSheetState extends State<_PayerSplitSheet> {
                       ? () => Navigator.pop(
                           context,
                           _PayerSplitResult(
-                            custom: _custom,
+                            custom: true,
                             amounts: <int, double>{
                               for (final MapEntry<int, TextEditingController>
                                   item
@@ -1765,19 +1764,13 @@ class _PayerSplitSheetState extends State<_PayerSplitSheet> {
               ],
             ),
           ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: SegmentedButton<bool>(
-              segments: const <ButtonSegment<bool>>[
-                ButtonSegment<bool>(value: false, label: Text('AA 均摊')),
-                ButtonSegment<bool>(value: true, label: Text('自定义金额')),
-              ],
-              selected: <bool>{_custom},
-              onSelectionChanged: (Set<bool> value) =>
-                  setState(() => _custom = value.first),
+          const Padding(
+            padding: EdgeInsets.fromLTRB(16, 0, 16, 12),
+            child: Text(
+              '分别填写每位成员的金额，合计需等于账目金额',
+              style: TextStyle(fontSize: 12, color: Color(0xFF8A9099)),
             ),
           ),
-          const SizedBox(height: 12),
           Expanded(
             child: ListView(
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 20),
@@ -1786,7 +1779,6 @@ class _PayerSplitSheetState extends State<_PayerSplitSheet> {
                   padding: const EdgeInsets.only(bottom: 10),
                   child: TextField(
                     controller: _inputs[member.id],
-                    enabled: _custom,
                     keyboardType: const TextInputType.numberWithOptions(
                       decimal: true,
                     ),
@@ -1800,7 +1792,7 @@ class _PayerSplitSheetState extends State<_PayerSplitSheet> {
               }).toList(),
             ),
           ),
-          if (_custom && !complete)
+          if (!complete)
             Padding(
               padding: const EdgeInsets.only(bottom: 16),
               child: Text(
@@ -1982,7 +1974,7 @@ class _FundingEditorSheetState extends State<_FundingEditorSheet> {
                 ),
                 Expanded(
                   child: Text(
-                    widget.type == EntryType.expense ? '组合付款' : '收入归属',
+                    widget.type == EntryType.expense ? '付款账户' : '入账账户',
                     textAlign: TextAlign.center,
                     style: const TextStyle(fontWeight: FontWeight.w700),
                   ),
@@ -1996,32 +1988,37 @@ class _FundingEditorSheetState extends State<_FundingEditorSheet> {
               ],
             ),
           ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(18, 0, 18, 10),
-            child: Text(
-              complete
-                  ? '已分配 ¥${widget.total.toStringAsFixed(2)}'
-                  : !withinAvailable
-                  ? '有账户超过可用余额'
-                  : _remaining > 0
-                  ? '还需从其他账户分配 ¥${_remaining.toStringAsFixed(2)}'
-                  : '已多分配 ¥${(-_remaining).toStringAsFixed(2)}',
-              style: TextStyle(
-                fontSize: 12,
-                color: complete
-                    ? const Color(0xFF8A9099)
-                    : AppTheme.ledgerOf(context).expense,
-                fontWeight: FontWeight.w600,
+          if (widget.type == EntryType.expense &&
+              !complete &&
+              withinAvailable &&
+              _remaining > .004)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 0, 12, 6),
+              child: TextButton.icon(
+                onPressed: _autoFill,
+                icon: const Icon(Icons.auto_awesome_outlined, size: 16),
+                label: Text('还需 ¥${_remaining.toStringAsFixed(2)} · 按账户顺序自动补足'),
               ),
             ),
-          ),
-          if (widget.type == EntryType.expense)
+          if (!(widget.type == EntryType.expense &&
+              !complete &&
+              withinAvailable &&
+              _remaining > .004))
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: OutlinedButton.icon(
-                onPressed: _autoFill,
-                icon: const Icon(Icons.auto_awesome_outlined),
-                label: const Text('按账户顺序自动补足'),
+              padding: const EdgeInsets.fromLTRB(18, 0, 18, 10),
+              child: Text(
+                complete
+                    ? '已分配 ¥${widget.total.toStringAsFixed(2)}'
+                    : !withinAvailable
+                    ? '有账户超过可用余额'
+                    : '已多分配 ¥${(-_remaining).toStringAsFixed(2)}',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: complete
+                      ? const Color(0xFF8A9099)
+                      : AppTheme.ledgerOf(context).expense,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
             ),
           Expanded(

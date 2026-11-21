@@ -12,6 +12,9 @@ void main() {
       LedgerRepository(AppDatabase()),
     );
     controller.accounts.add(LedgerAccount(id: 1, name: '现金', balance: 100));
+    controller.members.add(
+      LedgerMember(id: 1, name: '我', colorValue: 0xFF2E7CF6),
+    );
     addTearDown(controller.dispose);
     bool repeated = false;
     final LedgerEntry entry = LedgerEntry(
@@ -22,6 +25,9 @@ void main() {
       occurredAt: DateTime(2026, 1, 1),
       note: '午餐',
       accountId: 1,
+      memberIds: const <int>[1],
+      fundings: const <EntryFunding>[EntryFunding(accountId: 1, amount: 20)],
+      walletSources: const <WalletSource>[WalletSource(amount: 20)],
     );
 
     await tester.pumpWidget(
@@ -45,6 +51,12 @@ void main() {
     await tester.tap(find.text('打开'));
     await tester.pumpAndSettle();
     expect(find.text('再记一笔'), findsOneWidget);
+    expect(find.text('账户'), findsOneWidget);
+    expect(find.text('付款'), findsOneWidget);
+    expect(find.text('荷包'), findsOneWidget);
+    expect(find.text('记录'), findsNothing);
+    expect(find.text('预算'), findsNothing);
+    expect(find.text('现金 ¥20.00'), findsOneWidget);
 
     await tester.tap(find.text('再记一笔'));
     await tester.pumpAndSettle();
