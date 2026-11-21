@@ -181,11 +181,15 @@ class _HomePageState extends State<HomePage> {
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: <Widget>[
-                            Text(
-                              _periodLabel(),
-                              style: const TextStyle(
-                                fontSize: 17,
-                                fontWeight: FontWeight.w600,
+                            Flexible(
+                              child: Text(
+                                _periodLabel(),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  fontSize: 17,
+                                  fontWeight: FontWeight.w600,
+                                ),
                               ),
                             ),
                             const SizedBox(width: 4),
@@ -531,43 +535,102 @@ class _HomePageState extends State<HomePage> {
     final double expense = values
         .where((item) => item.type == EntryType.expense)
         .fold(0, (sum, item) => sum + item.amount);
+    final bool enlarged = MediaQuery.textScalerOf(context).scale(13) > 20;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(4, 8, 4, 6),
-      child: Row(
-        children: <Widget>[
-          if (_selecting)
-            SizedBox(
-              width: 30,
-              height: 30,
-              child: Checkbox(
-                value: values.every(
-                  (item) => _selectedEntryIds.contains(item.id),
+      padding: const EdgeInsets.fromLTRB(4, 14, 4, 7),
+      child: enlarged
+          ? Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Row(
+                  children: <Widget>[
+                    if (_selecting)
+                      Checkbox(
+                        value: values.every(
+                          (item) => _selectedEntryIds.contains(item.id),
+                        ),
+                        onChanged: (_) => _toggleEntries(values),
+                      ),
+                    Expanded(
+                      child: Text(
+                        '${_year == null ? '${date.year}年' : ''}${date.month}月${date.day}日 ${_weekday(date.weekday)}',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
-                onChanged: (_) => _toggleEntries(values),
-              ),
+                const SizedBox(height: 4),
+                Wrap(
+                  spacing: 12,
+                  runSpacing: 2,
+                  children: <Widget>[
+                    if (income > 0)
+                      Text(
+                        '收入 ${income.toStringAsFixed(2)}',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: AppTheme.ledgerOf(context).income,
+                        ),
+                      ),
+                    if (expense > 0)
+                      Text(
+                        '支出 ${expense.toStringAsFixed(2)}',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: AppTheme.ledgerOf(context).expense,
+                        ),
+                      ),
+                  ],
+                ),
+              ],
+            )
+          : Row(
+              children: <Widget>[
+                if (_selecting)
+                  SizedBox(
+                    width: 30,
+                    height: 30,
+                    child: Checkbox(
+                      value: values.every(
+                        (item) => _selectedEntryIds.contains(item.id),
+                      ),
+                      onChanged: (_) => _toggleEntries(values),
+                    ),
+                  ),
+                Text(
+                  '${_year == null ? '${date.year}年' : ''}${date.month}月${date.day}日 ${_weekday(date.weekday)}',
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const Spacer(),
+                if (income > 0)
+                  Text(
+                    '收 ${income.toStringAsFixed(2)}',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: AppTheme.ledgerOf(context).income,
+                    ),
+                  ),
+                if (income > 0 && expense > 0) const SizedBox(width: 8),
+                if (expense > 0)
+                  Text(
+                    '支 ${expense.toStringAsFixed(2)}',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: AppTheme.ledgerOf(context).expense,
+                    ),
+                  ),
+              ],
             ),
-          Text(
-            '${_year == null ? '${date.year}年' : ''}${date.month}月${date.day}日 ${_weekday(date.weekday)}',
-            style: const TextStyle(
-              fontSize: 12,
-              color: Color(0xFF8A9099),
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-          const Spacer(),
-          if (income > 0)
-            Text(
-              '收 ${income.toStringAsFixed(2)}',
-              style: const TextStyle(fontSize: 11, color: Color(0xFF8A9099)),
-            ),
-          if (income > 0 && expense > 0) const SizedBox(width: 8),
-          if (expense > 0)
-            Text(
-              '支 ${expense.toStringAsFixed(2)}',
-              style: const TextStyle(fontSize: 11, color: Color(0xFF8A9099)),
-            ),
-        ],
-      ),
     );
   }
 
@@ -1428,12 +1491,12 @@ class _SummaryCard extends StatelessWidget {
             AppTheme.accentOf(context).secondary,
           ],
         ),
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(18),
         boxShadow: <BoxShadow>[
           BoxShadow(
             color: AppTheme.accentOf(context).primary.withValues(alpha: .20),
-            blurRadius: 22,
-            offset: const Offset(0, 10),
+            blurRadius: 16,
+            offset: const Offset(0, 7),
           ),
         ],
       ),
@@ -1447,7 +1510,7 @@ class _SummaryCard extends StatelessWidget {
                 Expanded(
                   child: _SummaryValue(label: '↓ 收入', value: income),
                 ),
-                Container(width: .5, height: 54, color: Colors.white38),
+                Container(width: 1, height: 44, color: Colors.white38),
                 Expanded(
                   child: _SummaryValue(label: '↑ 支出', value: expense),
                 ),
@@ -1555,6 +1618,7 @@ class _SummaryValue extends StatelessWidget {
             color: Colors.white,
             fontSize: 24,
             fontWeight: FontWeight.w700,
+            fontFeatures: <FontFeature>[FontFeature.tabularFigures()],
           ),
         ),
       ],
@@ -1623,6 +1687,11 @@ class _EntryTile extends StatelessWidget {
         entry.type == EntryType.expense ||
         (adjustment && entry.adjustmentDelta < 0);
     final bool transfer = entry.type == EntryType.transfer;
+    final Color kindColor = expense
+        ? AppTheme.ledgerOf(context).expense
+        : transfer
+        ? AppTheme.ledgerOf(context).transfer
+        : AppTheme.ledgerOf(context).income;
     final List<LedgerAccount> matchingAccounts = controller.accounts
         .where((LedgerAccount item) => item.id == entry.accountId)
         .toList();
@@ -1641,8 +1710,27 @@ class _EntryTile extends StatelessWidget {
     final double shownAmount = adjustment
         ? entry.adjustmentDelta.abs()
         : entry.amount;
+    final String amountText =
+        '${expense
+            ? '-'
+            : transfer
+            ? ''
+            : '+'}${shownAmount.toStringAsFixed(2)}';
+    final String accountText = transfer
+        ? '${account?.name ?? ''} → ${toAccount?.name ?? ''}'
+        : account?.name ?? '';
+    final String titleText = adjustment
+        ? '余额调整'
+        : transfer
+        ? '转账'
+        : entry.category;
+    final String noteText = <String>[
+      if (entry.outsideBudget) '预算外',
+      if (entry.note.isNotEmpty) entry.note,
+    ].join(' · ');
+    final bool enlarged = MediaQuery.textScalerOf(context).scale(16) > 24;
     return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.only(bottom: 6),
       child: SwipeActionTile(
         actionLabel: '删除',
         onAction: () => _confirmDelete(context),
@@ -1662,121 +1750,227 @@ class _EntryTile extends StatelessWidget {
         child: Container(
           decoration: BoxDecoration(
             color: Theme.of(context).colorScheme.surface,
-            borderRadius: BorderRadius.circular(14),
-          ),
-          child: ListTile(
-            contentPadding: const EdgeInsets.symmetric(
-              horizontal: 14,
-              vertical: 3,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: Theme.of(
+                context,
+              ).colorScheme.outlineVariant.withValues(alpha: .55),
             ),
-            leading: SizedBox(
-              width: selectionMode ? 72 : 44,
-              height: 44,
-              child: Row(
-                children: <Widget>[
-                  if (selectionMode)
-                    SizedBox(
-                      width: 28,
-                      child: Icon(
-                        selected
-                            ? Icons.check_circle
-                            : Icons.radio_button_unchecked,
-                        color: selected
-                            ? Theme.of(context).colorScheme.primary
-                            : Theme.of(context).colorScheme.outline,
-                      ),
-                    ),
-                  SizedBox(
-                    width: 44,
-                    height: 44,
-                    child: Stack(
-                      clipBehavior: Clip.none,
-                      children: <Widget>[
-                        Container(
-                          width: 40,
-                          height: 40,
-                          decoration: BoxDecoration(
-                            color: Theme.of(
-                              context,
-                            ).colorScheme.surfaceContainerHighest,
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: Icon(
-                            transfer
-                                ? Icons.swap_horiz
-                                : adjustment
-                                ? Icons.account_balance_wallet_outlined
-                                : _entryCategoryIcon(
-                                    controller,
-                                    entry.category,
+          ),
+          child: enlarged
+              ? Padding(
+                  padding: const EdgeInsets.all(14),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      Row(
+                        children: <Widget>[
+                          if (selectionMode)
+                            Padding(
+                              padding: const EdgeInsets.only(right: 10),
+                              child: Icon(
+                                selected
+                                    ? Icons.check_circle
+                                    : Icons.radio_button_unchecked,
+                                color: selected
+                                    ? Theme.of(context).colorScheme.primary
+                                    : Theme.of(context).colorScheme.outline,
+                              ),
+                            ),
+                          SizedBox(
+                            width: 44,
+                            height: 44,
+                            child: Stack(
+                              clipBehavior: Clip.none,
+                              children: <Widget>[
+                                Container(
+                                  width: 40,
+                                  height: 40,
+                                  decoration: BoxDecoration(
+                                    color: kindColor.withValues(alpha: .10),
+                                    borderRadius: BorderRadius.circular(11),
                                   ),
-                            size: 21,
+                                  child: Icon(
+                                    transfer
+                                        ? Icons.swap_horiz
+                                        : adjustment
+                                        ? Icons.account_balance_wallet_outlined
+                                        : _entryCategoryIcon(
+                                            controller,
+                                            entry.category,
+                                          ),
+                                    color: kindColor,
+                                    size: 21,
+                                  ),
+                                ),
+                                if (controller.multiEnabled)
+                                  Positioned(
+                                    right: -2,
+                                    bottom: -2,
+                                    child: _MemberBadge(members: members),
+                                  ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              titleText,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: Text(
+                          amountText,
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w700,
+                            fontFeatures: const <FontFeature>[
+                              FontFeature.tabularFigures(),
+                            ],
+                            color: kindColor,
                           ),
                         ),
-                        if (controller.multiEnabled)
-                          Positioned(
-                            right: -2,
-                            bottom: -2,
-                            child: _MemberBadge(members: members),
+                      ),
+                      if (noteText.isNotEmpty) ...<Widget>[
+                        const SizedBox(height: 4),
+                        Text(
+                          noteText,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                      if (accountText.isNotEmpty)
+                        Align(
+                          alignment: Alignment.centerRight,
+                          child: Text(
+                            accountText,
+                            maxLines: 2,
+                            textAlign: TextAlign.right,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Theme.of(
+                                context,
+                              ).colorScheme.onSurfaceVariant,
+                            ),
                           ),
+                        ),
+                    ],
+                  ),
+                )
+              : ListTile(
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 2,
+                  ),
+                  leading: SizedBox(
+                    width: selectionMode ? 72 : 44,
+                    height: 44,
+                    child: Row(
+                      children: <Widget>[
+                        if (selectionMode)
+                          SizedBox(
+                            width: 28,
+                            child: Icon(
+                              selected
+                                  ? Icons.check_circle
+                                  : Icons.radio_button_unchecked,
+                              color: selected
+                                  ? Theme.of(context).colorScheme.primary
+                                  : Theme.of(context).colorScheme.outline,
+                            ),
+                          ),
+                        SizedBox(
+                          width: 44,
+                          height: 44,
+                          child: Stack(
+                            clipBehavior: Clip.none,
+                            children: <Widget>[
+                              Container(
+                                width: 40,
+                                height: 40,
+                                decoration: BoxDecoration(
+                                  color: kindColor.withValues(alpha: .10),
+                                  borderRadius: BorderRadius.circular(11),
+                                ),
+                                child: Icon(
+                                  transfer
+                                      ? Icons.swap_horiz
+                                      : adjustment
+                                      ? Icons.account_balance_wallet_outlined
+                                      : _entryCategoryIcon(
+                                          controller,
+                                          entry.category,
+                                        ),
+                                  size: 21,
+                                  color: kindColor,
+                                ),
+                              ),
+                              if (controller.multiEnabled)
+                                Positioned(
+                                  right: -2,
+                                  bottom: -2,
+                                  child: _MemberBadge(members: members),
+                                ),
+                            ],
+                          ),
+                        ),
                       ],
                     ),
                   ),
-                ],
-              ),
-            ),
-            title: Text(
-              adjustment
-                  ? '余额调整'
-                  : transfer
-                  ? '转账'
-                  : entry.category,
-              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
-            ),
-            subtitle: entry.note.isEmpty && !entry.outsideBudget
-                ? null
-                : Text(
-                    <String>[
-                      if (entry.outsideBudget) '预算外',
-                      if (entry.note.isNotEmpty) entry.note,
-                    ].join(' · '),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+                  title: Text(
+                    titleText,
+                    style: const TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
-            trailing: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: <Widget>[
-                Text(
-                  '${expense
-                      ? '-'
-                      : transfer
-                      ? ''
-                      : '+'}${shownAmount.toStringAsFixed(2)}',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w700,
-                    color: expense
-                        ? AppTheme.ledgerOf(context).expense
-                        : transfer
-                        ? AppTheme.ledgerOf(context).transfer
-                        : AppTheme.ledgerOf(context).income,
-                  ),
-                ),
-                Text(
-                  transfer
-                      ? '${account?.name ?? ''} → ${toAccount?.name ?? ''}'
-                      : account == null
-                      ? ''
-                      : account.name,
-                  style: const TextStyle(
-                    fontSize: 11,
-                    color: Color(0xFF8A9099),
+                  subtitle: noteText.isEmpty
+                      ? null
+                      : Text(
+                          noteText,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                  trailing: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: <Widget>[
+                      Text(
+                        amountText,
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
+                          fontFeatures: const <FontFeature>[
+                            FontFeature.tabularFigures(),
+                          ],
+                          color: expense
+                              ? AppTheme.ledgerOf(context).expense
+                              : transfer
+                              ? AppTheme.ledgerOf(context).transfer
+                              : AppTheme.ledgerOf(context).income,
+                        ),
+                      ),
+                      Text(
+                        accountText,
+                        style: const TextStyle(
+                          fontSize: 11,
+                          color: Color(0xFF8A9099),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-              ],
-            ),
-          ),
         ),
       ),
     );

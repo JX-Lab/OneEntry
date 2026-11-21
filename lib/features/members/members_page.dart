@@ -86,16 +86,21 @@ class _MembersPageState extends State<MembersPage> {
           children: <Widget>[
             Container(
               decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.surface,
-                borderRadius: BorderRadius.circular(16),
+                color: Theme.of(context).colorScheme.primary.withValues(
+                  alpha: Theme.of(context).brightness == Brightness.dark
+                      ? .18
+                      : .08,
+                ),
+                borderRadius: BorderRadius.circular(18),
               ),
               child: ListTile(
                 minTileHeight: 88,
                 leading: CircleAvatar(
-                  backgroundColor: Theme.of(
-                    context,
-                  ).colorScheme.primaryContainer,
-                  child: const Icon(Icons.account_balance_wallet_outlined),
+                  backgroundColor: Theme.of(context).colorScheme.primary,
+                  child: Icon(
+                    Icons.account_balance_wallet_outlined,
+                    color: Theme.of(context).colorScheme.onPrimary,
+                  ),
                 ),
                 title: const Text(
                   '荷包与往来',
@@ -105,7 +110,10 @@ class _MembersPageState extends State<MembersPage> {
                   '公共 ¥${widget.controller.commonFund.toStringAsFixed(2)}'
                   '${debts.isEmpty ? ' · 暂无待结算' : ' · ${debts.length} 笔待结算'}',
                 ),
-                trailing: const Icon(Icons.chevron_right),
+                trailing: Icon(
+                  Icons.chevron_right,
+                  color: Theme.of(context).colorScheme.primary,
+                ),
                 onTap: () => Navigator.of(context).push(
                   MaterialPageRoute<void>(
                     builder: (_) => _WalletsAndDebtsPage(
@@ -117,11 +125,26 @@ class _MembersPageState extends State<MembersPage> {
                 ),
               ),
             ),
-            const Padding(
-              padding: EdgeInsets.fromLTRB(4, 14, 4, 8),
-              child: Text(
-                '点卡片查看详情；左滑后点击“归档”',
-                style: TextStyle(fontSize: 12, color: Color(0xFF8A9099)),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(4, 18, 4, 9),
+              child: Wrap(
+                alignment: WrapAlignment.spaceBetween,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                spacing: 8,
+                runSpacing: 4,
+                children: <Widget>[
+                  const Text(
+                    '成员列表',
+                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
+                  ),
+                  Text(
+                    '点开查看 · 左滑归档',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
               ),
             ),
             if (query.isEmpty)
@@ -195,24 +218,82 @@ class _MembersPageState extends State<MembersPage> {
         child: Container(
           decoration: BoxDecoration(
             color: Theme.of(context).colorScheme.surface,
-            borderRadius: BorderRadius.circular(14),
+            borderRadius: BorderRadius.circular(12),
           ),
-          child: ListTile(
-            leading: CircleAvatar(
-              backgroundColor: Color(member.colorValue),
-              child: Text(
-                member.name.substring(0, 1),
-                style: const TextStyle(color: Colors.white),
-              ),
-            ),
-            title: Text(member.name),
-            subtitle: Text(
-              member.archived
-                  ? '已归档（$count 笔）'
-                  : '资金 ¥${funds.toStringAsFixed(2)} · 参与 $count 笔账目',
-            ),
-            trailing: const Icon(Icons.chevron_right),
-          ),
+          child: MediaQuery.textScalerOf(context).scale(16) > 24
+              ? Padding(
+                  padding: const EdgeInsets.all(14),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      Row(
+                        children: <Widget>[
+                          CircleAvatar(
+                            backgroundColor: Color(member.colorValue),
+                            child: Text(
+                              member.name.substring(0, 1),
+                              style: const TextStyle(color: Colors.white),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              member.name,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        member.archived
+                            ? '已归档（$count 笔）'
+                            : '荷包 ¥${funds.toStringAsFixed(2)}',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w700,
+                          color: Theme.of(context).colorScheme.primary,
+                        ),
+                      ),
+                      if (!member.archived)
+                        Text(
+                          '参与 $count 笔账目',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Theme.of(
+                              context,
+                            ).colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                    ],
+                  ),
+                )
+              : ListTile(
+                  leading: CircleAvatar(
+                    backgroundColor: Color(member.colorValue),
+                    child: Text(
+                      member.name.substring(0, 1),
+                      style: const TextStyle(color: Colors.white),
+                    ),
+                  ),
+                  title: Text(
+                    member.name,
+                    style: const TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                  subtitle: Text(
+                    member.archived
+                        ? '已归档（$count 笔）'
+                        : '资金 ¥${funds.toStringAsFixed(2)} · 参与 $count 笔账目',
+                  ),
+                  trailing: Icon(
+                    Icons.chevron_right,
+                    size: 18,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                ),
         ),
       ),
     );

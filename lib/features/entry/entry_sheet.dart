@@ -354,10 +354,33 @@ class _EntrySheetState extends State<EntrySheet> {
                 ),
                 child: Column(
                   children: <Widget>[
-                    ListTile(
-                      title: const Text('时间'),
-                      trailing: Text(_formatDateTime(_occurredAt)),
+                    InkWell(
                       onTap: _pickDateTime,
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 16,
+                        ),
+                        child: Row(
+                          children: <Widget>[
+                            const Text('时间'),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Text(
+                                _formatDateTime(_occurredAt),
+                                maxLines: 2,
+                                textAlign: TextAlign.right,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  color: Theme.of(
+                                    context,
+                                  ).colorScheme.onSurfaceVariant,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
                     ),
                     const Divider(height: 1, indent: 16, endIndent: 16),
                     Padding(
@@ -1453,57 +1476,95 @@ class _AmountBox extends StatelessWidget {
   final IconData icon;
 
   @override
-  Widget build(BuildContext context) => Container(
-    padding: const EdgeInsets.fromLTRB(12, 11, 10, 11),
-    decoration: BoxDecoration(
-      color: Theme.of(context).colorScheme.surface,
-      borderRadius: BorderRadius.circular(14),
-    ),
-    child: Row(
-      children: <Widget>[
-        Container(
-          width: 34,
-          height: 34,
-          decoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.surfaceContainerHighest,
-            borderRadius: BorderRadius.circular(10),
+  Widget build(BuildContext context) {
+    final Color accent = Theme.of(context).colorScheme.primary;
+    return Container(
+      padding: const EdgeInsets.fromLTRB(17, 14, 17, 12),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surface,
+        borderRadius: BorderRadius.circular(18),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Row(
+            children: <Widget>[
+              Container(
+                width: 32,
+                height: 32,
+                decoration: BoxDecoration(
+                  color: accent.withValues(alpha: .10),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(icon, size: 18, color: accent),
+              ),
+              const SizedBox(width: 9),
+              Expanded(
+                child: Text(
+                  category,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontWeight: FontWeight.w700),
+                ),
+              ),
+              Text(
+                '金额',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ],
           ),
-          child: Icon(icon, size: 20),
-        ),
-        const SizedBox(width: 8),
-        Text(category, style: const TextStyle(fontWeight: FontWeight.w600)),
-        const SizedBox(width: 8),
-        const Spacer(),
-        const Text(
-          '¥',
-          style: TextStyle(fontSize: 24, fontWeight: FontWeight.w500),
-        ),
-        const SizedBox(width: 6),
-        SizedBox(
-          width: 150,
-          child: TextField(
-            controller: controller,
-            focusNode: focusNode,
-            autofocus: false,
-            autocorrect: false,
-            enableSuggestions: false,
-            textAlign: TextAlign.right,
-            keyboardType: const TextInputType.numberWithOptions(
-              decimal: true,
-              signed: true,
-            ),
-            style: const TextStyle(fontSize: 34, fontWeight: FontWeight.w600),
-            decoration: const InputDecoration(
-              hintText: '0.00',
-              border: InputBorder.none,
-              isDense: true,
-              filled: false,
-            ),
+          const SizedBox(height: 5),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: <Widget>[
+              Padding(
+                padding: const EdgeInsets.only(bottom: 7),
+                child: Text(
+                  '¥',
+                  style: TextStyle(
+                    fontSize: 23,
+                    fontWeight: FontWeight.w600,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 7),
+              Expanded(
+                child: TextField(
+                  controller: controller,
+                  focusNode: focusNode,
+                  autofocus: false,
+                  autocorrect: false,
+                  enableSuggestions: false,
+                  textAlign: TextAlign.right,
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                    signed: true,
+                  ),
+                  style: const TextStyle(
+                    fontSize: 38,
+                    fontWeight: FontWeight.w700,
+                  ),
+                  decoration: const InputDecoration(
+                    hintText: '0.00',
+                    border: InputBorder.none,
+                    enabledBorder: InputBorder.none,
+                    focusedBorder: InputBorder.none,
+                    isDense: true,
+                    filled: false,
+                    contentPadding: EdgeInsets.zero,
+                  ),
+                ),
+              ),
+            ],
           ),
-        ),
-      ],
-    ),
-  );
+        ],
+      ),
+    );
+  }
 }
 
 class _CategoryGrid extends StatelessWidget {
@@ -1528,9 +1589,12 @@ class _CategoryGrid extends StatelessWidget {
       shrinkWrap: true,
       physics: const BouncingScrollPhysics(),
       padding: const EdgeInsets.fromLTRB(2, 15, 2, 8),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: 4,
-        mainAxisExtent: 70,
+        mainAxisExtent:
+            70 +
+            (MediaQuery.textScalerOf(context).scale(12) - 12).clamp(0, 100) *
+                1.6,
         crossAxisSpacing: 5,
         mainAxisSpacing: 6,
       ),

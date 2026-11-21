@@ -515,58 +515,56 @@ class _BudgetHero extends StatelessWidget {
     final bool over = remaining < 0;
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(16),
+      borderRadius: BorderRadius.circular(18),
       child: Container(
-        padding: const EdgeInsets.all(18),
+        padding: const EdgeInsets.fromLTRB(18, 16, 18, 18),
         decoration: BoxDecoration(
           color: Theme.of(context).colorScheme.surface,
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(18),
         ),
         child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
-            Text(
-              '${month.year}年${month.month}月',
-              style: const TextStyle(color: Color(0xFF8A9099)),
+            Row(
+              children: <Widget>[
+                Text(
+                  '${month.year}年${month.month}月',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                ),
+                const Spacer(),
+                if (editing)
+                  Icon(
+                    Icons.edit_outlined,
+                    size: 18,
+                    color: Theme.of(context).colorScheme.primary,
+                  ),
+              ],
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 17),
             Text(
               over ? '已超支' : '剩余预算',
-              style: const TextStyle(fontSize: 13, color: Color(0xFF8A9099)),
+              style: TextStyle(
+                fontSize: 13,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
             ),
-            const SizedBox(height: 2),
+            const SizedBox(height: 3),
             Text(
               '¥${remaining.abs().toStringAsFixed(2)}',
               style: TextStyle(
-                fontSize: 28,
+                fontSize: 32,
                 fontWeight: FontWeight.w800,
                 color: over ? AppTheme.ledgerOf(context).expense : null,
               ),
             ),
-            const SizedBox(height: 16),
-            Row(
-              children: <Widget>[
-                Expanded(
-                  child: _Value(label: '预算内', value: spent),
-                ),
-                Expanded(
-                  child: _Value(
-                    label: '预算外',
-                    value: outside,
-                    emphasize: outside > 0,
-                  ),
-                ),
-                Expanded(
-                  child: _Value(
-                    label: editing ? '本月预算 ›' : '本月预算',
-                    value: budget,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 18),
             LinearProgressIndicator(
               value: progress.clamp(0, 1),
-              minHeight: 11,
+              minHeight: 9,
               color: over
                   ? AppTheme.ledgerOf(context).expense
                   : Theme.of(context).colorScheme.primary,
@@ -575,14 +573,47 @@ class _BudgetHero extends StatelessWidget {
             const SizedBox(height: 8),
             Text(
               '预算已使用 ${(progress * 100).toStringAsFixed(1)}%',
-              style: const TextStyle(fontSize: 12, color: Color(0xFF8A9099)),
+              style: TextStyle(
+                fontSize: 12,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.symmetric(vertical: 14),
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Row(
+                children: <Widget>[
+                  Expanded(
+                    child: _Value(label: '预算内', value: spent),
+                  ),
+                  Expanded(
+                    child: _Value(
+                      label: '预算外',
+                      value: outside,
+                      emphasize: outside > 0,
+                    ),
+                  ),
+                  Expanded(
+                    child: _Value(
+                      label: editing ? '本月预算 ›' : '本月预算',
+                      value: budget,
+                    ),
+                  ),
+                ],
+              ),
             ),
             if (outside > 0) ...<Widget>[
-              const SizedBox(height: 6),
+              const SizedBox(height: 10),
               Text(
                 '本月总支出 ¥${totalSpent.toStringAsFixed(2)}，其中预算外 ¥${outside.toStringAsFixed(2)}',
-                textAlign: TextAlign.center,
-                style: const TextStyle(fontSize: 12, color: Color(0xFF8A9099)),
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
               ),
             ],
           ],
@@ -606,7 +637,10 @@ class _Value extends StatelessWidget {
     children: <Widget>[
       Text(
         label,
-        style: const TextStyle(color: Color(0xFF8A9099), fontSize: 12),
+        style: TextStyle(
+          color: Theme.of(context).colorScheme.onSurfaceVariant,
+          fontSize: 12,
+        ),
       ),
       const SizedBox(height: 3),
       Text(

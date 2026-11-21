@@ -82,21 +82,25 @@ class _AccountsPageState extends State<AccountsPage> {
               padding: const EdgeInsets.all(18),
               decoration: BoxDecoration(
                 color: Theme.of(context).colorScheme.surface,
-                borderRadius: BorderRadius.circular(16),
+                borderRadius: BorderRadius.circular(18),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: <Widget>[
-                  const Text(
-                    '总资产',
-                    style: TextStyle(color: Color(0xFF8A9099), fontSize: 12),
+                  Text(
+                    '账户净额',
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
-                  const SizedBox(height: 4),
+                  const SizedBox(height: 6),
                   Text(
                     '¥${total.toStringAsFixed(2)}',
                     style: const TextStyle(
-                      fontSize: 28,
-                      fontWeight: FontWeight.w700,
+                      fontSize: 32,
+                      fontWeight: FontWeight.w800,
                     ),
                   ),
                   const SizedBox(height: 14),
@@ -124,11 +128,26 @@ class _AccountsPageState extends State<AccountsPage> {
                 ],
               ),
             ),
-            const Padding(
-              padding: EdgeInsets.fromLTRB(4, 14, 4, 8),
-              child: Text(
-                '点卡片查看详情；左滑后点击“归档”',
-                style: TextStyle(fontSize: 12, color: Color(0xFF8A9099)),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(4, 18, 4, 9),
+              child: Wrap(
+                alignment: WrapAlignment.spaceBetween,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                spacing: 8,
+                runSpacing: 4,
+                children: <Widget>[
+                  const Text(
+                    '实际账户',
+                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
+                  ),
+                  Text(
+                    '点开查看 · 左滑归档',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
               ),
             ),
             if (query.isEmpty)
@@ -197,34 +216,105 @@ class _AccountsPageState extends State<AccountsPage> {
       child: Container(
         decoration: BoxDecoration(
           color: Theme.of(context).colorScheme.surface,
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(12),
         ),
-        child: ListTile(
-          leading: CircleAvatar(child: Icon(_accountIcon(account.icon))),
-          title: Text(account.name),
-          subtitle: Text(
-            <String>[
-              _accountKindLabel(account.kind),
-              if (account.archived) '已归档',
-            ].join(' · '),
-          ),
-          trailing: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: <Widget>[
-              Text(
-                '¥${account.balance.toStringAsFixed(2)}',
-                style: TextStyle(
-                  fontWeight: FontWeight.w700,
-                  color: account.balance < 0
-                      ? AppTheme.ledgerOf(context).expense
-                      : null,
+        child: MediaQuery.textScalerOf(context).scale(16) > 24
+            ? Padding(
+                padding: const EdgeInsets.all(14),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Row(
+                      children: <Widget>[
+                        CircleAvatar(
+                          backgroundColor: Theme.of(
+                            context,
+                          ).colorScheme.primary.withValues(alpha: .11),
+                          child: Icon(
+                            _accountIcon(account.icon),
+                            color: Theme.of(context).colorScheme.primary,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            account.name,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontWeight: FontWeight.w700),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: Text(
+                        '¥${account.balance.toStringAsFixed(2)}',
+                        style: TextStyle(
+                          fontSize: 17,
+                          fontWeight: FontWeight.w700,
+                          color: account.balance < 0
+                              ? AppTheme.ledgerOf(context).expense
+                              : null,
+                        ),
+                      ),
+                    ),
+                    Text(
+                      <String>[
+                        _accountKindLabel(account.kind),
+                        if (account.archived) '已归档',
+                      ].join(' · '),
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              )
+            : ListTile(
+                leading: CircleAvatar(
+                  backgroundColor: Theme.of(
+                    context,
+                  ).colorScheme.primary.withValues(alpha: .11),
+                  child: Icon(
+                    _accountIcon(account.icon),
+                    color: Theme.of(context).colorScheme.primary,
+                  ),
+                ),
+                title: Text(
+                  account.name,
+                  style: const TextStyle(fontWeight: FontWeight.w700),
+                ),
+                subtitle: Text(
+                  <String>[
+                    _accountKindLabel(account.kind),
+                    if (account.archived) '已归档',
+                  ].join(' · '),
+                ),
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: <Widget>[
+                    Text(
+                      '¥${account.balance.toStringAsFixed(2)}',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 15,
+                        color: account.balance < 0
+                            ? AppTheme.ledgerOf(context).expense
+                            : null,
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    Icon(
+                      Icons.chevron_right,
+                      size: 18,
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+                  ],
                 ),
               ),
-              const SizedBox(width: 6),
-              const Icon(Icons.chevron_right, size: 20),
-            ],
-          ),
-        ),
       ),
     ),
   );

@@ -125,7 +125,6 @@ class _StatisticsPageState extends State<StatisticsPage> {
                           child: _LineLegend(
                             label: '支出 ¥${expense.toStringAsFixed(2)}',
                             color: AppTheme.ledgerOf(context).expense,
-                            dashed: true,
                           ),
                         ),
                       ],
@@ -785,14 +784,9 @@ class _BreakdownCard extends StatelessWidget {
 }
 
 class _LineLegend extends StatelessWidget {
-  const _LineLegend({
-    required this.label,
-    required this.color,
-    this.dashed = false,
-  });
+  const _LineLegend({required this.label, required this.color});
   final String label;
   final Color color;
-  final bool dashed;
 
   @override
   Widget build(BuildContext context) => Row(
@@ -800,9 +794,7 @@ class _LineLegend extends StatelessWidget {
       SizedBox(
         width: 24,
         height: 8,
-        child: CustomPaint(
-          painter: _LegendLinePainter(color: color, dashed: dashed),
-        ),
+        child: CustomPaint(painter: _LegendLinePainter(color: color)),
       ),
       const SizedBox(width: 6),
       Expanded(
@@ -818,9 +810,8 @@ class _LineLegend extends StatelessWidget {
 }
 
 class _LegendLinePainter extends CustomPainter {
-  const _LegendLinePainter({required this.color, required this.dashed});
+  const _LegendLinePainter({required this.color});
   final Color color;
-  final bool dashed;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -828,26 +819,16 @@ class _LegendLinePainter extends CustomPainter {
       ..color = color
       ..strokeWidth = 2.5
       ..strokeCap = StrokeCap.round;
-    if (!dashed) {
-      canvas.drawLine(
-        Offset(0, size.height / 2),
-        Offset(size.width, size.height / 2),
-        paint,
-      );
-      return;
-    }
-    for (double x = 0; x < size.width; x += 7) {
-      canvas.drawLine(
-        Offset(x, size.height / 2),
-        Offset(math.min(x + 4, size.width), size.height / 2),
-        paint,
-      );
-    }
+    canvas.drawLine(
+      Offset(0, size.height / 2),
+      Offset(size.width, size.height / 2),
+      paint,
+    );
   }
 
   @override
   bool shouldRepaint(covariant _LegendLinePainter oldDelegate) =>
-      oldDelegate.color != color || oldDelegate.dashed != dashed;
+      oldDelegate.color != color;
 }
 
 class _InteractiveLineChart extends StatelessWidget {
@@ -1005,12 +986,7 @@ class _LinePainter extends CustomPainter {
       );
     }
 
-    void draw(
-      List<double> values,
-      Color color, {
-      required bool dashed,
-      required bool fill,
-    }) {
+    void draw(List<double> values, Color color, {required bool fill}) {
       final Path path = Path();
       final Paint line = Paint()
         ..color = color
@@ -1051,32 +1027,19 @@ class _LinePainter extends CustomPainter {
           ).createShader(plot);
         canvas.drawPath(area, areaPaint);
       }
-      if (dashed) {
-        for (int index = 1; index < points.length; index++) {
-          _drawDashedLine(canvas, points[index - 1], points[index], line);
-        }
-      } else {
-        canvas.drawPath(path, line);
-      }
+      canvas.drawPath(path, line);
       for (int index = 0; index < points.length; index++) {
         if (values[index] <= 0) continue;
-        if (dashed) {
-          canvas.drawRect(
-            Rect.fromCenter(center: points[index], width: 6, height: 6),
-            point,
-          );
-        } else {
-          canvas.drawCircle(points[index], 3.5, point);
-          canvas.drawCircle(points[index], 1.5, Paint()..color = Colors.white);
-        }
+        canvas.drawCircle(points[index], 3.5, point);
+        canvas.drawCircle(points[index], 1.5, Paint()..color = Colors.white);
       }
     }
 
     if (showIncome) {
-      draw(income, incomeColor, dashed: false, fill: !showExpense);
+      draw(income, incomeColor, fill: !showExpense);
     }
     if (showExpense) {
-      draw(expense, expenseColor, dashed: true, fill: !showIncome);
+      draw(expense, expenseColor, fill: !showIncome);
     }
   }
 
@@ -1089,22 +1052,6 @@ class _LinePainter extends CustomPainter {
       textDirection: TextDirection.ltr,
     )..layout(maxWidth: 36);
     painter.paint(canvas, offset);
-  }
-
-  void _drawDashedLine(Canvas canvas, Offset start, Offset end, Paint paint) {
-    final double distance = (end - start).distance;
-    if (distance == 0) return;
-    final Offset direction = (end - start) / distance;
-    const double dash = 6;
-    const double gap = 4;
-    for (double offset = 0; offset < distance; offset += dash + gap) {
-      final double finish = math.min(offset + dash, distance);
-      canvas.drawLine(
-        start + direction * offset,
-        start + direction * finish,
-        paint,
-      );
-    }
   }
 
   @override

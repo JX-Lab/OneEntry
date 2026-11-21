@@ -295,11 +295,16 @@ abstract final class AppTheme {
     ColorScheme colors = ColorScheme.fromSeed(
       seedColor: accent.primary,
       brightness: brightness,
-      surface: dark ? const Color(0xFF1C1B27) : const Color(0xFFFFFFFF),
+      surface: dark ? const Color(0xFF1C2623) : const Color(0xFFFFFFFF),
     );
-    if (!dark) {
-      colors = colors.copyWith(primary: accent.action, onPrimary: Colors.white);
-    }
+    colors = colors.copyWith(
+      primary: dark ? accent.secondary : accent.action,
+      onPrimary: dark ? const Color(0xFF0C2119) : Colors.white,
+      surfaceContainerHighest: dark
+          ? const Color(0xFF293630)
+          : const Color(0xFFEAF1EC),
+      outlineVariant: dark ? const Color(0xFF3A4A41) : const Color(0xFFDCE7DF),
+    );
     final LedgerSemanticColors ledgerColors = _ledgerColors(
       brightness: brightness,
       mode: colorVisionMode,
@@ -311,10 +316,10 @@ abstract final class AppTheme {
       scaffoldBackgroundColor: dark
           ? highContrast
                 ? const Color(0xFF050607)
-                : const Color(0xFF11101A)
+                : const Color(0xFF111A17)
           : highContrast
           ? const Color(0xFFE9EDF2)
-          : const Color(0xFFF4F4FA),
+          : const Color(0xFFF5F8F5),
       fontFamilyFallback: const <String>['PingFang SC', 'Microsoft YaHei'],
       visualDensity: VisualDensity.standard,
       appBarTheme: AppBarTheme(
@@ -322,37 +327,41 @@ abstract final class AppTheme {
         elevation: 0,
         scrolledUnderElevation: 0,
         backgroundColor: dark
-            ? const Color(0xFF1C1B27)
+            ? const Color(0xFF1C2623)
             : const Color(0xFFFFFFFF),
         foregroundColor: dark
-            ? const Color(0xFFE7ECF3)
+            ? const Color(0xFFF0F5EF)
             : const Color(0xFF1B1D21),
       ),
       cardTheme: CardThemeData(
         elevation: 0,
-        color: dark ? const Color(0xFF1C1B27) : Colors.white,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+        color: dark ? const Color(0xFF1C2623) : Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        fillColor: dark ? const Color(0xFF282634) : const Color(0xFFF0F0F7),
+        fillColor: WidgetStateColor.resolveWith(
+          (Set<WidgetState> states) => states.contains(WidgetState.focused)
+              ? colors.primary.withValues(alpha: dark ? .16 : .10)
+              : dark
+              ? const Color(0xFF293630)
+              : const Color(0xFFEAF1EC),
+        ),
         contentPadding: const EdgeInsets.symmetric(
           horizontal: 16,
           vertical: 15,
         ),
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(14),
           borderSide: BorderSide.none,
         ),
         enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(16),
-          borderSide: BorderSide(
-            color: colors.outlineVariant.withValues(alpha: .55),
-          ),
+          borderRadius: BorderRadius.circular(14),
+          borderSide: BorderSide.none,
         ),
         focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(16),
-          borderSide: BorderSide(color: colors.primary, width: 1.5),
+          borderRadius: BorderRadius.circular(14),
+          borderSide: BorderSide.none,
         ),
       ),
       filledButtonTheme: FilledButtonThemeData(
@@ -360,7 +369,7 @@ abstract final class AppTheme {
           minimumSize: const Size(48, 48),
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 13),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(14),
           ),
           textStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
         ),
@@ -370,7 +379,7 @@ abstract final class AppTheme {
           minimumSize: const Size(48, 46),
           padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(15),
+            borderRadius: BorderRadius.circular(14),
           ),
           side: BorderSide(color: colors.outlineVariant),
           textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
@@ -386,9 +395,9 @@ abstract final class AppTheme {
         ),
       ),
       listTileTheme: const ListTileThemeData(
-        minTileHeight: 58,
-        contentPadding: EdgeInsets.symmetric(horizontal: 18),
-        minVerticalPadding: 10,
+        minTileHeight: 56,
+        contentPadding: EdgeInsets.symmetric(horizontal: 16),
+        minVerticalPadding: 8,
       ),
       dividerTheme: DividerThemeData(
         color: colors.outlineVariant.withValues(alpha: .65),
