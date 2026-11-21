@@ -2100,54 +2100,75 @@ class _FundingEditorSheetState extends State<_FundingEditorSheet> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: <Widget>[
-                        InkWell(
-                          borderRadius: BorderRadius.circular(10),
-                          onTap: () => _addOrReplace(index: index),
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 5),
-                            child: Row(
-                              children: <Widget>[
-                                CircleAvatar(
-                                  radius: 17,
-                                  backgroundColor: Theme.of(
-                                    context,
-                                  ).colorScheme.primary.withValues(alpha: .11),
-                                  child: Icon(
-                                    _entryAccountIcon(row.source.account.icon),
-                                    color: Theme.of(
-                                      context,
-                                    ).colorScheme.primary,
-                                    size: 18,
+                        Row(
+                          children: <Widget>[
+                            Expanded(
+                              child: InkWell(
+                                borderRadius: BorderRadius.circular(10),
+                                onTap: () => _addOrReplace(index: index),
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 5,
+                                  ),
+                                  child: Row(
+                                    children: <Widget>[
+                                      CircleAvatar(
+                                        radius: 17,
+                                        backgroundColor: Theme.of(context)
+                                            .colorScheme
+                                            .primary
+                                            .withValues(alpha: .11),
+                                        child: Icon(
+                                          _entryAccountIcon(
+                                            row.source.account.icon,
+                                          ),
+                                          color: Theme.of(
+                                            context,
+                                          ).colorScheme.primary,
+                                          size: 18,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 10),
+                                      Expanded(
+                                        child: Text(
+                                          row.source.label,
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: const TextStyle(
+                                            fontWeight: FontWeight.w700,
+                                          ),
+                                        ),
+                                      ),
+                                      Text(
+                                        '更换',
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          color: Theme.of(
+                                            context,
+                                          ).colorScheme.primary,
+                                        ),
+                                      ),
+                                      Icon(
+                                        Icons.chevron_right,
+                                        size: 18,
+                                        color: Theme.of(
+                                          context,
+                                        ).colorScheme.primary,
+                                      ),
+                                    ],
                                   ),
                                 ),
-                                const SizedBox(width: 10),
-                                Expanded(
-                                  child: Text(
-                                    row.source.label,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(
-                                      fontWeight: FontWeight.w700,
-                                    ),
-                                  ),
-                                ),
-                                Text(
-                                  '更换',
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    color: Theme.of(
-                                      context,
-                                    ).colorScheme.primary,
-                                  ),
-                                ),
-                                Icon(
-                                  Icons.chevron_right,
-                                  size: 18,
-                                  color: Theme.of(context).colorScheme.primary,
-                                ),
-                              ],
+                              ),
                             ),
-                          ),
+                            if (_rows.length > 1)
+                              IconButton(
+                                tooltip: '移除此账户',
+                                onPressed: () => setState(() {
+                                  _rows.removeAt(index).dispose();
+                                }),
+                                icon: const Icon(Icons.close, size: 20),
+                              ),
+                          ],
                         ),
                         if (widget.type == EntryType.expense)
                           Padding(
@@ -2195,20 +2216,6 @@ class _FundingEditorSheetState extends State<_FundingEditorSheet> {
                             ),
                           ],
                         ),
-                        if (_rows.length > 1)
-                          Align(
-                            alignment: Alignment.centerRight,
-                            child: TextButton.icon(
-                              onPressed: () => setState(() {
-                                _rows.removeAt(index).dispose();
-                              }),
-                              icon: const Icon(
-                                Icons.remove_circle_outline,
-                                size: 17,
-                              ),
-                              label: const Text('移除此账户'),
-                            ),
-                          ),
                       ],
                     ),
                   ),
