@@ -5,15 +5,27 @@ class AppDatabase {
   static const int schemaVersion = 8;
   static const String fileName = 'oneentry.db';
 
+  AppDatabase({
+    String? path,
+    int version = schemaVersion,
+    bool seedOnCreate = true,
+  }) : _path = path,
+       _version = version,
+       _seedOnCreate = seedOnCreate;
+
+  final String? _path;
+  final int _version;
+  final bool _seedOnCreate;
+
   Database? _database;
 
   Future<Database> get database async => _database ??= await _open();
 
   Future<Database> _open() async {
-    final String root = await getDatabasesPath();
+    final String path = _path ?? p.join(await getDatabasesPath(), fileName);
     return openDatabase(
-      p.join(root, fileName),
-      version: schemaVersion,
+      path,
+      version: _version,
       onConfigure: (Database db) async {
         await db.execute('PRAGMA foreign_keys = ON');
       },
@@ -26,7 +38,7 @@ class AppDatabase {
         if (version >= 6) await _migrate5To6(db);
         if (version >= 7) await _migrate6To7(db);
         if (version >= 8) await _migrate7To8(db);
-        await _seed(db);
+        if (_seedOnCreate) await _seed(db);
       },
       onUpgrade: (Database db, int oldVersion, int newVersion) async {
         await db.transaction((Transaction txn) async {

@@ -46,6 +46,10 @@ jobs:
         shell: bash
         run: flutter analyze --no-fatal-infos
 
+      - name: Run tests
+        shell: bash
+        run: flutter test --no-pub
+
       - name: Configure stable release signing when secrets are available
         shell: bash
         env:

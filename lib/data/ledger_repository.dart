@@ -778,87 +778,34 @@ class LedgerRepository {
   Future<void> deleteAccount(int id) async {
     final Database db = await _appDatabase.database;
     await db.transaction((Transaction txn) async {
-      final List<Map<String, Object?>> transactionRows = await txn.query(
-        'transactions',
-        columns: <String>[
-          'id',
-          'type',
-          'amount_minor',
-          'account_id',
-          'to_account_id',
-        ],
-        where:
-            'account_id = ? OR to_account_id = ? OR id IN (SELECT transaction_id FROM transaction_fundings WHERE account_id = ?)',
-        whereArgs: <Object?>[id, id, id],
+      final List<Map<String, Object?>> accountRows = await txn.query(
+        'accounts',
+        columns: <String>['balance_minor'],
+        where: 'id = ?',
+        whereArgs: <Object?>[id],
+        limit: 1,
       );
-      final List<int> transactionIds = transactionRows
-          .map((row) => row['id'] as int)
-          .toList();
-      for (final Map<String, Object?> row in transactionRows) {
-        final int fromId = row['account_id'] as int;
-        final List<Map<String, Object?>> fundingRows = await txn.query(
-          'transaction_fundings',
-          columns: <String>['account_id', 'member_id', 'amount_minor'],
-          where: 'transaction_id = ?',
-          whereArgs: <Object?>[row['id']],
-        );
-        final List<Map<String, Object?>> resolvedRows = fundingRows.isEmpty
-            ? <Map<String, Object?>>[
-                <String, Object?>{
-                  'account_id': fromId,
-                  'member_id': null,
-                  'amount_minor': row['amount_minor'],
-                },
-              ]
-            : fundingRows;
-        for (final Map<String, Object?> funding in resolvedRows) {
-          final int amount = funding['amount_minor'] as int;
-          final int fundingAccountId = funding['account_id'] as int;
-          final int counterpartId;
-          final int delta;
-          if (row['type'] == 'transfer') {
-            final int toId = row['to_account_id'] as int;
-            counterpartId = fromId == id ? toId : fromId;
-            delta = fromId == id ? -amount : amount;
-          } else {
-            if (fundingAccountId == id) continue;
-            counterpartId = fundingAccountId;
-            delta = row['type'] == 'expense' ? amount : -amount;
-          }
-          await txn.rawUpdate(
-            'UPDATE accounts SET balance_minor = balance_minor + ? WHERE id = ?',
-            <Object?>[delta, counterpartId],
-          );
-          await txn.rawUpdate(
-            '''
-            UPDATE account_funds
-            SET balance_minor = balance_minor + ?
-            WHERE account_id = ? AND (
-              (member_id IS NULL AND ? IS NULL) OR member_id = ?
-            )
-            ''',
-            <Object?>[
-              delta,
-              counterpartId,
-              funding['member_id'],
-              funding['member_id'],
-            ],
-          );
-        }
+      if (accountRows.isEmpty) return;
+      if ((accountRows.first['balance_minor'] as int) != 0) {
+        throw StateError('请先把账户余额调整为 0，再永久删除');
       }
-      for (final int transactionId in transactionIds) {
-        await txn.delete(
-          'transaction_members',
-          where: 'transaction_id = ?',
-          whereArgs: <Object?>[transactionId],
-        );
+      final int transactionCount =
+          Sqflite.firstIntValue(
+            await txn.rawQuery(
+              '''
+              SELECT COUNT(*) FROM transactions
+              WHERE account_id = ? OR to_account_id = ? OR id IN (
+                SELECT transaction_id FROM transaction_fundings
+                WHERE account_id = ?
+              )
+              ''',
+              <Object?>[id, id, id],
+            ),
+          ) ??
+          0;
+      if (transactionCount > 0) {
+        throw StateError('账户已有历史账目，请改用归档以保留账本一致性');
       }
-      await txn.delete(
-        'transactions',
-        where:
-            'account_id = ? OR to_account_id = ? OR id IN (SELECT transaction_id FROM transaction_fundings WHERE account_id = ?)',
-        whereArgs: <Object?>[id, id, id],
-      );
       await txn.update(
         'recurring_rules',
         <String, Object?>{'account_id': null},

@@ -427,6 +427,22 @@ class _AccountsPageState extends State<AccountsPage> {
                             },
                           ),
                         ),
+                        if (account != null) ...<Widget>[
+                          const SizedBox(height: 8),
+                          Align(
+                            alignment: Alignment.centerLeft,
+                            child: Text(
+                              '余额调整会同步公共资金；若减少额超过公共资金，请先到“荷包与往来”重新分配。',
+                              style: TextStyle(
+                                fontSize: 12,
+                                height: 1.4,
+                                color: Theme.of(
+                                  context,
+                                ).colorScheme.onSurfaceVariant,
+                              ),
+                            ),
+                          ),
+                        ],
                       ],
                     ),
                   ),
@@ -800,11 +816,31 @@ class _AccountDetailPage extends StatelessWidget {
       ).showSnackBar(const SnackBar(content: Text('至少保留一个可用账户')));
       return;
     }
+    if (account.balance.abs() >= .005) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('请先把账户余额调整为 0')));
+      return;
+    }
+    final bool hasHistory = controller.visibleEntries.any(
+      (LedgerEntry entry) =>
+          entry.accountId == account.id ||
+          entry.toAccountId == account.id ||
+          entry.fundings.any(
+            (EntryFunding funding) => funding.accountId == account.id,
+          ),
+    );
+    if (hasHistory) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('账户已有历史账目，请使用归档保留记录')));
+      return;
+    }
     final bool? confirmed = await showDialog<bool>(
       context: context,
       builder: (BuildContext context) => AlertDialog(
         title: Text('永久删除「${account.name}」？'),
-        content: const Text('该账户及其相关账目将被永久删除，此操作无法撤销。'),
+        content: const Text('仅余额为 0 且没有历史账目的账户可以永久删除；其他账户请使用归档。'),
         actions: <Widget>[
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -822,8 +858,15 @@ class _AccountDetailPage extends StatelessWidget {
       ),
     );
     if (confirmed != true) return;
-    await controller.deleteAccount(account.id);
-    if (context.mounted) Navigator.pop(context);
+    try {
+      await controller.deleteAccount(account.id);
+      if (context.mounted) Navigator.pop(context);
+    } on StateError catch (error) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('${error.message}')));
+    }
   }
 }
 
