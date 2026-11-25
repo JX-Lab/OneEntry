@@ -469,4 +469,37 @@ void main() {
       isFalse,
     );
   });
+
+  test('归档成员会退出当前荷包并把余额转回公共资金', () async {
+    final Directory temp = Directory.systemTemp.createTempSync(
+      'oneentry-archive-member-',
+    );
+    addTearDown(() => temp.deleteSync(recursive: true));
+    final AppDatabase database = AppDatabase(
+      path: p.join(temp.path, 'archive-member.db'),
+      seedOnCreate: false,
+    );
+    addTearDown(database.close);
+    final LedgerRepository repository = LedgerRepository(database);
+    await repository.addMember(name: '成员甲', colorValue: 0xFF2E7CF6);
+    await repository.addAccount(name: '现金', openingBalance: 100);
+    LedgerSnapshot snapshot = await repository.load();
+    final int memberId = snapshot.members.single.id;
+    await repository.setWalletBalances(
+      commonFund: 60,
+      memberBalances: <int, double>{memberId: 40},
+    );
+
+    await repository.setMemberArchived(memberId, true);
+    snapshot = await repository.load();
+    expect(snapshot.members.single.archived, isTrue);
+    expect(snapshot.memberWallets[memberId], 0);
+    expect(snapshot.commonFund, 100);
+
+    await repository.setMemberArchived(memberId, false);
+    snapshot = await repository.load();
+    expect(snapshot.members.single.archived, isFalse);
+    expect(snapshot.memberWallets[memberId], 0);
+    expect(snapshot.commonFund, 100);
+  });
 }

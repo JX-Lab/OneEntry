@@ -349,6 +349,17 @@ class LedgerRepository {
   /// member allocations are kept intact and the remainder becomes common funds.
   Future<void> _reconcileWalletTotal(Database db) async {
     await db.transaction((Transaction txn) async {
+      final int now = DateTime.now().millisecondsSinceEpoch;
+      await txn.rawUpdate(
+        '''
+        UPDATE member_wallets
+        SET balance_minor = 0, updated_at = ?
+        WHERE balance_minor != 0 AND member_id IN (
+          SELECT id FROM members WHERE archived_at IS NOT NULL
+        )
+        ''',
+        <Object?>[now],
+      );
       final int accountTotal =
           Sqflite.firstIntValue(
             await txn.rawQuery(
@@ -358,9 +369,12 @@ class LedgerRepository {
           0;
       final int memberTotal =
           Sqflite.firstIntValue(
-            await txn.rawQuery(
-              'SELECT COALESCE(SUM(balance_minor), 0) FROM member_wallets',
-            ),
+            await txn.rawQuery('''
+              SELECT COALESCE(SUM(w.balance_minor), 0)
+              FROM member_wallets w
+              JOIN members m ON m.id = w.member_id
+              WHERE m.archived_at IS NULL
+              '''),
           ) ??
           0;
       final int expectedCommon = accountTotal - memberTotal;
@@ -373,7 +387,6 @@ class LedgerRepository {
           ) ??
           0;
       if (currentCommon == expectedCommon) return;
-      final int now = DateTime.now().millisecondsSinceEpoch;
       await txn.insert('wallet_state', <String, Object?>{
         'id': 1,
         'common_balance_minor': expectedCommon,
@@ -893,15 +906,50 @@ class LedgerRepository {
 
   Future<void> setMemberArchived(int id, bool archived) async {
     final Database db = await _appDatabase.database;
-    await db.update(
-      'members',
-      <String, Object?>{
-        'archived_at': archived ? DateTime.now().millisecondsSinceEpoch : null,
-        'updated_at': DateTime.now().millisecondsSinceEpoch,
-      },
-      where: 'id = ?',
-      whereArgs: <Object?>[id],
-    );
+    await db.transaction((Transaction txn) async {
+      final List<Map<String, Object?>> memberRows = await txn.query(
+        'members',
+        columns: <String>['archived_at'],
+        where: 'id = ?',
+        whereArgs: <Object?>[id],
+        limit: 1,
+      );
+      if (memberRows.isEmpty) return;
+      final bool currentlyArchived = memberRows.first['archived_at'] != null;
+      if (currentlyArchived == archived) return;
+      final int now = DateTime.now().millisecondsSinceEpoch;
+      if (archived) {
+        final int walletBalance =
+            Sqflite.firstIntValue(
+              await txn.rawQuery(
+                'SELECT balance_minor FROM member_wallets WHERE member_id = ?',
+                <Object?>[id],
+              ),
+            ) ??
+            0;
+        if (walletBalance != 0) {
+          await txn.update(
+            'member_wallets',
+            <String, Object?>{'balance_minor': 0, 'updated_at': now},
+            where: 'member_id = ?',
+            whereArgs: <Object?>[id],
+          );
+          await txn.rawUpdate(
+            'UPDATE wallet_state SET common_balance_minor = common_balance_minor + ?, updated_at = ? WHERE id = 1',
+            <Object?>[walletBalance, now],
+          );
+        }
+      }
+      await txn.update(
+        'members',
+        <String, Object?>{
+          'archived_at': archived ? now : null,
+          'updated_at': now,
+        },
+        where: 'id = ?',
+        whereArgs: <Object?>[id],
+      );
+    });
   }
 
   Future<void> reorderMembers(List<int> ids) async {

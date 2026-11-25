@@ -26,7 +26,8 @@ class LedgerController extends ChangeNotifier {
   bool dailyReminderEnabled = false;
   int dailyReminderHour = 20;
   int dailyReminderMinute = 0;
-  bool get multiEnabled => members.length > 1;
+  bool get multiEnabled =>
+      members.where((LedgerMember member) => !member.archived).length > 1;
   int? currentMemberId;
   String splitMode = 'equal';
   String themeMode = 'system';
@@ -198,9 +199,7 @@ class LedgerController extends ChangeNotifier {
 
   Future<void> setMemberArchived(int id, bool archived) async {
     await _repository.setMemberArchived(id, archived);
-    members.firstWhere((LedgerMember member) => member.id == id).archived =
-        archived;
-    notifyListeners();
+    await initialize();
   }
 
   Future<void> reorderMembers(List<int> ids) async {

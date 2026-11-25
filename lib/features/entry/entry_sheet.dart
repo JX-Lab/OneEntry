@@ -760,8 +760,12 @@ class _EntrySheetState extends State<EntrySheet> with WidgetsBindingObserver {
           ),
           ListTile(
             leading: const Icon(Icons.auto_awesome_outlined),
-            title: Text(_type == EntryType.expense ? '自动选择' : '跟随收入归属'),
-            subtitle: const Text('保存时自动确定资金'),
+            title: Text(_type == EntryType.expense ? '按支出归属自动选择' : '跟随收入归属'),
+            subtitle: Text(
+              _type == EntryType.expense
+                  ? '单人优先成员荷包，多人或全体优先公共资金'
+                  : '收入进入归属成员的荷包；未指定则进入公共资金',
+            ),
             trailing: !_manualWalletSource
                 ? const Icon(Icons.check_rounded)
                 : null,

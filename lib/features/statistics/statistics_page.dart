@@ -230,7 +230,7 @@ class _StatisticsPageState extends State<StatisticsPage> {
     int? memberId;
     if (isMember) {
       final List<LedgerMember> matches = widget.controller.members
-          .where((member) => member.name == slice.name)
+          .where((member) => !member.archived && member.name == slice.name)
           .toList();
       memberId = matches.isEmpty ? null : matches.first.id;
     }
@@ -316,6 +316,10 @@ class _StatisticsPageState extends State<StatisticsPage> {
     )) {
       if (entry.memberIds.isEmpty) continue;
       for (final int id in entry.memberIds) {
+        final LedgerMember? member = widget.controller.members
+            .where((LedgerMember member) => member.id == id && !member.archived)
+            .firstOrNull;
+        if (member == null) continue;
         final double share = entry.memberShares.isNotEmpty
             ? entry.memberShares
                   .where((MemberShare item) => item.memberId == id)
@@ -327,7 +331,7 @@ class _StatisticsPageState extends State<StatisticsPage> {
     }
     return values.entries.map((item) {
       final LedgerMember member = widget.controller.members.firstWhere(
-        (member) => member.id == item.key,
+        (member) => member.id == item.key && !member.archived,
       );
       return _Slice(member.name, item.value, Color(member.colorValue));
     }).toList()..sort((a, b) => b.value.compareTo(a.value));
