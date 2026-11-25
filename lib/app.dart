@@ -120,6 +120,7 @@ class _OneEntryAppState extends State<OneEntryApp> {
       memberShares: List<MemberShare>.from(entry.memberShares),
       fundings: List<EntryFunding>.from(entry.fundings),
       outsideBudget: entry.outsideBudget,
+      initiatedByMemberId: entry.initiatedByMemberId,
       visibility: entry.visibility,
       visibleMemberIds: List<int>.from(entry.visibleMemberIds),
     );

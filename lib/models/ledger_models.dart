@@ -151,6 +151,7 @@ class LedgerEntry {
     this.memberShares = const <MemberShare>[],
     this.fundings = const <EntryFunding>[],
     this.outsideBudget = false,
+    this.initiatedByMemberId,
     this.recordedByMemberId,
     this.visibility = EntryVisibility.all,
     this.visibleMemberIds = const <int>[],
@@ -173,6 +174,7 @@ class LedgerEntry {
   final List<MemberShare> memberShares;
   final List<EntryFunding> fundings;
   final bool outsideBudget;
+  final int? initiatedByMemberId;
   final int? recordedByMemberId;
   final EntryVisibility visibility;
   final List<int> visibleMemberIds;

@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
 import '../../data/ledger_controller.dart';
-import '../../models/ledger_models.dart';
 import '../../theme/app_theme.dart';
 import '../categories/categories_page.dart';
 import '../recurring/recurring_rules_page.dart';
@@ -32,6 +31,7 @@ class _SettingsPageState extends State<SettingsPage>
   AppVersionInfo? _appVersion;
   bool _checkingUpdate = false;
   String _updateStatus = '手动检查 GitHub Releases；不会后台联网';
+  String _databasePath = '正在读取…';
 
   @override
   void initState() {
@@ -42,6 +42,7 @@ class _SettingsPageState extends State<SettingsPage>
     _refreshReminderStatus();
     _refreshLauncherIconMode();
     _loadAppVersion();
+    _loadDatabasePath();
   }
 
   @override
@@ -78,24 +79,13 @@ class _SettingsPageState extends State<SettingsPage>
                   children: <Widget>[
                     ListTile(
                       title: const Text('多人金额分配'),
-                      subtitle: const Text('用于多人付款或多人归属的账目'),
+                      subtitle: const Text('用于多人支出归属或收入归属的账目'),
                       trailing: Text(
                         widget.controller.splitMode == 'custom'
                             ? '自由填写  ›'
                             : 'AA 均摊  ›',
                       ),
                       onTap: _pickSplitMode,
-                    ),
-                    ListTile(
-                      title: const Text('荷包扣款规则'),
-                      subtitle: const Text('按参与人数和成员设置公共／个人资金来源'),
-                      trailing: const Icon(Icons.chevron_right),
-                      onTap: () => Navigator.of(context).push(
-                        MaterialPageRoute<void>(
-                          builder: (_) =>
-                              _WalletRulesPage(controller: widget.controller),
-                        ),
-                      ),
                     ),
                     ListTile(
                       title: const Text('标签管理'),
@@ -229,9 +219,14 @@ class _SettingsPageState extends State<SettingsPage>
                       trailing: const Icon(Icons.history_outlined),
                       onTap: _showSnapshots,
                     ),
-                    const ListTile(
-                      title: Text('数据保存位置'),
-                      subtitle: Text('主数据库保存在应用内部'),
+                    ListTile(
+                      title: const Text('数据保存位置'),
+                      subtitle: Text(
+                        _databasePath,
+                        maxLines: 3,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontFamily: 'monospace'),
+                      ),
                     ),
                     ListTile(
                       title: const Text('数据导出'),
@@ -314,6 +309,15 @@ class _SettingsPageState extends State<SettingsPage>
     final AppVersionInfo? version = await AppInfoService.currentVersion();
     if (!mounted) return;
     setState(() => _appVersion = version);
+  }
+
+  Future<void> _loadDatabasePath() async {
+    try {
+      final String path = await widget.controller.databasePath();
+      if (mounted) setState(() => _databasePath = path);
+    } on Object {
+      if (mounted) setState(() => _databasePath = '无法读取数据库路径');
+    }
   }
 
   Future<void> _checkForUpdates() async {
@@ -1323,115 +1327,6 @@ class _SettingsPageState extends State<SettingsPage>
       ).showSnackBar(const SnackBar(content: Text('全部数据已清除')));
     }
   }
-}
-
-class _WalletRulesPage extends StatelessWidget {
-  const _WalletRulesPage({required this.controller});
-
-  final LedgerController controller;
-
-  static const List<DropdownMenuItem<String>> _baseItems =
-      <DropdownMenuItem<String>>[
-        DropdownMenuItem(value: 'own', child: Text('成员荷包优先')),
-        DropdownMenuItem(value: 'common', child: Text('公共资金优先')),
-      ];
-
-  static const List<DropdownMenuItem<String>> _memberItems =
-      <DropdownMenuItem<String>>[
-        DropdownMenuItem(value: 'default', child: Text('跟随场景')),
-        DropdownMenuItem(value: 'own', child: Text('成员荷包优先')),
-        DropdownMenuItem(value: 'common', child: Text('公共资金优先')),
-      ];
-
-  @override
-  Widget build(BuildContext context) => AnimatedBuilder(
-    animation: controller,
-    builder: (BuildContext context, Widget? child) => Scaffold(
-      appBar: AppBar(title: const Text('荷包扣款规则')),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(12, 12, 12, 32),
-        children: <Widget>[
-          const Padding(
-            padding: EdgeInsets.fromLTRB(8, 0, 8, 12),
-            child: Text('规则只决定支出从哪里扣。资金不足时仍会让你选择其他可用来源，不会静默透支。'),
-          ),
-          _Section(
-            title: '按参与范围',
-            children: <Widget>[
-              _ruleTile(
-                title: '一人付款',
-                subtitle: '只选择一名成员时',
-                value: controller.walletRuleSingle,
-                onChanged: (String value) =>
-                    controller.setPreference('wallet_rule_single', value),
-              ),
-              _ruleTile(
-                title: '部分成员付款',
-                subtitle: '选择两人以上，但不是全体成员时',
-                value: controller.walletRuleSubset,
-                onChanged: (String value) =>
-                    controller.setPreference('wallet_rule_subset', value),
-              ),
-              _ruleTile(
-                title: '全体成员付款',
-                subtitle: '选中的成员覆盖当前全部未归档成员时',
-                value: controller.walletRuleAll,
-                onChanged: (String value) =>
-                    controller.setPreference('wallet_rule_all', value),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          _Section(
-            title: '成员例外',
-            children: controller.members
-                .where((LedgerMember member) => !member.archived)
-                .map(
-                  (LedgerMember member) => ListTile(
-                    title: Text(member.name),
-                    subtitle: const Text('覆盖上面的参与范围规则'),
-                    trailing: DropdownButtonHideUnderline(
-                      child: DropdownButton<String>(
-                        value:
-                            controller.walletMemberRules[member.id] ??
-                            'default',
-                        items: _memberItems,
-                        onChanged: (String? value) {
-                          if (value == null) return;
-                          controller.setPreference(
-                            'wallet_rule_member_${member.id}',
-                            value,
-                          );
-                        },
-                      ),
-                    ),
-                  ),
-                )
-                .toList(),
-          ),
-        ],
-      ),
-    ),
-  );
-
-  Widget _ruleTile({
-    required String title,
-    required String subtitle,
-    required String value,
-    required ValueChanged<String> onChanged,
-  }) => ListTile(
-    title: Text(title),
-    subtitle: Text(subtitle),
-    trailing: DropdownButtonHideUnderline(
-      child: DropdownButton<String>(
-        value: value,
-        items: _baseItems,
-        onChanged: (String? next) {
-          if (next != null) onChanged(next);
-        },
-      ),
-    ),
-  );
 }
 
 class _Section extends StatelessWidget {

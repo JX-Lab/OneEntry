@@ -54,6 +54,16 @@ Future<void> showEntryDetailSheet({
                   '已删除成员',
             )
             .join('、');
+  final String initiator = entry.initiatedByMemberId == null
+      ? '未设置'
+      : controller.members
+                .where(
+                  (LedgerMember member) =>
+                      member.id == entry.initiatedByMemberId,
+                )
+                .map((LedgerMember member) => member.name)
+                .firstOrNull ??
+            '已删除成员';
   await showModalBottomSheet<void>(
     context: context,
     useSafeArea: true,
@@ -79,19 +89,32 @@ Future<void> showEntryDetailSheet({
                 ? AppTheme.ledgerOf(context).income
                 : null,
           ),
-          _DetailRow(label: '账户', value: accountText),
+          _DetailRow(
+            label: entry.type == EntryType.transfer
+                ? '账户'
+                : entry.type == EntryType.income
+                ? '收款账户'
+                : '付款账户',
+            value: accountText,
+          ),
           if (entry.type != EntryType.transfer &&
               entry.type != EntryType.adjustment)
             _DetailRow(
-              label: entry.type == EntryType.income ? '归属' : '付款',
-              value: members.isEmpty ? '无' : members.join('、'),
+              label: entry.type == EntryType.income ? '收入归属' : '支出归属',
+              value: members.isEmpty
+                  ? entry.type == EntryType.income
+                        ? '公共资金'
+                        : '未指定'
+                  : members.join('、'),
             ),
           if (entry.walletSources.isNotEmpty)
             _DetailRow(
-              label: '荷包',
+              label: entry.type == EntryType.income ? '入账荷包' : '扣款荷包',
               value: _walletSourceText(controller, entry.walletSources),
             ),
-          if (recorderIds.isNotEmpty) _DetailRow(label: '记录', value: recorder),
+          if (entry.initiatedByMemberId != null)
+            _DetailRow(label: '发起者', value: initiator),
+          if (recorderIds.isNotEmpty) _DetailRow(label: '记录者', value: recorder),
           _DetailRow(label: '时间', value: _dateTime(entry.occurredAt)),
           _DetailRow(label: '备注', value: entry.note.isEmpty ? '无' : entry.note),
           if (entry.type == EntryType.expense && entry.outsideBudget)

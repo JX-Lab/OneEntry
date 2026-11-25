@@ -2,7 +2,7 @@ import 'package:path/path.dart' as p;
 import 'package:sqflite/sqflite.dart';
 
 class AppDatabase {
-  static const int schemaVersion = 8;
+  static const int schemaVersion = 9;
   static const String fileName = 'oneentry.db';
 
   AppDatabase({
@@ -21,6 +21,8 @@ class AppDatabase {
 
   Future<Database> get database async => _database ??= await _open();
 
+  Future<String> get databasePath async => (await database).path;
+
   Future<Database> _open() async {
     final String path = _path ?? p.join(await getDatabasesPath(), fileName);
     return openDatabase(
@@ -38,6 +40,7 @@ class AppDatabase {
         if (version >= 6) await _migrate5To6(db);
         if (version >= 7) await _migrate6To7(db);
         if (version >= 8) await _migrate7To8(db);
+        if (version >= 9) await _migrate8To9(db);
         if (_seedOnCreate) await _seed(db);
       },
       onUpgrade: (Database db, int oldVersion, int newVersion) async {
@@ -70,6 +73,10 @@ class AppDatabase {
           if (version < 8 && newVersion >= 8) {
             await _migrate7To8(txn);
             version = 8;
+          }
+          if (version < 9 && newVersion >= 9) {
+            await _migrate8To9(txn);
+            version = 9;
           }
           if (version != newVersion) {
             throw StateError(
@@ -664,6 +671,15 @@ class AppDatabase {
       FROM transactions
       WHERE recorded_by_member_id IS NOT NULL
     ''');
+  }
+
+  Future<void> _migrate8To9(DatabaseExecutor db) async {
+    await db.execute('''
+      ALTER TABLE transactions
+      ADD COLUMN initiated_by_member_id INTEGER
+      REFERENCES members(id) ON DELETE SET NULL
+    ''');
+    await db.delete('settings', where: "key LIKE 'wallet_rule_%'");
   }
 
   Future<void> _mergeCategory(

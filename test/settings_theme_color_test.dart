@@ -5,7 +5,6 @@ import 'package:yibi/data/app_database.dart';
 import 'package:yibi/data/ledger_controller.dart';
 import 'package:yibi/data/ledger_repository.dart';
 import 'package:yibi/features/settings/settings_page.dart';
-import 'package:yibi/models/ledger_models.dart';
 import 'package:yibi/services/launcher_icon_service.dart';
 import 'package:yibi/theme/app_theme.dart';
 
@@ -24,30 +23,35 @@ class _ReminderRepository extends LedgerRepository {
   }
 }
 
+class _PathRepository extends LedgerRepository {
+  _PathRepository() : super(AppDatabase());
+
+  @override
+  Future<String> databasePath() async =>
+      '/data/user/0/com.junxu.yibi/databases/oneentry.db';
+}
+
 void main() {
-  testWidgets('荷包扣款规则在手机宽度下完整显示', (WidgetTester tester) async {
-    await tester.binding.setSurfaceSize(const Size(390, 844));
+  testWidgets('设置页显示主数据库实际路径', (WidgetTester tester) async {
+    await tester.binding.setSurfaceSize(const Size(800, 1000));
     addTearDown(() => tester.binding.setSurfaceSize(null));
-    final LedgerController controller =
-        LedgerController(LedgerRepository(AppDatabase()))
-          ..members.addAll(<LedgerMember>[
-            LedgerMember(id: 1, name: '主导成员', colorValue: 0xFF2E7CF6),
-            LedgerMember(id: 2, name: '同行成员', colorValue: 0xFFF5A623),
-          ]);
+    final LedgerController controller = LedgerController(_PathRepository());
     addTearDown(controller.dispose);
 
     await tester.pumpWidget(
       MaterialApp(home: SettingsPage(controller: controller)),
     );
     await tester.pumpAndSettle();
-    await tester.tap(find.text('荷包扣款规则'));
-    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(
+      find.text('数据保存位置'),
+      320,
+      scrollable: find.byType(Scrollable).first,
+    );
 
-    expect(find.text('按参与范围'), findsOneWidget);
-    expect(find.text('全体成员付款'), findsOneWidget);
-    expect(find.text('成员例外'), findsOneWidget);
-    expect(find.text('主导成员'), findsOneWidget);
-    expect(tester.takeException(), isNull);
+    expect(
+      find.text('/data/user/0/com.junxu.yibi/databases/oneentry.db'),
+      findsOneWidget,
+    );
   });
 
   testWidgets('设置页可以打开主题色选择', (WidgetTester tester) async {
