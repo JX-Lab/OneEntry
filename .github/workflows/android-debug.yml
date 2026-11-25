@@ -38,6 +38,16 @@ jobs:
         shell: bash
         run: flutter pub get
 
+      - name: Read app version
+        shell: bash
+        run: |
+          APP_VERSION="$(sed -n 's/^version:[[:space:]]*\([^+[:space:]]*\).*/\1/p' pubspec.yaml)"
+          if [[ -z "$APP_VERSION" ]]; then
+            echo "Unable to read version from pubspec.yaml" >&2
+            exit 1
+          fi
+          echo "APP_VERSION=$APP_VERSION" >> "$GITHUB_ENV"
+
       - name: Check Dart formatting
         shell: bash
         run: dart format --output=none --set-exit-if-changed lib
@@ -73,7 +83,7 @@ jobs:
 
       - name: Build smaller APKs by CPU architecture
         shell: bash
-        run: flutter build apk --${BUILD_MODE} --split-per-abi --no-pub --build-number=${{ github.run_number }}
+        run: flutter build apk --${BUILD_MODE} --split-per-abi --no-pub --build-name=${APP_VERSION} --build-number=${{ github.run_number }}
 
       - name: Upload split APK artifacts
         uses: actions/upload-artifact@v4
@@ -87,10 +97,13 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ env.BUILD_MODE }}-build-${{ github.run_number }}
-          name: OneEntry ${{ env.BUILD_MODE }} Build #${{ github.run_number }}
+          name: OneEntry ${{ env.APP_VERSION }} (${{ env.BUILD_MODE }} Build #${{ github.run_number }})
           prerelease: ${{ env.BUILD_MODE != 'release' }}
           generate_release_notes: false
           body: |
+            Version: ${{ env.APP_VERSION }}
+            Build: ${{ github.run_number }}
+
             Choose the APK for your device:
             - `arm64-v8a`: most current Android phones and tablets
             - `armeabi-v7a`: older 32-bit Android devices

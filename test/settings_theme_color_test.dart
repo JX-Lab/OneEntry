@@ -5,6 +5,7 @@ import 'package:yibi/data/app_database.dart';
 import 'package:yibi/data/ledger_controller.dart';
 import 'package:yibi/data/ledger_repository.dart';
 import 'package:yibi/features/settings/settings_page.dart';
+import 'package:yibi/models/ledger_models.dart';
 import 'package:yibi/services/launcher_icon_service.dart';
 import 'package:yibi/theme/app_theme.dart';
 
@@ -24,6 +25,31 @@ class _ReminderRepository extends LedgerRepository {
 }
 
 void main() {
+  testWidgets('荷包扣款规则在手机宽度下完整显示', (WidgetTester tester) async {
+    await tester.binding.setSurfaceSize(const Size(390, 844));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final LedgerController controller =
+        LedgerController(LedgerRepository(AppDatabase()))
+          ..members.addAll(<LedgerMember>[
+            LedgerMember(id: 1, name: '主导成员', colorValue: 0xFF2E7CF6),
+            LedgerMember(id: 2, name: '同行成员', colorValue: 0xFFF5A623),
+          ]);
+    addTearDown(controller.dispose);
+
+    await tester.pumpWidget(
+      MaterialApp(home: SettingsPage(controller: controller)),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('荷包扣款规则'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('按参与范围'), findsOneWidget);
+    expect(find.text('全体成员付款'), findsOneWidget);
+    expect(find.text('成员例外'), findsOneWidget);
+    expect(find.text('主导成员'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('设置页可以打开主题色选择', (WidgetTester tester) async {
     await tester.binding.setSurfaceSize(const Size(800, 1000));
     addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -60,6 +86,41 @@ void main() {
       expect(find.text(accent.label), findsWidgets);
     }
     expect(find.text('自定义颜色'), findsOneWidget);
+  });
+
+  testWidgets('设置页显示应用版本和手动更新入口', (WidgetTester tester) async {
+    await tester.binding.setSurfaceSize(const Size(800, 1000));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    const MethodChannel channel = MethodChannel('com.junxu.yibi/app_info');
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, (MethodCall call) async {
+          if (call.method == 'getVersion') {
+            return <String, Object?>{'name': '0.2.0', 'build': 2053};
+          }
+          return null;
+        });
+    addTearDown(
+      () => TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, null),
+    );
+    final LedgerController controller = LedgerController(
+      LedgerRepository(AppDatabase()),
+    );
+    addTearDown(controller.dispose);
+
+    await tester.pumpWidget(
+      MaterialApp(home: SettingsPage(controller: controller)),
+    );
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(
+      find.text('检查更新'),
+      320,
+      scrollable: find.byType(Scrollable).first,
+    );
+
+    expect(find.text('版本 0.2.0 · Build 53'), findsOneWidget);
+    expect(find.text('检查更新'), findsOneWidget);
+    expect(find.text('手动检查 GitHub Releases；不会后台联网'), findsOneWidget);
   });
 
   testWidgets('桌面图标可以切换为跟随界面主题', (WidgetTester tester) async {

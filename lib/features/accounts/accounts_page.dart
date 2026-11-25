@@ -41,8 +41,11 @@ class _AccountsPageState extends State<AccountsPage> {
             (item) => item.archived && item.name.toLowerCase().contains(query),
           )
           .toList();
-      final double total = allActive.fold(0, (sum, item) => sum + item.balance);
-      final double debt = allActive
+      final double total = widget.controller.accounts.fold(
+        0,
+        (sum, item) => sum + item.balance,
+      );
+      final double debt = widget.controller.accounts
           .where((item) => item.balance < 0)
           .fold(0, (sum, item) => sum + item.balance.abs());
       return Scaffold(
@@ -95,6 +98,17 @@ class _AccountsPageState extends State<AccountsPage> {
                       fontWeight: FontWeight.w600,
                     ),
                   ),
+                  if (archived.isNotEmpty ||
+                      widget.controller.accounts.any(
+                        (LedgerAccount item) => item.archived,
+                      ))
+                    Text(
+                      '含已归档账户',
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        fontSize: 12,
+                      ),
+                    ),
                   const SizedBox(height: 6),
                   Text(
                     '¥${total.toStringAsFixed(2)}',

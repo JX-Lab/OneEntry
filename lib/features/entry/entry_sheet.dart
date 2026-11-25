@@ -714,21 +714,39 @@ class _EntrySheetState extends State<EntrySheet> {
     final Map<int?, double> used = <int?, double>{};
     final List<WalletSource> result = <WalletSource>[];
     final List<(int, double)> shortages = <(int, double)>[];
+    final Set<int> activeMemberIds = widget.controller.members
+        .where((LedgerMember member) => !member.archived)
+        .map((LedgerMember member) => member.id)
+        .toSet();
+    final Set<int> payerIds = payerShares
+        .map((MemberShare share) => share.memberId)
+        .toSet();
+    final String contextRule = payerIds.length == 1
+        ? widget.controller.walletRuleSingle
+        : payerIds.length == activeMemberIds.length &&
+              payerIds.containsAll(activeMemberIds)
+        ? widget.controller.walletRuleAll
+        : widget.controller.walletRuleSubset;
     for (final MemberShare share in payerShares) {
-      final double available =
-          widget.controller.memberWallets[share.memberId] ?? 0;
-      final double own = share.amount < available ? share.amount : available;
-      if (own > .004) {
-        result.add(
-          WalletSource(
-            sourceMemberId: share.memberId,
-            payerMemberId: share.memberId,
-            amount: own,
-          ),
+      final String rule =
+          widget.controller.walletMemberRules[share.memberId] ?? contextRule;
+      double shortage = share.amount;
+      if (rule == 'common') {
+        shortage = _takeAvailableWalletSource(
+          sourceMemberId: null,
+          payerMemberId: share.memberId,
+          requested: shortage,
+          used: used,
+          result: result,
         );
-        used[share.memberId] = own;
       }
-      final double shortage = share.amount - own;
+      shortage = _takeAvailableWalletSource(
+        sourceMemberId: share.memberId,
+        payerMemberId: share.memberId,
+        requested: shortage,
+        used: used,
+        result: result,
+      );
       if (shortage > .004) shortages.add((share.memberId, shortage));
     }
     for (final (int payerId, double initialShortage) in shortages) {
@@ -762,6 +780,35 @@ class _EntrySheetState extends State<EntrySheet> {
       }
     }
     return result;
+  }
+
+  double _takeAvailableWalletSource({
+    required int? sourceMemberId,
+    required int payerMemberId,
+    required double requested,
+    required Map<int?, double> used,
+    required List<WalletSource> result,
+  }) {
+    if (requested <= .004) return 0;
+    final double balance = sourceMemberId == null
+        ? widget.controller.commonFund
+        : widget.controller.memberWallets[sourceMemberId] ?? 0;
+    final double available = balance - (used[sourceMemberId] ?? 0);
+    final double take = requested < available ? requested : available;
+    if (take <= .004) return requested;
+    result.add(
+      WalletSource(
+        sourceMemberId: sourceMemberId,
+        payerMemberId: payerMemberId,
+        amount: take,
+      ),
+    );
+    used.update(
+      sourceMemberId,
+      (double value) => value + take,
+      ifAbsent: () => take,
+    );
+    return requested - take;
   }
 
   Future<_WalletSourceChoice?> _pickWalletSource({
@@ -1192,14 +1239,43 @@ class _EntrySheetState extends State<EntrySheet> {
 
   Future<void> _pickDateTime() async {
     _dismissKeyboard();
-    final DateTime? selected = await showModalBottomSheet<DateTime>(
+    final DateTime now = DateTime.now();
+    final DateTime? selectedDate = await showDatePicker(
       context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      builder: (BuildContext context) =>
-          _DateTimeEditorSheet(initial: _occurredAt),
+      initialDate: _occurredAt,
+      firstDate: DateTime(1970),
+      lastDate: DateTime(now.year, now.month, now.day),
+      initialEntryMode: DatePickerEntryMode.calendar,
+      helpText: '选择日期',
+      cancelText: '取消',
+      confirmText: '下一步',
+      switchToInputEntryModeIcon: const Icon(Icons.keyboard_alt_outlined),
     );
-    if (!mounted || selected == null) return;
+    if (!mounted || selectedDate == null) return;
+    final TimeOfDay? selectedTime = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.fromDateTime(_occurredAt),
+      initialEntryMode: TimePickerEntryMode.dial,
+      orientation: Orientation.portrait,
+      helpText: '选择时间',
+      cancelText: '取消',
+      confirmText: '确定',
+      switchToInputEntryModeIcon: const Icon(Icons.keyboard_alt_outlined),
+    );
+    if (!mounted || selectedTime == null) return;
+    final DateTime selected = DateTime(
+      selectedDate.year,
+      selectedDate.month,
+      selectedDate.day,
+      selectedTime.hour,
+      selectedTime.minute,
+    );
+    if (selected.isAfter(DateTime.now())) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('时间不能超过现在')));
+      return;
+    }
     setState(() => _occurredAt = selected);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _dismissKeyboard();
@@ -1210,191 +1286,6 @@ class _EntrySheetState extends State<EntrySheet> {
     _amountFocusNode.unfocus();
     FocusManager.instance.primaryFocus?.unfocus();
   }
-}
-
-class _DateTimeEditorSheet extends StatefulWidget {
-  const _DateTimeEditorSheet({required this.initial});
-  final DateTime initial;
-
-  @override
-  State<_DateTimeEditorSheet> createState() => _DateTimeEditorSheetState();
-}
-
-class _DateTimeEditorSheetState extends State<_DateTimeEditorSheet> {
-  late DateTime _value = widget.initial;
-  late final TextEditingController _date = TextEditingController(
-    text: _formatDate(_value),
-  );
-  late final TextEditingController _time = TextEditingController(
-    text: _formatTime(_value),
-  );
-  String? _error;
-
-  static String _formatDate(DateTime value) =>
-      '${value.year}-${value.month.toString().padLeft(2, '0')}-${value.day.toString().padLeft(2, '0')}';
-  static String _formatTime(DateTime value) =>
-      '${value.hour.toString().padLeft(2, '0')}:${value.minute.toString().padLeft(2, '0')}';
-
-  @override
-  void dispose() {
-    _date.dispose();
-    _time.dispose();
-    super.dispose();
-  }
-
-  DateTime? _parse() {
-    final RegExpMatch? dateMatch = RegExp(
-      r'^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})$',
-    ).firstMatch(_date.text.trim());
-    final RegExpMatch? timeMatch = RegExp(
-      r'^(\d{1,2}):(\d{1,2})$',
-    ).firstMatch(_time.text.trim());
-    if (dateMatch == null || timeMatch == null) return null;
-    final int year = int.parse(dateMatch.group(1)!);
-    final int month = int.parse(dateMatch.group(2)!);
-    final int day = int.parse(dateMatch.group(3)!);
-    final int hour = int.parse(timeMatch.group(1)!);
-    final int minute = int.parse(timeMatch.group(2)!);
-    if (month < 1 ||
-        month > 12 ||
-        day < 1 ||
-        day > 31 ||
-        hour > 23 ||
-        minute > 59) {
-      return null;
-    }
-    final DateTime value = DateTime(year, month, day, hour, minute);
-    if (value.year != year || value.month != month || value.day != day) {
-      return null;
-    }
-    return value;
-  }
-
-  Future<void> _pickDate() async {
-    final DateTime now = DateTime.now();
-    final DateTime? value = await showDatePicker(
-      context: context,
-      initialDate: _value,
-      firstDate: DateTime(1970),
-      lastDate: DateTime(now.year, now.month, now.day),
-    );
-    if (value == null) return;
-    setState(() {
-      _value = DateTime(
-        value.year,
-        value.month,
-        value.day,
-        _value.hour,
-        _value.minute,
-      );
-      _date.text = _formatDate(_value);
-      _error = null;
-    });
-  }
-
-  Future<void> _pickTime() async {
-    final TimeOfDay? value = await showTimePicker(
-      context: context,
-      initialTime: TimeOfDay.fromDateTime(_value),
-    );
-    if (value == null) return;
-    setState(() {
-      _value = DateTime(
-        _value.year,
-        _value.month,
-        _value.day,
-        value.hour,
-        value.minute,
-      );
-      _time.text = _formatTime(_value);
-      _error = null;
-    });
-  }
-
-  void _save() {
-    final DateTime? value = _parse();
-    if (value == null) {
-      setState(() => _error = '请输入有效的日期和时间');
-      return;
-    }
-    if (value.isAfter(DateTime.now())) {
-      setState(() => _error = '时间不能超过现在');
-      return;
-    }
-    Navigator.pop(context, value);
-  }
-
-  @override
-  Widget build(BuildContext context) => Padding(
-    padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
-    child: Column(
-      mainAxisSize: MainAxisSize.min,
-      children: <Widget>[
-        SizedBox(
-          height: 54,
-          child: Row(
-            children: <Widget>[
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('取消'),
-              ),
-              const Expanded(
-                child: Text(
-                  '日期与时间',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(fontWeight: FontWeight.w700),
-                ),
-              ),
-              TextButton(onPressed: _save, child: const Text('确定')),
-            ],
-          ),
-        ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 4, 16, 20),
-          child: Row(
-            children: <Widget>[
-              Expanded(
-                flex: 3,
-                child: TextField(
-                  controller: _date,
-                  keyboardType: TextInputType.datetime,
-                  decoration: InputDecoration(
-                    labelText: '日期',
-                    hintText: '2026-11-20',
-                    suffixIcon: IconButton(
-                      tooltip: '选择日期',
-                      onPressed: _pickDate,
-                      icon: const Icon(Icons.calendar_month_outlined),
-                    ),
-                    errorText: _error,
-                  ),
-                  onChanged: (_) => setState(() => _error = null),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                flex: 2,
-                child: TextField(
-                  controller: _time,
-                  keyboardType: TextInputType.datetime,
-                  decoration: InputDecoration(
-                    labelText: '时间',
-                    hintText: '20:05',
-                    suffixIcon: IconButton(
-                      tooltip: '选择时间',
-                      onPressed: _pickTime,
-                      icon: const Icon(Icons.schedule_outlined),
-                    ),
-                  ),
-                  onChanged: (_) => setState(() => _error = null),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ],
-    ),
-  );
 }
 
 class _TypeTabs extends StatelessWidget {

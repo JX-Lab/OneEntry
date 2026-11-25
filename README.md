@@ -3,17 +3,26 @@
 
 # 一笔 OneEntry
 
-### 每一个我，共同的一本账
+一笔是一款本地 Android 账本，用于记录个人或同一设备上多名成员的收入、支出、账户余额、预算和资金归属。
 
-一款面向个人、多意识体与同设备多人使用的本地 Android 账本。
+它不要求注册账号，账本默认只保存在设备中。一个成员时可以作为普通个人账本使用；添加成员后，可以继续区分谁承担支出、收入归谁、谁记录账目，以及实际从哪个账户付款。
 
-无需注册，没有服务器，也不预设谁是唯一的记账主体。一个成员时，它就是普通个人账本；添加成员后，同一本账可以分别记录谁付款、收入归谁、谁记下了这笔账，以及资金实际存放在哪个账户。
+[![Build Android APK](https://github.com/TheAnonymous-sys/OneEntry/actions/workflows/android-debug.yml/badge.svg)](https://github.com/TheAnonymous-sys/OneEntry/actions/workflows/android-debug.yml)
 
-[![Build Android APK](https://github.com/JX-Lab/OneEntry/actions/workflows/android-debug.yml/badge.svg)](https://github.com/JX-Lab/OneEntry/actions/workflows/android-debug.yml)
-
-[下载最新版本](https://github.com/JX-Lab/OneEntry/releases) · [查看构建状态](https://github.com/JX-Lab/OneEntry/actions)
+[下载最新版本](https://github.com/TheAnonymous-sys/OneEntry/releases) · [查看构建状态](https://github.com/TheAnonymous-sys/OneEntry/actions)
 
 </div>
+
+## 主要功能
+
+- 记录收入、支出和账户转账，支持算式金额、组合付款、周期账目和账目修改历史。
+- 管理现金、银行卡、支付账户、信用账户和贷款账户，查看账户净额与负债。
+- 通过成员荷包和公共资金记录资金归属，并自动计算成员之间的待结算往来。
+- 按一人、部分成员或全体成员设置荷包扣款规则，也可以为单个成员设置例外。
+- 设置月度总预算、分类预算和可选的成员预算，查看月、周、年统计。
+- 搜索和批量整理账目、账户、成员及标签。
+- 导出 JSON、ZIP、XLSX 备份，并支持从旧版一笔及其他账本导入。
+- 提供本地快照、每日提醒、主题、文字大小和多种无障碍显示选项。
 
 ## 先理解四个概念
 
@@ -42,7 +51,8 @@
 
 - 成员页统一管理公共资金、成员荷包和成员之间的待结算往来。
 - 分配荷包时只需填写成员金额，剩余资金自动留在公共资金。
-- 支出优先使用付款成员自己的荷包。
+- 可以分别设置一人、部分成员和全体成员支出时优先使用成员荷包或公共资金。
+- 可以为单个成员设置独立规则，覆盖参与人数对应的默认规则。
 - 荷包不足时，可以选择公共资金或其他成员荷包继续支付。
 - 使用公共资金不会产生借款；使用其他成员荷包会自动生成待结算往来。
 - 往来可以部分结算，也可以一次结清。
@@ -90,6 +100,7 @@
 
 - 无需账号，账本保存在应用内部的 SQLite 数据库中。
 - 应用不会自动把账本上传到一笔的服务器。
+- 设置页会显示当前版本；只有主动点击「检查更新」时才会连接 GitHub Releases，不会在后台自动检查，也不会上传账本或设备信息。
 - 可以自行把导出的文件保存到网盘或其他设备；这是用户控制的文件备份，不是实时同步。
 - 导出 JSON、ZIP 或 XLSX 完整备份。
 - 支持从一笔旧备份、同旅、时光序和通用表格导入。
@@ -110,7 +121,7 @@
 
 一笔支持 Android 6.0 及以上系统。
 
-1. 打开 [Releases](https://github.com/JX-Lab/OneEntry/releases)。
+1. 打开 [Releases](https://github.com/TheAnonymous-sys/OneEntry/releases)。
 2. 下载适合设备的 APK。
 3. 允许浏览器或文件管理器安装来自该来源的应用，然后完成安装。
 
@@ -126,6 +137,7 @@
 
 | 权限 | 用途 |
 | --- | --- |
+| 网络 | 用户主动检查更新时读取 GitHub Releases，并在浏览器中打开下载页 |
 | 通知 | 每日提醒和周期账目提醒 |
 | 闹钟和提醒 | Android 12 及以上系统中尽量准时发送每日提醒 |
 
@@ -168,7 +180,7 @@
 
 ## 反馈
 
-遇到问题或有功能建议，可以在 [GitHub Issues](https://github.com/JX-Lab/OneEntry/issues) 中说明设备型号、Android 版本和复现步骤。
+遇到问题或有功能建议，可以在 [GitHub Issues](https://github.com/TheAnonymous-sys/OneEntry/issues) 中说明设备型号、Android 版本和复现步骤。
 
 <details>
 <summary><strong>开发者信息</strong></summary>
