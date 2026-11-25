@@ -2,6 +2,15 @@ name: Build Android APK
 
 on:
   workflow_dispatch:
+    inputs:
+      release_channel:
+        description: Publish channel
+        required: true
+        default: prerelease
+        type: choice
+        options:
+          - prerelease
+          - stable
   push:
     branches:
       - main
@@ -47,6 +56,21 @@ jobs:
             exit 1
           fi
           echo "APP_VERSION=$APP_VERSION" >> "$GITHUB_ENV"
+
+      - name: Select release channel
+        shell: bash
+        env:
+          REQUESTED_CHANNEL: ${{ github.event.inputs.release_channel }}
+        run: |
+          if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" && "$REQUESTED_CHANNEL" == "stable" ]]; then
+            echo "RELEASE_IS_PRERELEASE=false" >> "$GITHUB_ENV"
+            echo "RELEASE_CHANNEL_LABEL=Stable" >> "$GITHUB_ENV"
+            echo "RELEASE_TAG=release-build-${GITHUB_RUN_NUMBER}" >> "$GITHUB_ENV"
+          else
+            echo "RELEASE_IS_PRERELEASE=true" >> "$GITHUB_ENV"
+            echo "RELEASE_CHANNEL_LABEL=Preview" >> "$GITHUB_ENV"
+            echo "RELEASE_TAG=preview-build-${GITHUB_RUN_NUMBER}" >> "$GITHUB_ENV"
+          fi
 
       - name: Check Dart formatting
         shell: bash
@@ -96,13 +120,15 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ env.BUILD_MODE }}-build-${{ github.run_number }}
-          name: OneEntry ${{ env.APP_VERSION }} (${{ env.BUILD_MODE }} Build #${{ github.run_number }})
-          prerelease: ${{ env.BUILD_MODE != 'release' }}
+          tag_name: ${{ env.RELEASE_TAG }}
+          name: OneEntry ${{ env.APP_VERSION }} (${{ env.RELEASE_CHANNEL_LABEL }} #${{ github.run_number }})
+          prerelease: ${{ env.RELEASE_IS_PRERELEASE }}
           generate_release_notes: false
           body: |
             Version: ${{ env.APP_VERSION }}
             Build: ${{ github.run_number }}
+            Channel: ${{ env.RELEASE_CHANNEL_LABEL }}
+            APK signing: ${{ env.BUILD_MODE }}
 
             Choose the APK for your device:
             - `arm64-v8a`: most current Android phones and tablets

@@ -215,7 +215,7 @@ flutter test
 
 ### 构建与发布
 
-推送到 `main` 后，GitHub Actions 会依次运行格式检查、静态分析和完整测试，再按 CPU 架构生成 APK。仓库配置签名 Secrets 时生成 release APK，否则生成 debug APK；检查或构建失败时不会创建发布。
+推送到 `main` 后，GitHub Actions 会依次运行格式检查、静态分析和完整测试，再按 CPU 架构生成 APK，并自动发布为预发行版。需要正式发行时，在 Actions 中手动运行 `Build Android APK`，把 `release_channel` 选择为 `stable`；其余构建和上传步骤仍由脚本自动完成。仓库配置签名 Secrets 时生成 release 签名 APK，否则生成 debug APK；签名方式与发布渠道彼此独立，检查或构建失败时不会创建发布。
 
 - Android 应用 ID：`com.junxu.yibi`
 - 数据库：`oneentry.db`，当前 schema v9
