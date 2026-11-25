@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../data/ledger_controller.dart';
+import '../../models/ledger_models.dart';
 import '../../theme/app_theme.dart';
 import '../categories/categories_page.dart';
 import '../recurring/recurring_rules_page.dart';
@@ -8,6 +9,7 @@ import '../../services/backup_service.dart';
 import '../../services/launcher_icon_service.dart';
 import '../../services/notification_service.dart';
 import '../../services/snapshot_service.dart';
+import '../../services/update_service.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({required this.controller, super.key});
@@ -27,6 +29,9 @@ class _SettingsPageState extends State<SettingsPage>
   List<LedgerSnapshotInfo>? _snapshots;
   DailyReminderStatus? _dailyReminderStatus;
   String _launcherIconMode = 'theme';
+  AppVersionInfo? _appVersion;
+  bool _checkingUpdate = false;
+  String _updateStatus = '手动检查 GitHub Releases；不会后台联网';
 
   @override
   void initState() {
@@ -36,6 +41,7 @@ class _SettingsPageState extends State<SettingsPage>
     _refreshSnapshots();
     _refreshReminderStatus();
     _refreshLauncherIconMode();
+    _loadAppVersion();
   }
 
   @override
@@ -79,6 +85,17 @@ class _SettingsPageState extends State<SettingsPage>
                             : 'AA 均摊  ›',
                       ),
                       onTap: _pickSplitMode,
+                    ),
+                    ListTile(
+                      title: const Text('荷包扣款规则'),
+                      subtitle: const Text('按参与人数和成员设置公共／个人资金来源'),
+                      trailing: const Icon(Icons.chevron_right),
+                      onTap: () => Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (_) =>
+                              _WalletRulesPage(controller: widget.controller),
+                        ),
+                      ),
                     ),
                     ListTile(
                       title: const Text('标签管理'),
@@ -242,6 +259,43 @@ class _SettingsPageState extends State<SettingsPage>
                     ),
                   ],
                 ),
+                _Section(
+                  title: '关于',
+                  children: <Widget>[
+                    ListTile(
+                      leading: ClipRRect(
+                        borderRadius: BorderRadius.circular(12),
+                        child: Image.asset(
+                          'assets/branding/oneentry_icon.png',
+                          width: 42,
+                          height: 42,
+                          fit: BoxFit.cover,
+                        ),
+                      ),
+                      title: const Text(
+                        '一笔 OneEntry',
+                        style: TextStyle(fontWeight: FontWeight.w700),
+                      ),
+                      subtitle: Text(
+                        _appVersion == null
+                            ? '正在读取版本…'
+                            : '版本 ${_appVersion!.label}',
+                      ),
+                    ),
+                    ListTile(
+                      title: const Text('检查更新'),
+                      subtitle: Text(_updateStatus),
+                      trailing: _checkingUpdate
+                          ? const SizedBox(
+                              width: 22,
+                              height: 22,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.chevron_right),
+                      onTap: _checkingUpdate ? null : _checkForUpdates,
+                    ),
+                  ],
+                ),
               ],
             ),
           ),
@@ -255,6 +309,128 @@ class _SettingsPageState extends State<SettingsPage>
     'dark' => '夜间',
     _ => '跟随系统',
   };
+
+  Future<void> _loadAppVersion() async {
+    final AppVersionInfo? version = await AppInfoService.currentVersion();
+    if (!mounted) return;
+    setState(() => _appVersion = version);
+  }
+
+  Future<void> _checkForUpdates() async {
+    if (_checkingUpdate) return;
+    setState(() {
+      _checkingUpdate = true;
+      _updateStatus = '正在连接 GitHub…';
+    });
+    final AppVersionInfo? current =
+        _appVersion ?? await AppInfoService.currentVersion();
+    try {
+      final GitHubReleaseInfo latest = await UpdateService.fetchLatest();
+      if (!mounted) return;
+      final bool? newer = current == null
+          ? null
+          : UpdateService.isNewer(latest: latest, current: current);
+      setState(() {
+        _appVersion = current;
+        _updateStatus = newer == false
+            ? '当前已是最新版本'
+            : newer == true
+            ? '发现新版本 ${latest.label}'
+            : '最新发布 ${latest.label}';
+      });
+      if (newer == false) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('当前已是最新版本')));
+        return;
+      }
+      await _showUpdateDialog(current: current, latest: latest);
+    } on Object catch (error) {
+      if (!mounted) return;
+      setState(() => _updateStatus = '检查失败，请稍后重试');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('检查更新失败：$error'),
+          action: SnackBarAction(
+            label: '打开发布页',
+            onPressed: () => _openRelease(UpdateService.releasesUrl),
+          ),
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _checkingUpdate = false);
+    }
+  }
+
+  Future<void> _showUpdateDialog({
+    required AppVersionInfo? current,
+    required GitHubReleaseInfo latest,
+  }) async {
+    final String notes = _releaseNotes(latest.notes);
+    await showDialog<void>(
+      context: context,
+      builder: (BuildContext dialogContext) => AlertDialog(
+        title: Text(current == null ? '最新发布' : '发现新版本'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Text('当前版本：${current?.label ?? '无法读取'}'),
+              const SizedBox(height: 6),
+              Text('最新版本：${latest.label}'),
+              if (notes.isNotEmpty) ...<Widget>[
+                const SizedBox(height: 16),
+                const Text(
+                  '发布说明',
+                  style: TextStyle(fontWeight: FontWeight.w700),
+                ),
+                const SizedBox(height: 6),
+                Text(notes),
+              ],
+            ],
+          ),
+        ),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('稍后再说'),
+          ),
+          FilledButton(
+            onPressed: () {
+              Navigator.pop(dialogContext);
+              _openRelease(latest.releaseUrl);
+            },
+            child: const Text('打开发布页'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _releaseNotes(String? value) {
+    if (value == null) return '';
+    final String filtered = value
+        .split('\n')
+        .where(
+          (String line) => !RegExp(
+            r'^\s*(?:version|build)\s*[:：#]',
+            caseSensitive: false,
+          ).hasMatch(line),
+        )
+        .join('\n')
+        .trim();
+    return filtered.length <= 600 ? filtered : '${filtered.substring(0, 600)}…';
+  }
+
+  Future<void> _openRelease(String url) async {
+    final bool opened = await AppInfoService.openReleaseUrl(url);
+    if (!opened && mounted) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('无法打开 GitHub 发布页')));
+    }
+  }
 
   String _textScaleName() {
     if (widget.controller.textScale >= 1.3) return '特大';
@@ -1147,6 +1323,115 @@ class _SettingsPageState extends State<SettingsPage>
       ).showSnackBar(const SnackBar(content: Text('全部数据已清除')));
     }
   }
+}
+
+class _WalletRulesPage extends StatelessWidget {
+  const _WalletRulesPage({required this.controller});
+
+  final LedgerController controller;
+
+  static const List<DropdownMenuItem<String>> _baseItems =
+      <DropdownMenuItem<String>>[
+        DropdownMenuItem(value: 'own', child: Text('成员荷包优先')),
+        DropdownMenuItem(value: 'common', child: Text('公共资金优先')),
+      ];
+
+  static const List<DropdownMenuItem<String>> _memberItems =
+      <DropdownMenuItem<String>>[
+        DropdownMenuItem(value: 'default', child: Text('跟随场景')),
+        DropdownMenuItem(value: 'own', child: Text('成员荷包优先')),
+        DropdownMenuItem(value: 'common', child: Text('公共资金优先')),
+      ];
+
+  @override
+  Widget build(BuildContext context) => AnimatedBuilder(
+    animation: controller,
+    builder: (BuildContext context, Widget? child) => Scaffold(
+      appBar: AppBar(title: const Text('荷包扣款规则')),
+      body: ListView(
+        padding: const EdgeInsets.fromLTRB(12, 12, 12, 32),
+        children: <Widget>[
+          const Padding(
+            padding: EdgeInsets.fromLTRB(8, 0, 8, 12),
+            child: Text('规则只决定支出从哪里扣。资金不足时仍会让你选择其他可用来源，不会静默透支。'),
+          ),
+          _Section(
+            title: '按参与范围',
+            children: <Widget>[
+              _ruleTile(
+                title: '一人付款',
+                subtitle: '只选择一名成员时',
+                value: controller.walletRuleSingle,
+                onChanged: (String value) =>
+                    controller.setPreference('wallet_rule_single', value),
+              ),
+              _ruleTile(
+                title: '部分成员付款',
+                subtitle: '选择两人以上，但不是全体成员时',
+                value: controller.walletRuleSubset,
+                onChanged: (String value) =>
+                    controller.setPreference('wallet_rule_subset', value),
+              ),
+              _ruleTile(
+                title: '全体成员付款',
+                subtitle: '选中的成员覆盖当前全部未归档成员时',
+                value: controller.walletRuleAll,
+                onChanged: (String value) =>
+                    controller.setPreference('wallet_rule_all', value),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          _Section(
+            title: '成员例外',
+            children: controller.members
+                .where((LedgerMember member) => !member.archived)
+                .map(
+                  (LedgerMember member) => ListTile(
+                    title: Text(member.name),
+                    subtitle: const Text('覆盖上面的参与范围规则'),
+                    trailing: DropdownButtonHideUnderline(
+                      child: DropdownButton<String>(
+                        value:
+                            controller.walletMemberRules[member.id] ??
+                            'default',
+                        items: _memberItems,
+                        onChanged: (String? value) {
+                          if (value == null) return;
+                          controller.setPreference(
+                            'wallet_rule_member_${member.id}',
+                            value,
+                          );
+                        },
+                      ),
+                    ),
+                  ),
+                )
+                .toList(),
+          ),
+        ],
+      ),
+    ),
+  );
+
+  Widget _ruleTile({
+    required String title,
+    required String subtitle,
+    required String value,
+    required ValueChanged<String> onChanged,
+  }) => ListTile(
+    title: Text(title),
+    subtitle: Text(subtitle),
+    trailing: DropdownButtonHideUnderline(
+      child: DropdownButton<String>(
+        value: value,
+        items: _baseItems,
+        onChanged: (String? next) {
+          if (next != null) onChanged(next);
+        },
+      ),
+    ),
+  );
 }
 
 class _Section extends StatelessWidget {

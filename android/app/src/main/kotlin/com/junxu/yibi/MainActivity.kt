@@ -182,6 +182,50 @@ class MainActivity : FlutterActivity() {
                 else -> result.notImplemented()
             }
         }
+        MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            APP_INFO_CHANNEL,
+        ).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "getVersion" -> {
+                    val info = packageManager.getPackageInfo(packageName, 0)
+                    val buildNumber = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                        info.longVersionCode
+                    } else {
+                        @Suppress("DEPRECATION")
+                        info.versionCode.toLong()
+                    }
+                    result.success(
+                        mapOf(
+                            "name" to (info.versionName ?: "unknown"),
+                            "build" to buildNumber,
+                        ),
+                    )
+                }
+                "openReleaseUrl" -> {
+                    val rawUrl = call.argument<String>("url").orEmpty()
+                    val uri = runCatching { Uri.parse(rawUrl) }.getOrNull()
+                    val segments = uri?.pathSegments.orEmpty()
+                    val allowed = uri?.scheme == "https" &&
+                        uri.host.equals("github.com", ignoreCase = true) &&
+                        segments.size >= 2 &&
+                        (
+                            segments[0].equals("TheAnonymous-sys", ignoreCase = true) ||
+                                segments[0].equals("JX-Lab", ignoreCase = true)
+                        ) &&
+                        segments[1].equals("OneEntry", ignoreCase = true)
+                    if (!allowed) {
+                        result.success(false)
+                        return@setMethodCallHandler
+                    }
+                    val opened = runCatching {
+                        startActivity(Intent(Intent.ACTION_VIEW, uri))
+                    }.isSuccess
+                    result.success(opened)
+                }
+                else -> result.notImplemented()
+            }
+        }
     }
 
     private fun resolveLauncherIcon(mode: String, themeKey: String): String {
@@ -544,6 +588,7 @@ class MainActivity : FlutterActivity() {
         private const val FILE_CHANNEL = "com.junxu.yibi/files"
         private const val SPEECH_CHANNEL = "com.junxu.yibi/speech"
         private const val LAUNCHER_ICON_CHANNEL = "com.junxu.yibi/launcher_icon"
+        private const val APP_INFO_CHANNEL = "com.junxu.yibi/app_info"
         private const val LAUNCHER_ICON_PREFS = "launcher_icon"
         private const val LAUNCHER_ICON_LOG_TAG = "OneEntryIcon"
         private val LAUNCHER_ICON_KEYS = listOf(

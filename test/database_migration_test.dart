@@ -335,4 +335,28 @@ void main() {
     expect(snapshot.commonFund, 5);
     expect(snapshot.memberWallets[memberId], 0);
   });
+
+  test('加载时会把未分配资金校准为账户余额', () async {
+    final Directory temp = Directory.systemTemp.createTempSync(
+      'oneentry-wallet-reconcile-',
+    );
+    addTearDown(() => temp.deleteSync(recursive: true));
+    final AppDatabase database = AppDatabase(
+      path: p.join(temp.path, 'reconcile.db'),
+      seedOnCreate: false,
+    );
+    addTearDown(database.close);
+    final LedgerRepository repository = LedgerRepository(database);
+    await repository.addAccount(name: '现金', openingBalance: 100);
+    final Database db = await database.database;
+    await db.update('wallet_state', <String, Object?>{
+      'common_balance_minor': 2500,
+    }, where: 'id = 1');
+
+    final LedgerSnapshot snapshot = await repository.load();
+
+    expect(snapshot.accounts.single.balance, 100);
+    expect(snapshot.memberWallets.values.fold<double>(0, (a, b) => a + b), 0);
+    expect(snapshot.commonFund, 100);
+  });
 }

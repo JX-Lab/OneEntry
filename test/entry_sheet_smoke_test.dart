@@ -87,12 +87,64 @@ void main() {
 
     await tester.tap(find.text('时间'));
     await tester.pumpAndSettle();
-    expect(find.text('日期与时间'), findsOneWidget);
-    Navigator.of(tester.element(find.text('日期与时间'))).pop();
+    expect(find.byType(DatePickerDialog), findsOneWidget);
+    expect(find.text('选择日期'), findsOneWidget);
+    expect(find.byIcon(Icons.keyboard_alt_outlined), findsOneWidget);
+    Navigator.of(tester.element(find.byType(DatePickerDialog))).pop();
     await tester.pumpAndSettle();
 
     expect(tester.widget<EditableText>(noteInput).focusNode.hasFocus, isFalse);
     expect(tester.testTextInput.isVisible, isFalse);
+  });
+
+  testWidgets('日期选择可切换键盘自由输入', (WidgetTester tester) async {
+    final LedgerController controller = LedgerController(
+      LedgerRepository(AppDatabase()),
+    );
+    addTearDown(controller.dispose);
+
+    await tester.pumpWidget(
+      MaterialApp(home: EntrySheet(controller: controller)),
+    );
+    await tester.tap(find.text('时间'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byIcon(Icons.keyboard_alt_outlined));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.descendant(
+        of: find.byType(DatePickerDialog),
+        matching: find.byType(TextField),
+      ),
+      findsWidgets,
+    );
+  });
+
+  testWidgets('时间选择可切换键盘自由输入', (WidgetTester tester) async {
+    final LedgerController controller = LedgerController(
+      LedgerRepository(AppDatabase()),
+    );
+    addTearDown(controller.dispose);
+
+    await tester.pumpWidget(
+      MaterialApp(home: EntrySheet(controller: controller)),
+    );
+    await tester.tap(find.text('时间'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('下一步'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(TimePickerDialog), findsOneWidget);
+    expect(find.byIcon(Icons.keyboard_alt_outlined), findsOneWidget);
+    await tester.tap(find.byIcon(Icons.keyboard_alt_outlined));
+    await tester.pumpAndSettle();
+    expect(
+      find.descendant(
+        of: find.byType(TimePickerDialog),
+        matching: find.byType(TextField),
+      ),
+      findsWidgets,
+    );
   });
 
   testWidgets('支出可以打开组合付款并标记预算外', (WidgetTester tester) async {
@@ -408,6 +460,51 @@ void main() {
     await tester.pumpAndSettle();
     expect(saved, isNotNull);
     expect(saved!.memberShares.map((item) => item.amount), <double>[5, 5]);
+  });
+
+  testWidgets('全体成员付款可按规则优先扣公共资金', (WidgetTester tester) async {
+    final LedgerController controller =
+        LedgerController(LedgerRepository(AppDatabase()))
+          ..accounts.add(LedgerAccount(id: 1, name: '现金', balance: 40))
+          ..members.addAll(<LedgerMember>[
+            LedgerMember(id: 1, name: 'A', colorValue: 0xFF2E7CF6),
+            LedgerMember(id: 2, name: 'B', colorValue: 0xFFF5A623),
+          ])
+          ..commonFund = 20
+          ..memberWallets[1] = 10
+          ..memberWallets[2] = 10
+          ..walletRuleAll = 'common';
+    addTearDown(controller.dispose);
+    LedgerEntry? saved;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: _EntryHarness(
+          controller: controller,
+          onSaved: (LedgerEntry value) => saved = value,
+        ),
+      ),
+    );
+    await tester.tap(find.text('打开记账'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).first, '10');
+    await tester.tap(find.text('付款（可多选）'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('A').last);
+    await tester.tap(find.text('B').last);
+    await tester.pump();
+    await tester.tap(find.text('完成 (2)'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('保存'));
+    await tester.pumpAndSettle();
+
+    expect(saved, isNotNull);
+    expect(saved!.walletSources, hasLength(2));
+    expect(saved!.walletSources.every((source) => source.common), isTrue);
+    expect(
+      saved!.walletSources.fold<double>(0, (sum, item) => sum + item.amount),
+      10,
+    );
   });
 
   testWidgets('从收支切到转账不会保存隐藏的付款和记录成员', (WidgetTester tester) async {

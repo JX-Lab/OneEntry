@@ -9,9 +9,9 @@
 
 无需注册，没有服务器，也不预设谁是唯一的记账主体。一个成员时，它就是普通个人账本；添加成员后，同一本账可以分别记录谁付款、收入归谁、谁记下了这笔账，以及资金实际存放在哪个账户。
 
-[![Build Android APK](https://github.com/JX-Lab/OneEntry/actions/workflows/android-debug.yml/badge.svg)](https://github.com/JX-Lab/OneEntry/actions/workflows/android-debug.yml)
+[![Build Android APK](https://github.com/TheAnonymous-sys/OneEntry/actions/workflows/android-debug.yml/badge.svg)](https://github.com/TheAnonymous-sys/OneEntry/actions/workflows/android-debug.yml)
 
-[下载最新版本](https://github.com/JX-Lab/OneEntry/releases) · [查看构建状态](https://github.com/JX-Lab/OneEntry/actions)
+[下载最新版本](https://github.com/TheAnonymous-sys/OneEntry/releases) · [查看构建状态](https://github.com/TheAnonymous-sys/OneEntry/actions)
 
 </div>
 
@@ -90,6 +90,7 @@
 
 - 无需账号，账本保存在应用内部的 SQLite 数据库中。
 - 应用不会自动把账本上传到一笔的服务器。
+- 设置页会显示当前版本；只有主动点击「检查更新」时才会连接 GitHub Releases，不会在后台自动检查，也不会上传账本或设备信息。
 - 可以自行把导出的文件保存到网盘或其他设备；这是用户控制的文件备份，不是实时同步。
 - 导出 JSON、ZIP 或 XLSX 完整备份。
 - 支持从一笔旧备份、同旅、时光序和通用表格导入。
@@ -110,7 +111,7 @@
 
 一笔支持 Android 6.0 及以上系统。
 
-1. 打开 [Releases](https://github.com/JX-Lab/OneEntry/releases)。
+1. 打开 [Releases](https://github.com/TheAnonymous-sys/OneEntry/releases)。
 2. 下载适合设备的 APK。
 3. 允许浏览器或文件管理器安装来自该来源的应用，然后完成安装。
 
@@ -126,6 +127,7 @@
 
 | 权限 | 用途 |
 | --- | --- |
+| 网络 | 用户主动检查更新时读取 GitHub Releases，并在浏览器中打开下载页 |
 | 通知 | 每日提醒和周期账目提醒 |
 | 闹钟和提醒 | Android 12 及以上系统中尽量准时发送每日提醒 |
 
@@ -168,7 +170,7 @@
 
 ## 反馈
 
-遇到问题或有功能建议，可以在 [GitHub Issues](https://github.com/JX-Lab/OneEntry/issues) 中说明设备型号、Android 版本和复现步骤。
+遇到问题或有功能建议，可以在 [GitHub Issues](https://github.com/TheAnonymous-sys/OneEntry/issues) 中说明设备型号、Android 版本和复现步骤。
 
 <details>
 <summary><strong>开发者信息</strong></summary>

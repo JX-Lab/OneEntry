@@ -27,6 +27,10 @@ class LedgerSnapshot {
     required this.memberWallets,
     required this.commonFund,
     required this.splitMode,
+    required this.walletRuleSingle,
+    required this.walletRuleSubset,
+    required this.walletRuleAll,
+    required this.walletMemberRules,
     required this.themeMode,
     required this.themeColor,
     required this.voiceEnabled,
@@ -56,6 +60,10 @@ class LedgerSnapshot {
   final Map<int, double> memberWallets;
   final double commonFund;
   final String splitMode;
+  final String walletRuleSingle;
+  final String walletRuleSubset;
+  final String walletRuleAll;
+  final Map<int, String> walletMemberRules;
   final String themeMode;
   final String themeColor;
   final bool voiceEnabled;
@@ -97,6 +105,7 @@ class LedgerRepository {
 
   Future<LedgerSnapshot> load({DateTime? budgetMonth}) async {
     final Database db = await _appDatabase.database;
+    await _reconcileWalletTotal(db);
     final List<LedgerAccount> accounts = (await db.query(
       'accounts',
       orderBy: 'sort_order, id',
@@ -327,6 +336,17 @@ class LedgerRepository {
       memberWallets: memberWallets,
       commonFund: commonFund,
       splitMode: settings['split_mode'] ?? 'equal',
+      walletRuleSingle: settings['wallet_rule_single'] ?? 'own',
+      walletRuleSubset: settings['wallet_rule_subset'] ?? 'own',
+      walletRuleAll: settings['wallet_rule_all'] ?? 'own',
+      walletMemberRules: <int, String>{
+        for (final MapEntry<String, String> item in settings.entries)
+          if (item.key.startsWith('wallet_rule_member_') &&
+              int.tryParse(item.key.substring('wallet_rule_member_'.length)) !=
+                  null)
+            int.parse(item.key.substring('wallet_rule_member_'.length)):
+                item.value,
+      },
       themeMode: settings['theme_mode'] ?? 'system',
       themeColor: settings['theme_color'] ?? 'green',
       voiceEnabled: settings['voice_enabled'] != '0',
@@ -337,6 +357,46 @@ class LedgerRepository {
       haptics: settings['haptics'] != '0',
       lastBackupAt: _dateTimeFromMilliseconds(settings['last_backup_at']),
     );
+  }
+
+  /// Keeps the ownership ledger tied to the actual account total.
+  ///
+  /// Older imports and a few pre-wallet code paths could update account
+  /// balances without updating [wallet_state]. Member allocations are kept
+  /// intact; the unallocated remainder is repaired as common funds.
+  Future<void> _reconcileWalletTotal(Database db) async {
+    await db.transaction((Transaction txn) async {
+      final int accountTotal =
+          Sqflite.firstIntValue(
+            await txn.rawQuery(
+              'SELECT COALESCE(SUM(balance_minor), 0) FROM accounts',
+            ),
+          ) ??
+          0;
+      final int memberTotal =
+          Sqflite.firstIntValue(
+            await txn.rawQuery(
+              'SELECT COALESCE(SUM(balance_minor), 0) FROM member_wallets',
+            ),
+          ) ??
+          0;
+      final int expectedCommon = accountTotal - memberTotal;
+      if (expectedCommon < 0) return;
+      final int currentCommon =
+          Sqflite.firstIntValue(
+            await txn.rawQuery(
+              'SELECT common_balance_minor FROM wallet_state WHERE id = 1',
+            ),
+          ) ??
+          0;
+      if (currentCommon == expectedCommon) return;
+      final int now = DateTime.now().millisecondsSinceEpoch;
+      await txn.insert('wallet_state', <String, Object?>{
+        'id': 1,
+        'common_balance_minor': expectedCommon,
+        'updated_at': now,
+      }, conflictAlgorithm: ConflictAlgorithm.replace);
+    });
   }
 
   Future<({double total, Map<String, double> categories})> loadBudget(
