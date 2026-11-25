@@ -41,11 +41,8 @@ class _AccountsPageState extends State<AccountsPage> {
             (item) => item.archived && item.name.toLowerCase().contains(query),
           )
           .toList();
-      final double total = widget.controller.accounts.fold(
-        0,
-        (sum, item) => sum + item.balance,
-      );
-      final double debt = widget.controller.accounts
+      final double total = allActive.fold(0, (sum, item) => sum + item.balance);
+      final double debt = allActive
           .where((item) => item.balance < 0)
           .fold(0, (sum, item) => sum + item.balance.abs());
       return Scaffold(
@@ -98,17 +95,6 @@ class _AccountsPageState extends State<AccountsPage> {
                       fontWeight: FontWeight.w600,
                     ),
                   ),
-                  if (archived.isNotEmpty ||
-                      widget.controller.accounts.any(
-                        (LedgerAccount item) => item.archived,
-                      ))
-                    Text(
-                      '含已归档账户',
-                      style: TextStyle(
-                        color: Theme.of(context).colorScheme.onSurfaceVariant,
-                        fontSize: 12,
-                      ),
-                    ),
                   const SizedBox(height: 6),
                   Text(
                     '¥${total.toStringAsFixed(2)}',
@@ -211,8 +197,7 @@ class _AccountsPageState extends State<AccountsPage> {
       actionColor: account.archived
           ? AppTheme.accentOf(context).action
           : AppTheme.expense,
-      onAction: () =>
-          widget.controller.setAccountArchived(account.id, !account.archived),
+      onAction: () => _toggleArchived(context, account),
       onTap: () => Navigator.of(context).push(
         MaterialPageRoute<void>(
           builder: (_) => _AccountDetailPage(
@@ -332,6 +317,20 @@ class _AccountsPageState extends State<AccountsPage> {
       ),
     ),
   );
+
+  Future<void> _toggleArchived(
+    BuildContext context,
+    LedgerAccount account,
+  ) async {
+    try {
+      await widget.controller.setAccountArchived(account.id, !account.archived);
+    } on StateError catch (error) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('${error.message}')));
+    }
+  }
 
   Future<void> _edit(BuildContext context, [LedgerAccount? account]) async {
     final TextEditingController name = TextEditingController(
@@ -598,13 +597,23 @@ class _AccountDetailPage extends StatelessWidget {
           title: Text(account.name),
           actions: <Widget>[
             PopupMenuButton<String>(
-              onSelected: (String value) {
+              onSelected: (String value) async {
                 if (value == 'edit') {
                   onEdit();
                 } else if (value == 'archive') {
-                  controller.setAccountArchived(account.id, !account.archived);
+                  try {
+                    await controller.setAccountArchived(
+                      account.id,
+                      !account.archived,
+                    );
+                  } on StateError catch (error) {
+                    if (!context.mounted) return;
+                    ScaffoldMessenger.of(
+                      context,
+                    ).showSnackBar(SnackBar(content: Text('${error.message}')));
+                  }
                 } else {
-                  _deleteAccount(context, account);
+                  await _deleteAccount(context, account);
                 }
               },
               itemBuilder: (_) => <PopupMenuEntry<String>>[

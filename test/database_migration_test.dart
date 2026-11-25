@@ -396,4 +396,77 @@ void main() {
       memberId,
     );
   });
+
+  test('归档账户会从当前账户净额和公共资金中移除', () async {
+    final Directory temp = Directory.systemTemp.createTempSync(
+      'oneentry-archive-balance-',
+    );
+    addTearDown(() => temp.deleteSync(recursive: true));
+    final AppDatabase database = AppDatabase(
+      path: p.join(temp.path, 'archive.db'),
+      seedOnCreate: false,
+    );
+    addTearDown(database.close);
+    final LedgerRepository repository = LedgerRepository(database);
+    await repository.addAccount(name: '常用账户', openingBalance: 100);
+    await repository.addAccount(name: '旧账户', openingBalance: 50);
+    LedgerSnapshot snapshot = await repository.load();
+    final int archivedId = snapshot.accounts
+        .firstWhere((LedgerAccount item) => item.name == '旧账户')
+        .id;
+
+    await repository.setAccountArchived(archivedId, true);
+    snapshot = await repository.load();
+    expect(
+      snapshot.accounts
+          .where((LedgerAccount item) => !item.archived)
+          .fold<double>(
+            0,
+            (double sum, LedgerAccount item) => sum + item.balance,
+          ),
+      100,
+    );
+    expect(snapshot.commonFund, 100);
+
+    await repository.setAccountArchived(archivedId, false);
+    snapshot = await repository.load();
+    expect(snapshot.commonFund, 150);
+  });
+
+  test('公共资金不足时不会静默扣成员荷包来归档账户', () async {
+    final Directory temp = Directory.systemTemp.createTempSync(
+      'oneentry-archive-wallet-',
+    );
+    addTearDown(() => temp.deleteSync(recursive: true));
+    final AppDatabase database = AppDatabase(
+      path: p.join(temp.path, 'archive-wallet.db'),
+      seedOnCreate: false,
+    );
+    addTearDown(database.close);
+    final LedgerRepository repository = LedgerRepository(database);
+    await repository.addMember(name: '成员甲', colorValue: 0xFF2E7CF6);
+    await repository.addAccount(name: '常用账户', openingBalance: 100);
+    await repository.addAccount(name: '旧账户', openingBalance: 50);
+    LedgerSnapshot snapshot = await repository.load();
+    final int memberId = snapshot.members.single.id;
+    final int archivedId = snapshot.accounts
+        .firstWhere((LedgerAccount item) => item.name == '旧账户')
+        .id;
+    await repository.setWalletBalances(
+      commonFund: 10,
+      memberBalances: <int, double>{memberId: 140},
+    );
+
+    await expectLater(
+      repository.setAccountArchived(archivedId, true),
+      throwsA(isA<StateError>()),
+    );
+    snapshot = await repository.load();
+    expect(snapshot.commonFund, 10);
+    expect(snapshot.memberWallets[memberId], 140);
+    expect(
+      snapshot.accounts.firstWhere((item) => item.id == archivedId).archived,
+      isFalse,
+    );
+  });
 }

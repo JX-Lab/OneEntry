@@ -68,7 +68,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('选择成员后不会重新唤起金额键盘', (WidgetTester tester) async {
+  testWidgets('关闭键盘后只有点击金额框才会再次唤起', (WidgetTester tester) async {
     final LedgerController controller = LedgerController(
       LedgerRepository(AppDatabase()),
     );
@@ -102,6 +102,29 @@ void main() {
       isFalse,
     );
     expect(tester.testTextInput.isVisible, isFalse);
+
+    await tester.scrollUntilVisible(
+      find.text('更多信息'),
+      240,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.tap(find.text('更多信息'));
+    await tester.pumpAndSettle();
+    expect(
+      tester.widget<EditableText>(amountInput).focusNode.hasFocus,
+      isFalse,
+    );
+    expect(tester.testTextInput.isVisible, isFalse);
+
+    await tester.scrollUntilVisible(
+      amountInput,
+      240,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.tap(amountInput);
+    await tester.pump();
+    expect(tester.widget<EditableText>(amountInput).focusNode.hasFocus, isTrue);
+    expect(tester.testTextInput.isVisible, isTrue);
   });
 
   testWidgets('选择时间前会清除输入框焦点', (WidgetTester tester) async {

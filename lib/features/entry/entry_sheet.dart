@@ -21,7 +21,7 @@ class EntrySheet extends StatefulWidget {
   State<EntrySheet> createState() => _EntrySheetState();
 }
 
-class _EntrySheetState extends State<EntrySheet> {
+class _EntrySheetState extends State<EntrySheet> with WidgetsBindingObserver {
   final TextEditingController _amountController = TextEditingController();
   final TextEditingController _noteController = TextEditingController();
   final FocusNode _amountFocusNode = FocusNode(debugLabel: 'entry-amount');
@@ -37,6 +37,7 @@ class _EntrySheetState extends State<EntrySheet> {
   bool _manualWalletSource = false;
   int? _manualWalletSourceMemberId;
   bool _showMoreInfo = false;
+  bool _keyboardWasVisible = false;
   final List<EntryFunding> _fundings = <EntryFunding>[];
   bool _recurring = false;
   bool _outsideBudget = false;
@@ -46,6 +47,7 @@ class _EntrySheetState extends State<EntrySheet> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     final List<LedgerAccount> activeAccounts = widget.controller.accounts
         .where((LedgerAccount account) => !account.archived)
         .toList();
@@ -134,10 +136,32 @@ class _EntrySheetState extends State<EntrySheet> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _amountController.dispose();
     _noteController.dispose();
     _amountFocusNode.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeMetrics() {
+    final bool visible =
+        WidgetsBinding
+            .instance
+            .platformDispatcher
+            .views
+            .first
+            .viewInsets
+            .bottom >
+        0;
+    if (_keyboardWasVisible && !visible) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && _amountFocusNode.hasFocus) {
+          _amountFocusNode.unfocus();
+        }
+      });
+    }
+    _keyboardWasVisible = visible;
   }
 
   int _lastUsedAccountId(List<LedgerAccount> activeAccounts) {
@@ -304,8 +328,10 @@ class _EntrySheetState extends State<EntrySheet> {
                 _CategoryGrid(
                   categories: categories,
                   selected: _category,
-                  onSelected: (String value) =>
-                      setState(() => _category = value),
+                  onSelected: (String value) {
+                    _dismissKeyboard();
+                    setState(() => _category = value);
+                  },
                   onAdd: _addCategory,
                   onLongPress: (LedgerCategory category) =>
                       _addCategory(category),
@@ -1826,7 +1852,10 @@ class _PickerField extends StatelessWidget {
     ),
     clipBehavior: Clip.antiAlias,
     child: InkWell(
-      onTap: onTap,
+      onTap: () {
+        FocusManager.instance.primaryFocus?.unfocus();
+        onTap();
+      },
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
         child: Row(
@@ -1842,19 +1871,22 @@ class _PickerField extends StatelessWidget {
                 iconSize: 17,
                 color: Theme.of(context).colorScheme.onSurfaceVariant,
                 icon: const Icon(Icons.help_outline_rounded),
-                onPressed: () => showDialog<void>(
-                  context: context,
-                  builder: (BuildContext context) => AlertDialog(
-                    title: Text(title),
-                    content: Text(helpText!),
-                    actions: <Widget>[
-                      TextButton(
-                        onPressed: () => Navigator.pop(context),
-                        child: const Text('知道了'),
-                      ),
-                    ],
-                  ),
-                ),
+                onPressed: () {
+                  FocusManager.instance.primaryFocus?.unfocus();
+                  showDialog<void>(
+                    context: context,
+                    builder: (BuildContext context) => AlertDialog(
+                      title: Text(title),
+                      content: Text(helpText!),
+                      actions: <Widget>[
+                        TextButton(
+                          onPressed: () => Navigator.pop(context),
+                          child: const Text('知道了'),
+                        ),
+                      ],
+                    ),
+                  );
+                },
               ),
             ],
             const SizedBox(width: 16),
