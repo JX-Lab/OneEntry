@@ -830,7 +830,7 @@ class _HomePageState extends State<HomePage> {
                                 )
                                 .toList(),
                           ),
-                          const _FilterTitle('按付款／归属（可多选）'),
+                          const _FilterTitle('按支出／收入归属（可多选）'),
                           TextField(
                             decoration: const InputDecoration(
                               hintText: '搜索成员',
@@ -1107,8 +1107,8 @@ class _HomePageState extends State<HomePage> {
                     ),
                   ),
                 CheckboxListTile(
-                  title: const Text('统一付款／归属'),
-                  subtitle: const Text('修改账目的付款成员或收入归属'),
+                  title: const Text('统一支出／收入归属'),
+                  subtitle: const Text('修改账目的支出归属或收入归属'),
                   value: changePayers,
                   onChanged: (value) =>
                       update(() => changePayers = value ?? false),

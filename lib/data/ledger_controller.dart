@@ -29,10 +29,6 @@ class LedgerController extends ChangeNotifier {
   bool get multiEnabled => members.length > 1;
   int? currentMemberId;
   String splitMode = 'equal';
-  String walletRuleSingle = 'own';
-  String walletRuleSubset = 'own';
-  String walletRuleAll = 'own';
-  final Map<int, String> walletMemberRules = <int, String>{};
   String themeMode = 'system';
   String themeColor = 'green';
   bool voiceEnabled = true;
@@ -95,12 +91,6 @@ class LedgerController extends ChangeNotifier {
               .map((LedgerMember member) => member.id)
               .firstOrNull;
     splitMode = snapshot.splitMode;
-    walletRuleSingle = snapshot.walletRuleSingle;
-    walletRuleSubset = snapshot.walletRuleSubset;
-    walletRuleAll = snapshot.walletRuleAll;
-    walletMemberRules
-      ..clear()
-      ..addAll(snapshot.walletMemberRules);
     themeMode = snapshot.themeMode;
     themeColor = snapshot.themeColor;
     voiceEnabled = snapshot.voiceEnabled;
@@ -115,6 +105,8 @@ class LedgerController extends ChangeNotifier {
   }
 
   Future<Map<String, Object?>> exportBackup() => _repository.exportBackup();
+
+  Future<String> databasePath() => _repository.databasePath();
 
   Future<void> replaceFromBackup(Map<String, Object?> backup) async {
     await _repository.replaceFromBackup(backup);
@@ -491,15 +483,6 @@ class LedgerController extends ChangeNotifier {
       case 'split_mode':
         splitMode = value;
         break;
-      case 'wallet_rule_single':
-        walletRuleSingle = value;
-        break;
-      case 'wallet_rule_subset':
-        walletRuleSubset = value;
-        break;
-      case 'wallet_rule_all':
-        walletRuleAll = value;
-        break;
       case 'theme_mode':
         themeMode = value;
         break;
@@ -530,18 +513,6 @@ class LedgerController extends ChangeNotifier {
             ? null
             : DateTime.fromMillisecondsSinceEpoch(milliseconds);
         break;
-    }
-    if (key.startsWith('wallet_rule_member_')) {
-      final int? memberId = int.tryParse(
-        key.substring('wallet_rule_member_'.length),
-      );
-      if (memberId != null) {
-        if (value == 'default') {
-          walletMemberRules.remove(memberId);
-        } else {
-          walletMemberRules[memberId] = value;
-        }
-      }
     }
     notifyListeners();
   }

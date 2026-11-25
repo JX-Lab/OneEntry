@@ -27,10 +27,6 @@ class LedgerSnapshot {
     required this.memberWallets,
     required this.commonFund,
     required this.splitMode,
-    required this.walletRuleSingle,
-    required this.walletRuleSubset,
-    required this.walletRuleAll,
-    required this.walletMemberRules,
     required this.themeMode,
     required this.themeColor,
     required this.voiceEnabled,
@@ -60,10 +56,6 @@ class LedgerSnapshot {
   final Map<int, double> memberWallets;
   final double commonFund;
   final String splitMode;
-  final String walletRuleSingle;
-  final String walletRuleSubset;
-  final String walletRuleAll;
-  final Map<int, String> walletMemberRules;
   final String themeMode;
   final String themeColor;
   final bool voiceEnabled;
@@ -79,6 +71,8 @@ class LedgerRepository {
   LedgerRepository(this._appDatabase);
 
   final AppDatabase _appDatabase;
+
+  Future<String> databasePath() => _appDatabase.databasePath;
 
   static const List<String> backupTables = <String>[
     'accounts',
@@ -336,17 +330,6 @@ class LedgerRepository {
       memberWallets: memberWallets,
       commonFund: commonFund,
       splitMode: settings['split_mode'] ?? 'equal',
-      walletRuleSingle: settings['wallet_rule_single'] ?? 'own',
-      walletRuleSubset: settings['wallet_rule_subset'] ?? 'own',
-      walletRuleAll: settings['wallet_rule_all'] ?? 'own',
-      walletMemberRules: <int, String>{
-        for (final MapEntry<String, String> item in settings.entries)
-          if (item.key.startsWith('wallet_rule_member_') &&
-              int.tryParse(item.key.substring('wallet_rule_member_'.length)) !=
-                  null)
-            int.parse(item.key.substring('wallet_rule_member_'.length)):
-                item.value,
-      },
       themeMode: settings['theme_mode'] ?? 'system',
       themeColor: settings['theme_color'] ?? 'green',
       voiceEnabled: settings['voice_enabled'] != '0',
@@ -616,6 +599,7 @@ class LedgerRepository {
             'timezone': draft.occurredAt.timeZoneName,
             'note': draft.note,
             'outside_budget': draft.outsideBudget ? 1 : 0,
+            'initiated_by_member_id': draft.initiatedByMemberId,
             'recorded_by_member_id': draft.recordedByMemberId,
             'visibility': draft.visibility.name,
             'recurring_rule_id': recurringRuleId,
@@ -658,6 +642,7 @@ class LedgerRepository {
         memberShares: memberShares,
         fundings: fundings,
         outsideBudget: draft.outsideBudget,
+        initiatedByMemberId: draft.initiatedByMemberId,
         recordedByMemberId: draft.recordedByMemberId,
         visibility: draft.visibility,
         visibleMemberIds: List<int>.from(draft.visibleMemberIds),
@@ -704,6 +689,7 @@ class LedgerRepository {
           'timezone': next.occurredAt.timeZoneName,
           'note': next.note,
           'outside_budget': next.outsideBudget ? 1 : 0,
+          'initiated_by_member_id': next.initiatedByMemberId,
           'recorded_by_member_id': next.recordedByMemberId,
           'visibility': next.visibility.name,
           'updated_at': now,
@@ -981,6 +967,12 @@ class LedgerRepository {
         'transactions',
         <String, Object?>{'recorded_by_member_id': null},
         where: 'recorded_by_member_id = ?',
+        whereArgs: <Object?>[id],
+      );
+      await txn.update(
+        'transactions',
+        <String, Object?>{'initiated_by_member_id': null},
+        where: 'initiated_by_member_id = ?',
         whereArgs: <Object?>[id],
       );
       await txn.update(
@@ -2277,6 +2269,7 @@ class LedgerRepository {
       memberShares: memberShares,
       fundings: fundings,
       outsideBudget: ((row['outside_budget'] as int?) ?? 0) == 1,
+      initiatedByMemberId: row['initiated_by_member_id'] as int?,
       recordedByMemberId: row['recorded_by_member_id'] as int?,
       visibility: EntryVisibility.values.byName(
         row['visibility'] as String? ?? 'all',
@@ -2363,7 +2356,7 @@ class LedgerRepository {
       );
       if (total == amountMinor) return entry.memberShares;
       if (total != 0) {
-        throw StateError('付款或归属金额合计必须等于账目金额');
+        throw StateError('支出归属或收入归属金额合计必须等于账目金额');
       }
     }
     return _equalMemberShares(entry.memberIds, amountMinor);
@@ -2488,7 +2481,7 @@ class LedgerRepository {
         (int sum, WalletSource source) => sum + _minor(source.amount),
       );
       if (total != _minor(entry.amount)) {
-        throw StateError('荷包资金来源合计必须等于账目金额');
+        throw StateError('荷包金额合计必须等于账目金额');
       }
       return entry.walletSources;
     }
@@ -2656,7 +2649,7 @@ class LedgerRepository {
             .toSet()
             .difference(previous.memberIds.toSet())
             .isNotEmpty) {
-      changes.add('付款／归属');
+      changes.add('支出／收入归属');
     }
     if (previous.fundings.length != next.fundings.length ||
         previous.accountId != next.accountId) {
@@ -2664,6 +2657,9 @@ class LedgerRepository {
     }
     if (previous.walletSources.length != next.walletSources.length) {
       changes.add('荷包来源');
+    }
+    if (previous.initiatedByMemberId != next.initiatedByMemberId) {
+      changes.add('发起者');
     }
     if (previous.note != next.note) changes.add('备注');
     return changes.isEmpty ? '保存账目' : '修改${changes.join('、')}';

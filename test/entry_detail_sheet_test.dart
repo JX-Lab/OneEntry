@@ -51,10 +51,10 @@ void main() {
     await tester.tap(find.text('打开'));
     await tester.pumpAndSettle();
     expect(find.text('再记一笔'), findsOneWidget);
-    expect(find.text('账户'), findsOneWidget);
-    expect(find.text('付款'), findsOneWidget);
-    expect(find.text('荷包'), findsOneWidget);
-    expect(find.text('记录'), findsNothing);
+    expect(find.text('付款账户'), findsOneWidget);
+    expect(find.text('支出归属'), findsOneWidget);
+    expect(find.text('扣款荷包'), findsOneWidget);
+    expect(find.text('记录者'), findsNothing);
     expect(find.text('预算'), findsNothing);
     expect(find.text('现金 ¥20.00'), findsOneWidget);
 

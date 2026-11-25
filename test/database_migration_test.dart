@@ -193,7 +193,7 @@ void main() {
     databaseFactory = databaseFactoryFfi;
   });
 
-  test('v5 数据库可连续升级到 v8', () async {
+  test('v5 数据库可连续升级到 v9', () async {
     final Directory temp = Directory.systemTemp.createTempSync(
       'oneentry-migration-fixture-',
     );
@@ -212,7 +212,7 @@ void main() {
     expectMigratedFixture(await LedgerRepository(version8).load());
   });
 
-  test('v5 完整备份可恢复到 v8', () async {
+  test('v5 完整备份可恢复到 v9', () async {
     final Directory temp = Directory.systemTemp.createTempSync(
       'oneentry-restore-fixture-',
     );
@@ -358,5 +358,42 @@ void main() {
     expect(snapshot.accounts.single.balance, 100);
     expect(snapshot.memberWallets.values.fold<double>(0, (a, b) => a + b), 0);
     expect(snapshot.commonFund, 100);
+  });
+
+  test('发起者会独立保存并重新载入', () async {
+    final Directory temp = Directory.systemTemp.createTempSync(
+      'oneentry-initiator-',
+    );
+    addTearDown(() => temp.deleteSync(recursive: true));
+    final AppDatabase database = AppDatabase(
+      path: p.join(temp.path, 'initiator.db'),
+      seedOnCreate: false,
+    );
+    addTearDown(database.close);
+    final LedgerRepository repository = LedgerRepository(database);
+    await repository.addMember(name: '成员甲', colorValue: 0xFF2E7CF6);
+    await repository.addAccount(name: '现金', openingBalance: 10);
+    final LedgerSnapshot initial = await repository.load();
+    final int memberId = initial.members.single.id;
+    final int accountId = initial.accounts.single.id;
+
+    await repository.addEntry(
+      LedgerEntry(
+        id: 0,
+        type: EntryType.expense,
+        amount: 1,
+        category: '其他',
+        occurredAt: DateTime(2026, 11, 25),
+        note: '',
+        accountId: accountId,
+        initiatedByMemberId: memberId,
+        walletSources: const <WalletSource>[WalletSource(amount: 1)],
+      ),
+    );
+
+    expect(
+      (await repository.load()).entries.single.initiatedByMemberId,
+      memberId,
+    );
   });
 }

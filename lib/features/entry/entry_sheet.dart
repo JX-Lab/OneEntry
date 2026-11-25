@@ -30,9 +30,13 @@ class _EntrySheetState extends State<EntrySheet> {
   int _accountId = 1;
   int? _toAccountId = 2;
   final Set<int> _members = <int>{};
+  int? _initiatorId;
   final Set<int> _recorders = <int>{};
   final Map<int, double> _customPayerAmounts = <int, double>{};
   bool _customPayerSplit = false;
+  bool _manualWalletSource = false;
+  int? _manualWalletSourceMemberId;
+  bool _showMoreInfo = false;
   final List<EntryFunding> _fundings = <EntryFunding>[];
   bool _recurring = false;
   bool _outsideBudget = false;
@@ -73,6 +77,7 @@ class _EntrySheetState extends State<EntrySheet> {
       _members
         ..clear()
         ..addAll(source.memberIds);
+      _initiatorId = source.initiatedByMemberId;
       _fundings
         ..clear()
         ..addAll(source.fundings);
@@ -94,6 +99,18 @@ class _EntrySheetState extends State<EntrySheet> {
             ),
           );
       }
+      if ((source.type == EntryType.expense ||
+              source.type == EntryType.income) &&
+          source.walletSources.isNotEmpty) {
+        final Set<int?> sourceIds = source.walletSources
+            .map((WalletSource item) => item.sourceMemberId)
+            .toSet();
+        if (sourceIds.length == 1) {
+          _manualWalletSource = true;
+          _manualWalletSourceMemberId = sourceIds.single;
+        }
+      }
+      _showMoreInfo = _initiatorId != null || _recorders.isNotEmpty;
       _recurring = source.recurring;
       _outsideBudget = source.outsideBudget;
       _frequency = source.recurringFrequency;
@@ -213,6 +230,7 @@ class _EntrySheetState extends State<EntrySheet> {
         fundings: fundings,
         walletSources: walletSources,
         outsideBudget: _type == EntryType.expense && _outsideBudget,
+        initiatedByMemberId: _type == EntryType.transfer ? null : _initiatorId,
         recordedByMemberId: _type == EntryType.transfer
             ? null
             : _recorders.firstOrNull,
@@ -294,8 +312,11 @@ class _EntrySheetState extends State<EntrySheet> {
                 ),
                 if (widget.controller.multiEnabled)
                   _PickerField(
-                    title: _type == EntryType.income ? '归属（可多选）' : '付款（可多选）',
+                    title: _type == EntryType.income ? '收入归属' : '支出归属',
                     value: _memberSummary(members),
+                    helpText: _type == EntryType.income
+                        ? '该笔收入计入哪些成员的收入统计，不代表资金一定进入这些成员的荷包。'
+                        : '该笔消费计入哪些成员的支出统计，不代表由这些成员出资。',
                     onTap: () => _pickMembers(members),
                   ),
                 if (widget.controller.multiEnabled &&
@@ -303,21 +324,52 @@ class _EntrySheetState extends State<EntrySheet> {
                     (_customPayerSplit ||
                         widget.controller.splitMode == 'custom'))
                   _PickerField(
-                    title: _type == EntryType.income ? '归属金额' : '付款金额',
+                    title: _type == EntryType.income ? '归属金额' : '分摊金额',
                     value: '自由填写',
                     onTap: () => _editPayerSplit(members),
                   ),
-                if (widget.controller.multiEnabled)
+                if (_type == EntryType.expense || _type == EntryType.income)
                   _PickerField(
-                    title: '记录（可不选）',
-                    value: _recorderSummary(members),
-                    onTap: () => _pickRecorders(members),
+                    title: _type == EntryType.expense ? '扣款荷包' : '入账荷包',
+                    value: _walletSourceSummary(members),
+                    helpText: _type == EntryType.expense
+                        ? '用于支付该笔消费的成员荷包或公共资金，会减少对应余额。'
+                        : '该笔收入进入的成员荷包或公共资金，会增加对应余额。',
+                    onTap: () => _pickWalletSourceForEntry(members),
                   ),
                 _PickerField(
-                  title: '账户',
+                  title: _type == EntryType.expense ? '付款账户' : '收款账户',
                   value: _fundingSummary(accounts, account),
+                  helpText: _type == EntryType.expense
+                      ? '实际从哪个账户扣款。'
+                      : '实际存入哪个账户。',
                   onTap: () => _editFundings(accounts: accounts),
                 ),
+                if (widget.controller.multiEnabled) ...<Widget>[
+                  _PickerField(
+                    title: '更多信息',
+                    value: _showMoreInfo
+                        ? _moreInfoSummary(members)
+                        : '发起者、记录者（可选）',
+                    onTap: () => setState(() => _showMoreInfo = !_showMoreInfo),
+                  ),
+                  if (_showMoreInfo)
+                    _PickerField(
+                      title: '发起者',
+                      value: _initiatorSummary(members),
+                      helpText: _type == EntryType.expense
+                          ? '谁发起了该笔消费，不影响余额和收支统计。'
+                          : '谁发起或促成了该笔收入，不影响余额和收支统计。',
+                      onTap: () => _pickInitiator(members),
+                    ),
+                  if (_showMoreInfo)
+                    _PickerField(
+                      title: '记录者',
+                      value: _recorderSummary(members),
+                      helpText: '谁录入了这笔账，不影响余额和收支统计。',
+                      onTap: () => _pickRecorders(members),
+                    ),
+                ],
               ] else ...<Widget>[
                 _PickerField(
                   title: '转出账户',
@@ -492,7 +544,7 @@ class _EntrySheetState extends State<EntrySheet> {
       isScrollControlled: true,
       useSafeArea: true,
       builder: (BuildContext context) => _MemberPickerSheet(
-        title: _type == EntryType.income ? '选择归属' : '选择付款',
+        title: _type == EntryType.income ? '选择收入归属' : '选择支出归属',
         members: members,
         selectedIds: _members,
       ),
@@ -528,7 +580,7 @@ class _EntrySheetState extends State<EntrySheet> {
           isScrollControlled: true,
           useSafeArea: true,
           builder: (BuildContext context) => _PayerSplitSheet(
-            title: _type == EntryType.income ? '归属金额' : '付款金额',
+            title: _type == EntryType.income ? '归属金额' : '分摊金额',
             total: amount,
             members: members
                 .where((LedgerMember member) => _members.contains(member.id))
@@ -553,8 +605,63 @@ class _EntrySheetState extends State<EntrySheet> {
       '系统记录';
 
   String _recorderSummary(List<LedgerMember> members) {
-    if (_recorders.isEmpty) return '不记录';
+    if (_recorders.isEmpty) return '未设置';
     return _recorders.map((int id) => _memberName(members, id)).join('、');
+  }
+
+  String _initiatorSummary(List<LedgerMember> members) =>
+      _initiatorId == null ? '未设置' : _memberName(members, _initiatorId);
+
+  String _moreInfoSummary(List<LedgerMember> members) {
+    final List<String> values = <String>[];
+    if (_initiatorId != null) {
+      values.add('发起者：${_initiatorSummary(members)}');
+    }
+    if (_recorders.isNotEmpty) {
+      values.add('记录者：${_recorderSummary(members)}');
+    }
+    return values.isEmpty ? '均未设置' : values.join(' · ');
+  }
+
+  Future<void> _pickInitiator(List<LedgerMember> members) async {
+    _dismissKeyboard();
+    final int? result = await showModalBottomSheet<int>(
+      context: context,
+      useSafeArea: true,
+      builder: (BuildContext context) => ListView(
+        shrinkWrap: true,
+        padding: const EdgeInsets.only(bottom: 16),
+        children: <Widget>[
+          const Padding(
+            padding: EdgeInsets.fromLTRB(18, 12, 18, 6),
+            child: Text(
+              '选择发起者',
+              style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
+            ),
+          ),
+          ListTile(
+            leading: const Icon(Icons.remove_circle_outline),
+            title: const Text('不设置'),
+            trailing: _initiatorId == null
+                ? const Icon(Icons.check_rounded)
+                : null,
+            onTap: () => Navigator.pop(context, -1),
+          ),
+          ...members.map(
+            (LedgerMember member) => ListTile(
+              leading: const Icon(Icons.person_outline),
+              title: Text(member.name),
+              trailing: _initiatorId == member.id
+                  ? const Icon(Icons.check_rounded)
+                  : null,
+              onTap: () => Navigator.pop(context, member.id),
+            ),
+          ),
+        ],
+      ),
+    );
+    if (!mounted || result == null) return;
+    setState(() => _initiatorId = result < 0 ? null : result);
   }
 
   Future<void> _pickRecorders(List<LedgerMember> members) async {
@@ -564,7 +671,7 @@ class _EntrySheetState extends State<EntrySheet> {
       isScrollControlled: true,
       useSafeArea: true,
       builder: (BuildContext context) => _MemberPickerSheet(
-        title: '选择记录',
+        title: '选择记录者',
         members: members,
         selectedIds: _recorders,
       ),
@@ -585,8 +692,107 @@ class _EntrySheetState extends State<EntrySheet> {
     });
   }
 
+  String _walletSourceSummary(List<LedgerMember> members) {
+    String sourceName(int? memberId) =>
+        memberId == null ? '公共资金' : '${_memberName(members, memberId)}的荷包';
+    if (_manualWalletSource) {
+      return sourceName(_manualWalletSourceMemberId);
+    }
+    if (_type == EntryType.income) {
+      if (_members.isEmpty) return '自动 · 公共资金';
+      if (_members.length == 1) return '自动 · ${sourceName(_members.first)}';
+      return '自动 · 按收入归属分配';
+    }
+    if (_members.isEmpty) return '自动 · 公共资金';
+    if (_members.length > 1) {
+      return '自动 · 公共资金';
+    }
+    final int memberId = _members.first;
+    final double memberBalance = widget.controller.memberWallets[memberId] ?? 0;
+    if (memberBalance <= .004 && widget.controller.commonFund > .004) {
+      return '自动 · 公共资金';
+    }
+    return '自动 · ${sourceName(memberId)}';
+  }
+
+  Future<void> _pickWalletSourceForEntry(List<LedgerMember> members) async {
+    _dismissKeyboard();
+    final _WalletSourceSelection?
+    result = await showModalBottomSheet<_WalletSourceSelection>(
+      context: context,
+      useSafeArea: true,
+      builder: (BuildContext context) => ListView(
+        shrinkWrap: true,
+        padding: const EdgeInsets.only(bottom: 16),
+        children: <Widget>[
+          Padding(
+            padding: const EdgeInsets.fromLTRB(18, 12, 18, 6),
+            child: Text(
+              _type == EntryType.expense ? '选择扣款荷包' : '选择入账荷包',
+              style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
+            ),
+          ),
+          ListTile(
+            leading: const Icon(Icons.auto_awesome_outlined),
+            title: Text(_type == EntryType.expense ? '自动选择' : '跟随收入归属'),
+            subtitle: const Text('保存时自动确定资金'),
+            trailing: !_manualWalletSource
+                ? const Icon(Icons.check_rounded)
+                : null,
+            onTap: () => Navigator.pop(
+              context,
+              const _WalletSourceSelection(automatic: true),
+            ),
+          ),
+          ListTile(
+            leading: const Icon(Icons.groups_outlined),
+            title: const Text('公共资金'),
+            subtitle: Text(
+              '当前 ¥${widget.controller.commonFund.toStringAsFixed(2)}',
+            ),
+            trailing: _manualWalletSource && _manualWalletSourceMemberId == null
+                ? const Icon(Icons.check_rounded)
+                : null,
+            onTap: () => Navigator.pop(
+              context,
+              const _WalletSourceSelection(automatic: false, memberId: null),
+            ),
+          ),
+          ...members.map(
+            (LedgerMember member) => ListTile(
+              leading: const Icon(Icons.account_balance_wallet_outlined),
+              title: Text('${member.name}的荷包'),
+              subtitle: Text(
+                '当前 ¥${(widget.controller.memberWallets[member.id] ?? 0).toStringAsFixed(2)}',
+              ),
+              trailing:
+                  _manualWalletSource &&
+                      _manualWalletSourceMemberId == member.id
+                  ? const Icon(Icons.check_rounded)
+                  : null,
+              onTap: () => Navigator.pop(
+                context,
+                _WalletSourceSelection(automatic: false, memberId: member.id),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+    if (!mounted || result == null) return;
+    setState(() {
+      _manualWalletSource = !result.automatic;
+      _manualWalletSourceMemberId = result.memberId;
+    });
+  }
+
   List<EntryFunding> _fundingsForSave(double amount) {
     if (_type == EntryType.transfer) {
+      return <EntryFunding>[
+        EntryFunding(accountId: _accountId, amount: amount),
+      ];
+    }
+    if (_type == EntryType.income && _fundings.isEmpty) {
       return <EntryFunding>[
         EntryFunding(accountId: _accountId, amount: amount),
       ];
@@ -666,7 +872,9 @@ class _EntrySheetState extends State<EntrySheet> {
         (int sum, MemberShare share) => sum + (share.amount * 100).round(),
       );
       if (customTotal != totalMinor) {
-        throw StateError('自定义付款金额合计必须等于账目金额');
+        throw StateError(
+          _type == EntryType.income ? '自定义归属金额合计必须等于账目金额' : '自定义分摊金额合计必须等于账目金额',
+        );
       }
       return custom;
     }
@@ -688,6 +896,39 @@ class _EntrySheetState extends State<EntrySheet> {
     if (_type == EntryType.transfer || _type == EntryType.adjustment) {
       return const <WalletSource>[];
     }
+    if (_manualWalletSource) {
+      if (_type == EntryType.expense) {
+        final double available = _manualWalletSourceMemberId == null
+            ? widget.controller.commonFund
+            : widget.controller.memberWallets[_manualWalletSourceMemberId] ?? 0;
+        if (available + .004 < amount) {
+          final String source = _manualWalletSourceMemberId == null
+              ? '公共资金'
+              : '${_memberName(widget.controller.members, _manualWalletSourceMemberId)}的荷包';
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text('$source余额不足，请更换扣款荷包')));
+          return null;
+        }
+      }
+      if (payerShares.isEmpty) {
+        return <WalletSource>[
+          WalletSource(
+            sourceMemberId: _manualWalletSourceMemberId,
+            amount: amount,
+          ),
+        ];
+      }
+      return payerShares
+          .map(
+            (MemberShare share) => WalletSource(
+              sourceMemberId: _manualWalletSourceMemberId,
+              payerMemberId: share.memberId,
+              amount: share.amount,
+            ),
+          )
+          .toList();
+    }
     if (_type == EntryType.income) {
       if (payerShares.isEmpty)
         return <WalletSource>[WalletSource(amount: amount)];
@@ -705,7 +946,7 @@ class _EntrySheetState extends State<EntrySheet> {
       if (widget.controller.commonFund + .004 < amount) {
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(const SnackBar(content: Text('公共资金不足，请选择付款')));
+        ).showSnackBar(const SnackBar(content: Text('公共资金不足，请更换扣款荷包')));
         return null;
       }
       return <WalletSource>[WalletSource(amount: amount)];
@@ -714,22 +955,12 @@ class _EntrySheetState extends State<EntrySheet> {
     final Map<int?, double> used = <int?, double>{};
     final List<WalletSource> result = <WalletSource>[];
     final List<(int, double)> shortages = <(int, double)>[];
-    final Set<int> activeMemberIds = widget.controller.members
-        .where((LedgerMember member) => !member.archived)
-        .map((LedgerMember member) => member.id)
-        .toSet();
     final Set<int> payerIds = payerShares
         .map((MemberShare share) => share.memberId)
         .toSet();
-    final String contextRule = payerIds.length == 1
-        ? widget.controller.walletRuleSingle
-        : payerIds.length == activeMemberIds.length &&
-              payerIds.containsAll(activeMemberIds)
-        ? widget.controller.walletRuleAll
-        : widget.controller.walletRuleSubset;
+    final String contextRule = payerIds.length == 1 ? 'own' : 'common';
     for (final MemberShare share in payerShares) {
-      final String rule =
-          widget.controller.walletMemberRules[share.memberId] ?? contextRule;
+      final String rule = contextRule;
       double shortage = share.amount;
       if (rule == 'common') {
         shortage = _takeAvailableWalletSource(
@@ -747,6 +978,15 @@ class _EntrySheetState extends State<EntrySheet> {
         used: used,
         result: result,
       );
+      if (shortage > .004 && rule != 'common') {
+        shortage = _takeAvailableWalletSource(
+          sourceMemberId: null,
+          payerMemberId: share.memberId,
+          requested: shortage,
+          used: used,
+          result: result,
+        );
+      }
       if (shortage > .004) shortages.add((share.memberId, shortage));
     }
     for (final (int payerId, double initialShortage) in shortages) {
@@ -846,7 +1086,7 @@ class _EntrySheetState extends State<EntrySheet> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            '$payerName 还差 ¥${remaining.toStringAsFixed(2)}，没有可用资金来源',
+            '$payerName 还差 ¥${remaining.toStringAsFixed(2)}，没有可用扣款荷包',
           ),
         ),
       );
@@ -978,6 +1218,10 @@ class _EntrySheetState extends State<EntrySheet> {
 
   void _changeType(EntryType value) {
     setState(() {
+      if (_type != value) {
+        _manualWalletSource = false;
+        _manualWalletSourceMemberId = null;
+      }
       _type = value;
       if (_type == EntryType.transfer) {
         _recurring = false;
@@ -1231,7 +1475,9 @@ class _EntrySheetState extends State<EntrySheet> {
         .where((LedgerMember member) => _members.contains(member.id))
         .map((LedgerMember member) => member.name)
         .toList();
-    if (selected.isEmpty) return '未选择';
+    if (selected.isEmpty) {
+      return _type == EntryType.income ? '公共资金' : '未指定';
+    }
     if (selected.length == members.length) return '全体成员';
     if (selected.length <= 2) return selected.join('、');
     return '${selected.take(2).join('、')}等${selected.length}人';
@@ -1564,10 +1810,12 @@ class _PickerField extends StatelessWidget {
     required this.title,
     required this.value,
     required this.onTap,
+    this.helpText,
   });
   final String title;
   final String value;
   final VoidCallback onTap;
+  final String? helpText;
 
   @override
   Widget build(BuildContext context) => Container(
@@ -1584,6 +1832,31 @@ class _PickerField extends StatelessWidget {
         child: Row(
           children: <Widget>[
             Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
+            if (helpText != null) ...<Widget>[
+              const SizedBox(width: 3),
+              IconButton(
+                tooltip: '查看$title说明',
+                visualDensity: VisualDensity.compact,
+                constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+                padding: const EdgeInsets.all(3),
+                iconSize: 17,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+                icon: const Icon(Icons.help_outline_rounded),
+                onPressed: () => showDialog<void>(
+                  context: context,
+                  builder: (BuildContext context) => AlertDialog(
+                    title: Text(title),
+                    content: Text(helpText!),
+                    actions: <Widget>[
+                      TextButton(
+                        onPressed: () => Navigator.pop(context),
+                        child: const Text('知道了'),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
             const SizedBox(width: 16),
             Expanded(
               child: Text(
@@ -1618,6 +1891,13 @@ class _WalletSourceChoice {
   final int? sourceMemberId;
   final String label;
   final double available;
+}
+
+class _WalletSourceSelection {
+  const _WalletSourceSelection({required this.automatic, this.memberId});
+
+  final bool automatic;
+  final int? memberId;
 }
 
 class _PayerSplitResult {
@@ -1927,7 +2207,7 @@ class _FundingEditorSheetState extends State<_FundingEditorSheet> {
                 ),
                 Expanded(
                   child: Text(
-                    widget.type == EntryType.expense ? '付款账户' : '入账账户',
+                    widget.type == EntryType.expense ? '选择付款账户' : '选择收款账户',
                     textAlign: TextAlign.center,
                     style: const TextStyle(fontWeight: FontWeight.w700),
                   ),

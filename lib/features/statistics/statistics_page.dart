@@ -179,7 +179,7 @@ class _StatisticsPageState extends State<StatisticsPage> {
             if (widget.controller.multiEnabled) ...<Widget>[
               const SizedBox(height: 12),
               _BreakdownCard(
-                title: '成员构成',
+                title: _breakdown == EntryType.income ? '收入归属构成' : '支出归属构成',
                 slices: memberSlices,
                 type: _breakdown,
                 onTypeChanged: (EntryType value) =>
