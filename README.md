@@ -186,6 +186,8 @@
 
 遇到问题或有功能建议，可以在 [GitHub Issues](https://github.com/TheAnonymous-sys/OneEntry/issues) 中说明设备型号、Android 版本和复现步骤。
 
+- 一笔反馈交流群（QQ）：`1049149714`
+
 <details>
 <summary><strong>开发者信息</strong></summary>
 
