@@ -686,106 +686,151 @@ class _SettingsPageState extends State<SettingsPage>
   }
 
   Future<void> _pickThemeColor() async {
-    final AppAccent current = AppTheme.accentFor(widget.controller.themeColor);
-    final String? value = await showModalBottomSheet<String>(
+    final String originalKey = widget.controller.themeColor;
+    String selectedKey = originalKey;
+    final String? next = await showModalBottomSheet<String>(
       context: context,
       useSafeArea: true,
       isScrollControlled: true,
-      builder: (BuildContext context) => FractionallySizedBox(
-        heightFactor: .72,
-        child: Column(
-          children: <Widget>[
-            const Padding(
-              padding: EdgeInsets.fromLTRB(20, 8, 20, 10),
-              child: Text(
-                '选择主题色',
-                style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
-              ),
-            ),
-            Expanded(
-              child: ListView(
-                padding: const EdgeInsets.only(bottom: 12),
-                children: <Widget>[
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(18, 4, 18, 12),
-                    child: Container(
-                      height: 82,
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                          colors: <Color>[current.primary, current.secondary],
-                        ),
-                        borderRadius: BorderRadius.circular(20),
+      builder: (BuildContext context) => StatefulBuilder(
+        builder: (BuildContext context, StateSetter update) {
+          final AppAccent preview = AppTheme.accentFor(selectedKey);
+          return FractionallySizedBox(
+            heightFactor: .82,
+            child: Column(
+              children: <Widget>[
+                SizedBox(
+                  height: 52,
+                  child: Row(
+                    children: <Widget>[
+                      TextButton(
+                        onPressed: () => Navigator.pop(context),
+                        child: const Text('取消'),
                       ),
-                      alignment: Alignment.center,
-                      child: const Text(
-                        '不同的主体，各自留下清楚的一笔',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ),
-                  ),
-                  ...AppTheme.accents.map(
-                    (AppAccent accent) => ListTile(
-                      leading: Container(
-                        width: 36,
-                        height: 36,
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            begin: Alignment.topCenter,
-                            end: Alignment.bottomCenter,
-                            colors: <Color>[accent.primary, accent.secondary],
+                      const Expanded(
+                        child: Text(
+                          '选择主题色',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 17,
+                            fontWeight: FontWeight.w700,
                           ),
-                          shape: BoxShape.circle,
-                        ),
-                        child: widget.controller.themeColor == accent.key
-                            ? const Icon(
-                                Icons.check,
-                                color: Colors.white,
-                                size: 20,
-                              )
-                            : null,
-                      ),
-                      title: Text(accent.label),
-                      trailing: widget.controller.themeColor == accent.key
-                          ? const Icon(Icons.radio_button_checked)
-                          : const Icon(Icons.radio_button_unchecked),
-                      onTap: () => Navigator.pop(context, accent.key),
-                    ),
-                  ),
-                  ListTile(
-                    leading: Container(
-                      width: 36,
-                      height: 36,
-                      decoration: BoxDecoration(
-                        color: current.primary,
-                        shape: BoxShape.circle,
-                        border: Border.all(
-                          color: Theme.of(context).colorScheme.outlineVariant,
                         ),
                       ),
-                      child: const Icon(Icons.colorize_outlined, size: 19),
-                    ),
-                    title: const Text('自定义颜色'),
-                    subtitle: const Text('输入十六进制颜色值'),
-                    trailing: const Icon(Icons.chevron_right),
-                    onTap: () => Navigator.pop(context, '__custom__'),
+                      TextButton(
+                        onPressed: () => Navigator.pop(context, selectedKey),
+                        child: const Text('确定'),
+                      ),
+                    ],
                   ),
-                ],
-              ),
+                ),
+                const Padding(
+                  padding: EdgeInsets.fromLTRB(18, 0, 18, 10),
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      '更换主题色后应用会退出，请重新打开。',
+                      style: TextStyle(fontSize: 12, color: Color(0xFF8A9099)),
+                    ),
+                  ),
+                ),
+                Expanded(
+                  child: ListView(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    children: <Widget>[
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(18, 4, 18, 12),
+                        child: Container(
+                          height: 82,
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                              colors: <Color>[
+                                preview.primary,
+                                preview.secondary,
+                              ],
+                            ),
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          alignment: Alignment.center,
+                          child: const Text(
+                            '不同的主体，各自留下清楚的一笔',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                      ),
+                      ...AppTheme.accents.map(
+                        (AppAccent accent) => ListTile(
+                          leading: Container(
+                            width: 36,
+                            height: 36,
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                begin: Alignment.topCenter,
+                                end: Alignment.bottomCenter,
+                                colors: <Color>[
+                                  accent.primary,
+                                  accent.secondary,
+                                ],
+                              ),
+                              shape: BoxShape.circle,
+                            ),
+                            child: selectedKey == accent.key
+                                ? const Icon(
+                                    Icons.check,
+                                    color: Colors.white,
+                                    size: 20,
+                                  )
+                                : null,
+                          ),
+                          title: Text(accent.label),
+                          trailing: selectedKey == accent.key
+                              ? const Icon(Icons.radio_button_checked)
+                              : const Icon(Icons.radio_button_unchecked),
+                          onTap: () => update(() => selectedKey = accent.key),
+                        ),
+                      ),
+                      ListTile(
+                        leading: Container(
+                          width: 36,
+                          height: 36,
+                          decoration: BoxDecoration(
+                            color: preview.primary,
+                            shape: BoxShape.circle,
+                            border: Border.all(
+                              color: Theme.of(
+                                context,
+                              ).colorScheme.outlineVariant,
+                            ),
+                          ),
+                          child: const Icon(Icons.colorize_outlined, size: 19),
+                        ),
+                        title: const Text('自定义颜色'),
+                        subtitle: const Text('输入十六进制颜色值'),
+                        trailing: const Icon(Icons.chevron_right),
+                        onTap: () async {
+                          final String? custom = await _pickCustomThemeColor(
+                            preview.primary,
+                          );
+                          if (custom != null && context.mounted) {
+                            update(() => selectedKey = custom);
+                          }
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ),
-          ],
-        ),
+          );
+        },
       ),
     );
-    if (value == null || !mounted) return;
-    final String? next = value == '__custom__'
-        ? await _pickCustomThemeColor(current.primary)
-        : value;
-    if (next == null) return;
+    if (next == null || next == originalKey || !mounted) return;
     await widget.controller.setPreference('theme_color', next);
     await LauncherIconService.syncTheme(AppTheme.launcherAccentKey(next));
   }

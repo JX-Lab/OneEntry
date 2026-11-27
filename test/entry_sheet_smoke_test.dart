@@ -49,6 +49,8 @@ void main() {
     expect(find.text('支出归属'), findsOneWidget);
     expect(find.text('扣款荷包'), findsOneWidget);
     expect(find.text('付款账户'), findsOneWidget);
+    expect(find.byTooltip('保存'), findsOneWidget);
+    expect(find.text('保存'), findsNothing);
     await tester.tap(find.byTooltip('查看支出归属说明'));
     await tester.pumpAndSettle();
     expect(find.textContaining('计入哪些成员的支出统计'), findsOneWidget);
@@ -57,6 +59,12 @@ void main() {
 
     await tester.tap(find.text('更多信息'));
     await tester.pumpAndSettle();
+    final InkWell moreInfo = tester.widget<InkWell>(
+      find
+          .ancestor(of: find.text('更多信息'), matching: find.byType(InkWell))
+          .first,
+    );
+    expect(moreInfo.splashFactory, NoSplash.splashFactory);
     expect(find.text('发起者'), findsOneWidget);
     expect(find.text('记录者'), findsOneWidget);
 
@@ -312,7 +320,7 @@ void main() {
     );
     await tester.tap(find.text('预算外花销'));
     await tester.pump();
-    await tester.tap(find.text('保存'));
+    await tester.tap(find.byTooltip('保存'));
     await tester.pumpAndSettle();
 
     expect(saved, isNotNull);
@@ -375,7 +383,7 @@ void main() {
     await tester.tap(find.text('打开记账'));
     await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextField).first, '2');
-    await tester.tap(find.text('保存'));
+    await tester.tap(find.byTooltip('保存'));
     await tester.pumpAndSettle();
 
     expect(saved, isNotNull);
@@ -418,7 +426,7 @@ void main() {
     await tester.pump();
     await tester.tap(find.text('完成 (1)'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('保存'));
+    await tester.tap(find.byTooltip('保存'));
     await tester.pumpAndSettle();
     expect(find.text('我的荷包还差 ¥2.00'), findsOneWidget);
     await tester.tap(find.text('小明的荷包'));
@@ -477,7 +485,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('自由填写'), findsOneWidget);
 
-    await tester.tap(find.text('保存'));
+    await tester.tap(find.byTooltip('保存'));
     await tester.pumpAndSettle();
 
     expect(saved, isNotNull);
@@ -523,7 +531,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('分摊金额'), findsNothing);
-    await tester.tap(find.text('保存'));
+    await tester.tap(find.byTooltip('保存'));
     await tester.pumpAndSettle();
     expect(saved, isNotNull);
     expect(saved!.memberShares.map((item) => item.amount), <double>[5, 5]);
@@ -561,7 +569,7 @@ void main() {
     await tester.pump();
     await tester.tap(find.text('完成 (2)'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('保存'));
+    await tester.tap(find.byTooltip('保存'));
     await tester.pumpAndSettle();
 
     expect(saved, isNotNull);
@@ -607,7 +615,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('公共资金').last);
     await tester.pumpAndSettle();
-    await tester.tap(find.text('保存'));
+    await tester.tap(find.byTooltip('保存'));
     await tester.pumpAndSettle();
 
     expect(saved, isNotNull);
@@ -657,7 +665,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('支出归属'), findsNothing);
     expect(find.text('更多信息'), findsNothing);
-    await tester.tap(find.text('保存'));
+    await tester.tap(find.byTooltip('保存'));
     await tester.pumpAndSettle();
     expect(saved, isNotNull);
     expect(saved!.memberIds, isEmpty);

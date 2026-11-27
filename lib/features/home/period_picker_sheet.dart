@@ -116,7 +116,7 @@ class _PeriodPickerSheetState extends State<PeriodPickerSheet> {
                   child: _picker<int?>(
                     controller: yearController,
                     values: years,
-                    label: (value) => value == null ? '不选' : '$value年',
+                    label: (value) => value == null ? '—' : '$value年',
                     onSelected: (value) {
                       setState(() {
                         year = value;
@@ -133,7 +133,7 @@ class _PeriodPickerSheetState extends State<PeriodPickerSheet> {
                     controller: monthController,
                     values: months,
                     label: (value) => value == null
-                        ? '不选'
+                        ? '—'
                         : '${value.toString().padLeft(2, '0')}月',
                     onSelected: (value) {
                       setState(() {
@@ -149,7 +149,7 @@ class _PeriodPickerSheetState extends State<PeriodPickerSheet> {
                     controller: dayController,
                     values: days,
                     label: (value) => value == null
-                        ? '不选'
+                        ? '—'
                         : '${value.toString().padLeft(2, '0')}日',
                     onSelected: (value) => setState(() => day = value),
                   ),

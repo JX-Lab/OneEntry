@@ -289,18 +289,12 @@ class _EntrySheetState extends State<EntrySheet> with WidgetsBindingObserver {
         centerTitle: true,
         title: Text(widget.initial == null ? '记一笔' : '编辑账目'),
         actions: <Widget>[
-          Padding(
-            padding: const EdgeInsets.only(right: 8),
-            child: FilledButton.tonalIcon(
-              onPressed: _save,
-              icon: const Icon(Icons.check_rounded, size: 18),
-              label: const Text('保存'),
-              style: FilledButton.styleFrom(
-                minimumSize: const Size(80, 40),
-                padding: const EdgeInsets.symmetric(horizontal: 12),
-              ),
-            ),
+          IconButton(
+            tooltip: '保存',
+            onPressed: _save,
+            icon: const Icon(Icons.check_rounded),
           ),
+          const SizedBox(width: 4),
         ],
       ),
       body: SafeArea(
@@ -378,6 +372,7 @@ class _EntrySheetState extends State<EntrySheet> with WidgetsBindingObserver {
                         ? _moreInfoSummary(members)
                         : '发起者、记录者（可选）',
                     onTap: () => setState(() => _showMoreInfo = !_showMoreInfo),
+                    showTapEffect: false,
                   ),
                   if (_showMoreInfo)
                     _PickerField(
@@ -1841,11 +1836,13 @@ class _PickerField extends StatelessWidget {
     required this.value,
     required this.onTap,
     this.helpText,
+    this.showTapEffect = true,
   });
   final String title;
   final String value;
   final VoidCallback onTap;
   final String? helpText;
+  final bool showTapEffect;
 
   @override
   Widget build(BuildContext context) => Container(
@@ -1856,6 +1853,10 @@ class _PickerField extends StatelessWidget {
     ),
     clipBehavior: Clip.antiAlias,
     child: InkWell(
+      overlayColor: showTapEffect
+          ? null
+          : const WidgetStatePropertyAll<Color>(Colors.transparent),
+      splashFactory: showTapEffect ? null : NoSplash.splashFactory,
       onTap: () {
         FocusManager.instance.primaryFocus?.unfocus();
         onTap();

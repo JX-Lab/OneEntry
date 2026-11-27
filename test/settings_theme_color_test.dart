@@ -31,6 +31,17 @@ class _PathRepository extends LedgerRepository {
       '/data/user/0/com.junxu.yibi/databases/oneentry.db';
 }
 
+class _PreferenceRepository extends LedgerRepository {
+  _PreferenceRepository() : super(AppDatabase());
+
+  final Map<String, String> saved = <String, String>{};
+
+  @override
+  Future<void> setPreference(String key, String value) async {
+    saved[key] = value;
+  }
+}
+
 void main() {
   testWidgets('设置页显示并可复制QQ反馈群号', (WidgetTester tester) async {
     await tester.binding.setSurfaceSize(const Size(800, 1000));
@@ -92,9 +103,21 @@ void main() {
   testWidgets('设置页可以打开主题色选择', (WidgetTester tester) async {
     await tester.binding.setSurfaceSize(const Size(800, 1000));
     addTearDown(() => tester.binding.setSurfaceSize(null));
-    final LedgerController controller = LedgerController(
-      LedgerRepository(AppDatabase()),
+    const MethodChannel launcherChannel = MethodChannel(
+      'com.junxu.yibi/launcher_icon',
     );
+    int syncCalls = 0;
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(launcherChannel, (MethodCall call) async {
+          if (call.method == 'syncTheme') syncCalls++;
+          return null;
+        });
+    addTearDown(
+      () => TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(launcherChannel, null),
+    );
+    final _PreferenceRepository repository = _PreferenceRepository();
+    final LedgerController controller = LedgerController(repository);
     addTearDown(controller.dispose);
 
     await tester.pumpWidget(
@@ -121,10 +144,33 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('选择主题色'), findsOneWidget);
+    expect(find.text('更换主题色后应用会退出，请重新打开。'), findsOneWidget);
+    expect(find.text('取消'), findsOneWidget);
+    expect(find.text('确定'), findsOneWidget);
     for (final AppAccent accent in AppTheme.accents) {
       expect(find.text(accent.label), findsWidgets);
     }
     expect(find.text('自定义颜色'), findsOneWidget);
+
+    await tester.tap(find.text('薰衣紫'));
+    await tester.pump();
+    expect(controller.themeColor, 'green');
+    expect(repository.saved, isEmpty);
+    expect(find.text('选择主题色'), findsOneWidget);
+    await tester.tap(find.text('取消'));
+    await tester.pumpAndSettle();
+    expect(controller.themeColor, 'green');
+    expect(syncCalls, 0);
+
+    await tester.tap(find.text('主题色'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('薰衣紫'));
+    await tester.pump();
+    await tester.tap(find.text('确定'));
+    await tester.pumpAndSettle();
+    expect(controller.themeColor, 'purple');
+    expect(repository.saved['theme_color'], 'purple');
+    expect(syncCalls, 1);
   });
 
   testWidgets('设置页显示应用版本和手动更新入口', (WidgetTester tester) async {

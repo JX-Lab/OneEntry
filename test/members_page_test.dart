@@ -67,6 +67,10 @@ void main() {
     expect(find.text('我的荷包'), findsOneWidget);
     expect(find.text('我 欠 小明'), findsOneWidget);
 
+    await tester.tap(find.text('公共资金'));
+    await tester.pumpAndSettle();
+    expect(find.text('分配成员荷包'), findsNothing);
+
     await tester.tap(find.text('分配'));
     await tester.pumpAndSettle();
     final Finder walletInputs = find.byType(TextField);

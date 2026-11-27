@@ -86,12 +86,8 @@ class _MembersPageState extends State<MembersPage> {
           children: <Widget>[
             Container(
               decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.primary.withValues(
-                  alpha: Theme.of(context).brightness == Brightness.dark
-                      ? .18
-                      : .08,
-                ),
-                borderRadius: BorderRadius.circular(18),
+                color: Theme.of(context).colorScheme.surface,
+                borderRadius: BorderRadius.circular(12),
               ),
               child: ListTile(
                 minTileHeight: 88,
@@ -611,7 +607,6 @@ class _WalletsAndDebtsPage extends StatelessWidget {
                       '¥${controller.commonFund.toStringAsFixed(2)}',
                       style: const TextStyle(fontWeight: FontWeight.w700),
                     ),
-                    onTap: () => onEditWallets(context),
                   ),
                   ...members.map(
                     (LedgerMember member) => ListTile(
@@ -628,7 +623,6 @@ class _WalletsAndDebtsPage extends StatelessWidget {
                         '¥${(controller.memberWallets[member.id] ?? 0).toStringAsFixed(2)}',
                         style: const TextStyle(fontWeight: FontWeight.w700),
                       ),
-                      onTap: () => onEditWallets(context),
                     ),
                   ),
                 ],
