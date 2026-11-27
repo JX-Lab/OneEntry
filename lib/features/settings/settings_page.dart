@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../data/ledger_controller.dart';
 import '../../theme/app_theme.dart';
@@ -278,6 +279,17 @@ class _SettingsPageState extends State<SettingsPage>
                       ),
                     ),
                     ListTile(
+                      leading: const Icon(Icons.forum_outlined),
+                      title: const Text('一笔反馈交流群'),
+                      subtitle: const Text('QQ群：1049149714'),
+                      trailing: IconButton(
+                        tooltip: '复制群号',
+                        icon: const Icon(Icons.copy_outlined),
+                        onPressed: _copyFeedbackGroup,
+                      ),
+                      onTap: _copyFeedbackGroup,
+                    ),
+                    ListTile(
                       title: const Text('检查更新'),
                       subtitle: Text(_updateStatus),
                       trailing: _checkingUpdate
@@ -309,6 +321,14 @@ class _SettingsPageState extends State<SettingsPage>
     final AppVersionInfo? version = await AppInfoService.currentVersion();
     if (!mounted) return;
     setState(() => _appVersion = version);
+  }
+
+  Future<void> _copyFeedbackGroup() async {
+    await Clipboard.setData(const ClipboardData(text: '1049149714'));
+    if (!mounted) return;
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('QQ群号已复制')));
   }
 
   Future<void> _loadDatabasePath() async {

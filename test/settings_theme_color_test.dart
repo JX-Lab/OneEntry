@@ -32,6 +32,41 @@ class _PathRepository extends LedgerRepository {
 }
 
 void main() {
+  testWidgets('设置页显示并可复制QQ反馈群号', (WidgetTester tester) async {
+    await tester.binding.setSurfaceSize(const Size(800, 1000));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(SystemChannels.platform, (
+          MethodCall call,
+        ) async {
+          if (call.method == 'Clipboard.setData') return null;
+          return null;
+        });
+    addTearDown(
+      () => TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(SystemChannels.platform, null),
+    );
+    final LedgerController controller = LedgerController(
+      LedgerRepository(AppDatabase()),
+    );
+    addTearDown(controller.dispose);
+
+    await tester.pumpWidget(
+      MaterialApp(home: SettingsPage(controller: controller)),
+    );
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(
+      find.text('一笔反馈交流群'),
+      320,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.tap(find.text('一笔反馈交流群'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('QQ群：1049149714'), findsOneWidget);
+    expect(find.text('QQ群号已复制'), findsOneWidget);
+  });
+
   testWidgets('设置页显示主数据库实际路径', (WidgetTester tester) async {
     await tester.binding.setSurfaceSize(const Size(800, 1000));
     addTearDown(() => tester.binding.setSurfaceSize(null));
