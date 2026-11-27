@@ -646,43 +646,19 @@ class _EntrySheetState extends State<EntrySheet> with WidgetsBindingObserver {
 
   Future<void> _pickInitiator(List<LedgerMember> members) async {
     _dismissKeyboard();
-    final int? result = await showModalBottomSheet<int>(
+    final Set<int>? result = await showModalBottomSheet<Set<int>>(
       context: context,
+      isScrollControlled: true,
       useSafeArea: true,
-      builder: (BuildContext context) => ListView(
-        shrinkWrap: true,
-        padding: const EdgeInsets.only(bottom: 16),
-        children: <Widget>[
-          const Padding(
-            padding: EdgeInsets.fromLTRB(18, 12, 18, 6),
-            child: Text(
-              '选择发起者',
-              style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
-            ),
-          ),
-          ListTile(
-            leading: const Icon(Icons.remove_circle_outline),
-            title: const Text('不设置'),
-            trailing: _initiatorId == null
-                ? const Icon(Icons.check_rounded)
-                : null,
-            onTap: () => Navigator.pop(context, -1),
-          ),
-          ...members.map(
-            (LedgerMember member) => ListTile(
-              leading: const Icon(Icons.person_outline),
-              title: Text(member.name),
-              trailing: _initiatorId == member.id
-                  ? const Icon(Icons.check_rounded)
-                  : null,
-              onTap: () => Navigator.pop(context, member.id),
-            ),
-          ),
-        ],
+      builder: (BuildContext context) => _MemberPickerSheet(
+        title: '选择发起者',
+        members: members,
+        selectedIds: <int>{?_initiatorId},
+        singleSelection: true,
       ),
     );
     if (!mounted || result == null) return;
-    setState(() => _initiatorId = result < 0 ? null : result);
+    setState(() => _initiatorId = result.firstOrNull);
   }
 
   Future<void> _pickRecorders(List<LedgerMember> members) async {
@@ -2601,11 +2577,13 @@ class _MemberPickerSheet extends StatefulWidget {
     required this.title,
     required this.members,
     required this.selectedIds,
+    this.singleSelection = false,
   });
 
   final String title;
   final List<LedgerMember> members;
   final Set<int> selectedIds;
+  final bool singleSelection;
 
   @override
   State<_MemberPickerSheet> createState() => _MemberPickerSheetState();
@@ -2637,6 +2615,7 @@ class _MemberPickerSheetState extends State<_MemberPickerSheet> {
         .where((member) => member.name.toLowerCase().contains(query))
         .toList();
     final bool allSelected =
+        !widget.singleSelection &&
         widget.members.isNotEmpty &&
         widget.members.every((member) => _selectedIds.contains(member.id));
     final double height = (MediaQuery.sizeOf(context).height * .78)
@@ -2656,7 +2635,9 @@ class _MemberPickerSheetState extends State<_MemberPickerSheet> {
               action: TextButton(
                 onPressed: () => Navigator.pop(context, _selectedIds),
                 child: Text(
-                  _selectedIds.isEmpty ? '完成' : '完成 (${_selectedIds.length})',
+                  widget.singleSelection || _selectedIds.isEmpty
+                      ? '完成'
+                      : '完成 (${_selectedIds.length})',
                   style: const TextStyle(fontWeight: FontWeight.w700),
                 ),
               ),
@@ -2679,24 +2660,25 @@ class _MemberPickerSheetState extends State<_MemberPickerSheet> {
                     selected: _selectedIds.isEmpty,
                     onTap: () => setState(_selectedIds.clear),
                   ),
-                  _SelectorRow(
-                    icon: Icons.people_outline,
-                    title: '全体成员',
-                    subtitle: widget.members.isEmpty
-                        ? '暂无可用成员'
-                        : '共 ${widget.members.length} 人',
-                    selected: allSelected,
-                    enabled: widget.members.isNotEmpty,
-                    onTap: () => setState(() {
-                      if (allSelected) {
-                        _selectedIds.clear();
-                      } else {
-                        _selectedIds
-                          ..clear()
-                          ..addAll(widget.members.map((member) => member.id));
-                      }
-                    }),
-                  ),
+                  if (!widget.singleSelection)
+                    _SelectorRow(
+                      icon: Icons.people_outline,
+                      title: '全体成员',
+                      subtitle: widget.members.isEmpty
+                          ? '暂无可用成员'
+                          : '共 ${widget.members.length} 人',
+                      selected: allSelected,
+                      enabled: widget.members.isNotEmpty,
+                      onTap: () => setState(() {
+                        if (allSelected) {
+                          _selectedIds.clear();
+                        } else {
+                          _selectedIds
+                            ..clear()
+                            ..addAll(widget.members.map((member) => member.id));
+                        }
+                      }),
+                    ),
                   if (filtered.isEmpty && query.isNotEmpty)
                     const SizedBox(
                       height: 120,
@@ -2709,7 +2691,15 @@ class _MemberPickerSheetState extends State<_MemberPickerSheet> {
                         title: member.name,
                         selected: _selectedIds.contains(member.id),
                         onTap: () => setState(() {
-                          if (!_selectedIds.add(member.id)) {
+                          if (widget.singleSelection) {
+                            if (_selectedIds.contains(member.id)) {
+                              _selectedIds.clear();
+                            } else {
+                              _selectedIds
+                                ..clear()
+                                ..add(member.id);
+                            }
+                          } else if (!_selectedIds.add(member.id)) {
                             _selectedIds.remove(member.id);
                           }
                         }),

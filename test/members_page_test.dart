@@ -73,9 +73,26 @@ void main() {
 
     await tester.tap(find.text('分配'));
     await tester.pumpAndSettle();
-    final Finder walletInputs = find.byType(TextField);
-    expect(walletInputs, findsNWidgets(2));
-    await tester.enterText(walletInputs.first, '30');
+    final Finder memberSearch = find.byWidgetPredicate(
+      (Widget widget) =>
+          widget is TextField && widget.decoration?.hintText == '搜索成员',
+    );
+    expect(memberSearch, findsOneWidget);
+    expect(find.byType(TextField), findsNWidgets(3));
+    await tester.enterText(memberSearch, '小明');
+    await tester.pump();
+    final Finder allocationSheet = find.byType(FractionallySizedBox);
+    expect(
+      find.descendant(of: allocationSheet, matching: find.text('小明的荷包')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: allocationSheet, matching: find.text('我的荷包')),
+      findsNothing,
+    );
+    await tester.enterText(memberSearch, '');
+    await tester.pump();
+    await tester.enterText(find.widgetWithText(TextField, '我的荷包'), '30');
     await tester.pump();
     expect(find.text('未分配的 ¥60.00 将保留为公共资金'), findsOneWidget);
     await tester.tap(find.text('保存'));

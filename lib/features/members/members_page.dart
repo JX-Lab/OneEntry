@@ -801,6 +801,7 @@ class _GlobalWalletAllocationSheet extends StatefulWidget {
 
 class _GlobalWalletAllocationSheetState
     extends State<_GlobalWalletAllocationSheet> {
+  final TextEditingController _searchController = TextEditingController();
   final Map<int, TextEditingController> _memberInputs =
       <int, TextEditingController>{};
 
@@ -823,6 +824,7 @@ class _GlobalWalletAllocationSheetState
 
   @override
   void dispose() {
+    _searchController.dispose();
     for (final TextEditingController input in _memberInputs.values) {
       input.dispose();
     }
@@ -831,6 +833,12 @@ class _GlobalWalletAllocationSheetState
 
   @override
   Widget build(BuildContext context) {
+    final String query = _searchController.text.trim().toLowerCase();
+    final List<LedgerMember> filteredMembers = widget.members
+        .where(
+          (LedgerMember member) => member.name.toLowerCase().contains(query),
+        )
+        .toList();
     final List<double> values = _memberInputs.values
         .map((TextEditingController input) => double.tryParse(input.text) ?? 0)
         .toList();
@@ -892,28 +900,44 @@ class _GlobalWalletAllocationSheetState
               ),
             ),
           ),
-          Expanded(
-            child: ListView(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 20),
-              children: <Widget>[
-                ...widget.members.map(
-                  (LedgerMember member) => Padding(
-                    padding: const EdgeInsets.only(bottom: 12),
-                    child: TextField(
-                      controller: _memberInputs[member.id],
-                      keyboardType: const TextInputType.numberWithOptions(
-                        decimal: true,
-                      ),
-                      decoration: InputDecoration(
-                        labelText: '${member.name}的荷包',
-                        prefixText: '¥ ',
-                      ),
-                      onChanged: (_) => setState(() {}),
-                    ),
-                  ),
-                ),
-              ],
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+            child: TextField(
+              controller: _searchController,
+              decoration: const InputDecoration(
+                hintText: '搜索成员',
+                prefixIcon: Icon(Icons.search, size: 20),
+              ),
+              textInputAction: TextInputAction.search,
+              onChanged: (_) => setState(() {}),
             ),
+          ),
+          Expanded(
+            child: filteredMembers.isEmpty
+                ? const Center(child: Text('没有匹配的成员'))
+                : ListView(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 20),
+                    keyboardDismissBehavior:
+                        ScrollViewKeyboardDismissBehavior.onDrag,
+                    children: <Widget>[
+                      ...filteredMembers.map(
+                        (LedgerMember member) => Padding(
+                          padding: const EdgeInsets.only(bottom: 12),
+                          child: TextField(
+                            controller: _memberInputs[member.id],
+                            keyboardType: const TextInputType.numberWithOptions(
+                              decimal: true,
+                            ),
+                            decoration: InputDecoration(
+                              labelText: '${member.name}的荷包',
+                              prefixText: '¥ ',
+                            ),
+                            onChanged: (_) => setState(() {}),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
           ),
         ],
       ),

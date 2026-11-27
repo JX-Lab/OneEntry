@@ -68,6 +68,28 @@ void main() {
     expect(find.text('发起者'), findsOneWidget);
     expect(find.text('记录者'), findsOneWidget);
 
+    await tester.tap(find.text('发起者'));
+    await tester.pumpAndSettle();
+    final Finder memberSearch = find.byWidgetPredicate(
+      (Widget widget) =>
+          widget is TextField && widget.decoration?.hintText == '搜索成员',
+    );
+    expect(find.text('选择发起者'), findsOneWidget);
+    expect(memberSearch, findsOneWidget);
+    expect(find.text('无选择'), findsOneWidget);
+    expect(find.text('全体成员'), findsNothing);
+    await tester.enterText(memberSearch, 'B');
+    await tester.pump();
+    final Finder filteredMember = find.descendant(
+      of: find.byType(ListView).last,
+      matching: find.text('B'),
+    );
+    expect(filteredMember, findsOneWidget);
+    await tester.tap(filteredMember);
+    await tester.tap(find.text('完成'));
+    await tester.pumpAndSettle();
+    expect(find.text('B'), findsOneWidget);
+
     await tester.tap(find.text('收入'));
     await tester.pumpAndSettle();
     expect(find.text('收入归属'), findsOneWidget);
